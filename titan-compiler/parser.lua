@@ -3,6 +3,7 @@ local parser = {}
 local pg = require 'parser-gen'
 local peg = require 'peg-parser'
 local ast = require 'titan-compiler.ast'
+local exception = require 'titan-compiler.exception'
 
 -- Functions used by the PEG grammar
 local defs = {}
@@ -201,7 +202,7 @@ end
 function parser.parse(input)
     local result, errors = pg.parse(input, grammar)
     if not result then
-        return false, errorstostr(errors)
+        exception.throw('ParserErr', errorstostr(errors))
     else
         return result
     end
