@@ -2,10 +2,10 @@
 
 local inspect = require 'inspect'
 local argparse = require 'argparse'
-
+local exception = require 'titan-compiler.exception'
 local parser = require 'titan-compiler.parser'
 
-local p = argparse('titan', 'Titan compiler')
+local p = argparse(arg[0], 'Titan compiler')
 p:argument('input', 'Input file.')
 p:flag('--print-ast', 'Print the AST.')
 local args = p:parse()
@@ -17,24 +17,21 @@ local function get_contents(filename)
     return contents
 end
 
--- Work like assert, but don't print the stack trace
-local function check(value, msg)
-    if not value then
-        print(msg)
-        os.exit(1)
+local function main()
+    local input
+    if args.input == '-' then
+        input = io.read("*a")
     else
-        return value
+        input = get_contents(args.input)
+    end
+    local ast = parser.parse(input)
+    if args.print_ast then
+        print(inspect(ast))
     end
 end
 
-local input
-if args.input == '-' then
-    input = io.read("*a")
-else
-    input = get_contents(args.input)
-end
-local ast = check(parser.parse(input))
-if args.print_ast then
-    print(inspect(ast))
+local ok, err = exception.try(main)
+if not ok then
+    print(arg[0] .. ': ' .. tostring(err))
 end
 
