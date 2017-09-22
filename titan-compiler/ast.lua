@@ -58,7 +58,7 @@ for typename, conss in pairs(types) do
         local tag = typename .. '_' .. consname
 
         local mt = { __index = {
-            traverse = function(self, visitor, ...)
+            foreach = function(self, visitor, ...)
                 assert(type(visitor) == 'function')
                 for _, field in pairs(fields) do
                     local ok, err = visitor(self[field], ...)
