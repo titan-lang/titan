@@ -17,7 +17,7 @@ local function bindvars(node, st)
     elseif tag == "TopLevel_Func" then
         st:add_symbol(node.name, node)
         st:open_block()
-        local ok, err = node:traverse(bindvars, st)
+        local ok, err = node:foreach(bindvars, st)
         if not ok then return false, err end
         st:close_block()
 
@@ -26,7 +26,7 @@ local function bindvars(node, st)
 
     elseif tag == "Stat_Block" then
         st:open_block()
-        local ok, err = node:traverse(bindvars, st)
+        local ok, err = node:foreach(bindvars, st)
         if not ok then return false, err end
         st:close_block()
 
@@ -38,7 +38,7 @@ local function bindvars(node, st)
         end
 
     else
-        local ok, err = node:traverse(bindvars, st)
+        local ok, err = node:foreach(bindvars, st)
         if not ok then return false, err end
     end
     return true
