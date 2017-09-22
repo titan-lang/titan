@@ -8,7 +8,7 @@ function util.get_file_contents(filename)
     local s = f:read("a")
     f:close()
     if not s then
-        return false, "file '" .. filename .. "' is empty"
+        return ''
     else
         return s
     end
