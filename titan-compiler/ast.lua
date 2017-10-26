@@ -11,6 +11,7 @@ types.Type = {
 types.TopLevel = {
     Func    = {"islocal", "name", "params", "rettype", "block"},
     Var     = {"islocal", "decl", "value"},
+    Require = {"localname", "modname"}
 }
 
 types.Decl = {
@@ -36,6 +37,7 @@ types.Then = {
 types.Var = {
     Name    = {"name"},
     Index   = {"exp1", "exp2"},
+    QualName = {"modname", "name"}
 }
 
 types.Exp = {

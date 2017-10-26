@@ -162,7 +162,7 @@ local possiblename = idstart * idrest^0
 local keywords = {
     "and", "break", "do", "else", "elseif", "end", "for", "false",
     "function", "goto", "if", "in", "local", "nil", "not", "or",
-    "repeat", "return", "then", "true", "until", "while",
+    "repeat", "return", "then", "true", "until", "while", "require",
 }
 
 for _, keyword in ipairs(keywords) do
