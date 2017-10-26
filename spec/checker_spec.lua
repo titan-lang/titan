@@ -32,6 +32,30 @@ local function assert_ast(program, expected)
     assert.are.same(expected, received)
 end
 
+-- Return a version of t2 that only contains fields present in t1 (recursively)
+-- Example:
+--   t1  = { b = { c = 10 } e = 40 }
+--   t2  = { a = 1, b = { c = 20, d = 30} }
+--   out = { b = { c = 20 } }
+local function restrict(t1, t2)
+    if type(t1) == 'table' and type(t2) == 'table' then
+        local out = {}
+        for k,_ in pairs(t1) do
+            out[k] = restrict(t1[k], t2[k])
+        end
+        return out
+    else
+        return t2
+    end
+end
+
+-- To avoid having these tests break all the time when we make insignificant
+-- changes to the AST, we only verify a subset of the AST.
+local function assert_ast(program, expected)
+    local received = restrict(expected, program)
+    assert.are.same(expected, received)
+end
+
 describe("Titan type checker", function()
 
     it("detects invalid types", function()
