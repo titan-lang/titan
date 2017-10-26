@@ -192,10 +192,8 @@ local grammar = re.compile([[
     toplevelrecord  <- ({} RECORD NAME recordfields END)    -> TopLevel_Record
     import         <- ({} LOCAL NAME ASSIGN IMPORT
                          (LPAREN STRING RPAREN / STRING))   -> TopLevel_Import
-
-    localopt        <- (LOCAL)?                             -> boolopt
-
-    parlist         <- {| (decl (COMMA decl)*)? |}          -- produces {Decl}
+    require         <- ({} LOCAL NAME ASSIGN REQUIRE
+                         (LPAREN STRING RPAREN / STRING))   -> TopLevel_Require
 
     decl            <- ({} NAME (COLON type)? -> opt)       -> Decl_Decl
 

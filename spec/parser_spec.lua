@@ -411,7 +411,7 @@ end)
                 type = { name = "List" } },
               exp = {
                 _tag = "Exp_Call",
-                args = { args = 
+                args = { args =
                   { { _tag = "Exp_Table" }, { _tag = "Exp_Nil" } } },
                 exp = { var = {
                   _tag = "Var_Dot",
@@ -433,7 +433,7 @@ end)
             { decl = { name = "b" },
               exp = {
                 var = {
-                  _tag = "Var_Dot", 
+                  _tag = "Var_Dot",
                   name = "x",
                   exp = { var = {
                     _tag = "Var_Bracket",
