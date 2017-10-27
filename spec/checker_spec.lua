@@ -35,7 +35,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("type name foo is invalid", err)
     end)
 
@@ -78,7 +78,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("duplicate function", err)
     end)
     
@@ -92,7 +92,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("expected string but found integer", err)
     end)
 
@@ -104,7 +104,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("expected string but found integer", err)
     end)
 
@@ -195,7 +195,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("expected string but found integer", err)
     end)
 
@@ -226,7 +226,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("'for' start expression", err)
     end)
 
@@ -241,7 +241,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("control variable", err)
     end)
 
@@ -257,7 +257,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("'for' finish expression", err)
     end)
 
@@ -273,7 +273,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("'for' step expression", err)
     end)
 
@@ -284,7 +284,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("function can return nil", err)
     end)
 
@@ -395,7 +395,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("cannot concatenate with boolean value", err)
     end)
 
@@ -407,7 +407,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("cannot concatenate with nil value", err)
     end)
 
@@ -419,7 +419,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("cannot concatenate with { integer } value", err)
     end)
 
@@ -431,7 +431,7 @@ describe("Titan type checker", function()
         ]]
         local ast, err = parser.parse(code)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.falsy(ok)
+        assert.truthy(err)
         assert.match("cannot concatenate with boolean value", err)
     end)
 
@@ -471,5 +471,16 @@ describe("Titan type checker", function()
         assert.falsy(mod.members.foo)
     end)
 
+    it("fails to load modules that do not exist", function ()
+        local code = [[
+            local foo = require "foo"
+            local bar = require "bar.baz"
+        ]]
+        local ast, err = parser.parse(code)
+        assert.truthy(ast, err)
+        local mod, err = checker.check("test", ast, code, "test.titan")
+        assert.match("no file './foo.titan'", err)
+        assert.match("no file './bar/baz.titan'", err)
+    end)
 end)
 
