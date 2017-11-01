@@ -180,6 +180,7 @@ end
 local grammar = re.compile([[
 
     program         <-  SKIP*
+                        {| toplevelfunc
                            / toplevelvar
                            / toplevelrecord
                            / import )* |} !.
@@ -192,8 +193,6 @@ local grammar = re.compile([[
     toplevelrecord  <- ({} RECORD NAME recordfields END)    -> TopLevel_Record
     import         <- ({} LOCAL NAME ASSIGN IMPORT
                          (LPAREN STRING RPAREN / STRING))   -> TopLevel_Import
-    require         <- ({} LOCAL NAME ASSIGN REQUIRE
-                         (LPAREN STRING RPAREN / STRING))   -> TopLevel_Require
 
     decl            <- ({} NAME (COLON type)? -> opt)       -> Decl_Decl
 
