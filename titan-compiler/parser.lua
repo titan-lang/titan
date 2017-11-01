@@ -174,7 +174,7 @@ end
 local grammar = re.compile([[
 
     program         <-  SKIP*
-                        {| (toplevelfunc / toplevelvar / require)* |} !.
+                        {| (toplevelfunc / toplevelvar / import)* |} !.
 
     toplevelfunc    <- ({} localopt
                            FUNCTION NAME
@@ -184,8 +184,7 @@ local grammar = re.compile([[
 
     toplevelvar     <- ({} localopt decl ASSIGN exp)        -> TopLevel_Var
 
-    require         <- ({} LOCAL NAME ASSIGN REQUIRE 
-                         (LPAREN STRING RPAREN / STRING))   -> TopLevel_Require
+    import          <- ({} LOCAL NAME ASSIGN IMPORT STRING) -> TopLevel_Import
 
     localopt        <- (LOCAL)?                             -> boolopt
 
@@ -307,7 +306,7 @@ local grammar = re.compile([[
     TRUE            <- %TRUE SKIP*
     UNTIL           <- %UNTIL SKIP*
     WHILE           <- %WHILE SKIP*
-    REQUIRE         <- %REQUIRE SKIP*
+    IMPORT          <- %IMPORT SKIP*
 
     ADD             <- %ADD SKIP*
     SUB             <- %SUB SKIP*
