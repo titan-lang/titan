@@ -18,7 +18,7 @@ local function statements(): nil
         i = i
     end
 
-    for i in each() do
+    for i in pairs(t) do
         i = i
     end
 
