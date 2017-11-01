@@ -23,6 +23,7 @@ types.Stat = {
     Repeat  = {"block", "condition"},
     If      = {"thens", "elsestat"},
     For     = {"decl", "start", "finish", "inc", "block"},
+    ForIn   = {"decl", "exp", "block"},
     Assign  = {"var", "exp"},
     Decl    = {"decl", "exp"},
     Call    = {"callexp"},

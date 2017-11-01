@@ -18,5 +18,9 @@ local function statements(): nil
         i = i
     end
 
+    for i in each() do
+        i = i
+    end
+
     return x
 end
