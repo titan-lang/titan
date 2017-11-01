@@ -11,7 +11,7 @@ types.Type = {
 types.TopLevel = {
     Func    = {"islocal", "name", "params", "rettype", "block"},
     Var     = {"islocal", "decl", "value"},
-    Require = {"localname", "modname"}
+    Import  = {"localname", "modname"}
 }
 
 types.Decl = {
