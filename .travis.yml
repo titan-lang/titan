@@ -18,7 +18,7 @@ matrix:
           packages:
             - g++-5
       env:
-        - USE_GCC5="CC=gcc-5 && CXX=g++-5"
+        - CC="gcc-5"
         - INSTALL_LUA="lua=5.3"
         - LUA="lua"
 #    - os: linux
@@ -56,7 +56,7 @@ matrix:
 #        - LUA="luajit"
 
 before_install:
-  - eval "${USE_GCC5}"
+  - export CC=$CC
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
   - pip install hererocks
   - hererocks lua_install -rlatest --$INSTALL_LUA
