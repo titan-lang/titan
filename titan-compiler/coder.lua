@@ -349,9 +349,11 @@ local function codefor(ctx, node)
     local csstats, csexp = codeexp(ctx, node.start)
     local cfstats, cfexp = codeexp(ctx, node.finish)
     local cinc = ""
+    local covf = ""
     local cvtyp
     if types.equals(node.decl._type, types.Integer) then
         cvtyp = "lua_Integer"
+        covf = "int _foroverflow = 0;"
     else
         cvtyp = "lua_Number"
     end
@@ -382,22 +384,24 @@ local function codefor(ctx, node)
                 local tmpl
                 if types.equals(node.decl._type, types.Integer) then
                     subs.ILIT = c_integer_literal(ilit)
-                    tmpl = "$CVAR = l_castU2S(l_castS2U($CVAR) + $ILIT)"
+                    tmpl = "_foroverflow = __builtin_add_overflow($CVAR, $ILIT, &($CVAR))"
+                    ccmp = render("(!_foroverflow) && ($CVAR <= _forlimit)", subs)
                 else
                     subs.ILIT = c_float_literal(ilit)
                     tmpl = "$CVAR += $ILIT"
+                    ccmp = render("$CVAR <= _forlimit", subs)
                 end
                 cstep = render(tmpl, subs)
-                ccmp = render("$CVAR <= _forlimit", subs)
             else
                 if types.equals(node.decl._type, types.Integer) then
                     subs.NEGILIT = c_integer_literal(-ilit)
-                    cstep = render("$CVAR = l_castU2S(l_castS2U($CVAR) - $NEGILIT)", subs)
+                    cstep = render("_foroverflow = __builtin_sub_overflow($CVAR, $NEGILIT, &($CVAR))", subs)
+                    ccmp = render("(!_foroverflow) && (_forlimit <= $CVAR)", subs)
                 else
                     subs.NEGILIT = c_float_literal(-ilit)
                     cstep = render("$CVAR -= $NEGILIT", subs)
+                    ccmp = render("_forlimit <= $CVAR", subs)
                 end
-                ccmp = render("_forlimit <= $CVAR", subs)
             end
         else
             local cistats, ciexp = codeexp(ctx, node.inc)
@@ -411,20 +415,22 @@ local function codefor(ctx, node)
             })
             local tmpl
             if types.equals(node.decl._type, types.Integer) then
-                tmpl = "$CVAR = l_castU2S(l_castS2U($CVAR) + l_castS2U(_forstep))"
+                tmpl = "_foroverflow = __builtin_add_overflow($CVAR, _forstep, &($CVAR))"
+                ccmp = render("(!_foroverflow) && (0 < _forstep ? ($CVAR <= _forlimit) : (_forlimit <= $CVAR))", subs)
             else
                 tmpl = "$CVAR += _forstep"
+                ccmp = render("0 < _forstep ? ($CVAR <= _forlimit) : (_forlimit <= $CVAR)", subs)
             end
             cstep = render(tmpl, subs)
-            ccmp = render("0 < _forstep ? ($CVAR <= _forlimit) : (_forlimit <= $CVAR)", subs)
         end
     else
         if types.equals(node.decl._type, types.Integer) then
-            cstep = render("$CVAR = l_castU2S(l_castS2U($CVAR) + 1)", subs)
+            cstep = render("_foroverflow = __builtin_add_overflow($CVAR, 1, &($CVAR))", subs)
+            ccmp = render("(!_foroverflow) && ($CVAR <= _forlimit)", subs)
         else
             cstep = render("$CVAR += 1.0", subs)
+            ccmp = render("$CVAR <= _forlimit", subs)
         end
-        ccmp = render("$CVAR <= _forlimit", subs)
     end
     local nallocs = ctx.allocations
     local cblock = codestat(ctx, node.block)
@@ -435,6 +441,7 @@ local function codefor(ctx, node)
             $CSTART
             $CFINISH
             $CINC
+            $COVF
             for($CDECL = _forstart; $CCMP; $CSTEP) {
                 $CBLOCK
                 $CHECKGC
@@ -448,6 +455,7 @@ local function codefor(ctx, node)
         CCMP = ccmp,
         CSTEP = cstep,
         CBLOCK = cblock,
+        COVF = covf,
         CHECKGC = nallocs > 0 and "luaC_checkGC(L);" or ""
     })
 end

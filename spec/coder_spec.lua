@@ -132,7 +132,7 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
-    it("tests integer postive literals in 'for'", function()
+    it("tests integer positive literals in 'for'", function()
         local code = [[
             function forstep(): integer
                 local v: integer = 0
@@ -519,7 +519,7 @@ describe("Titan code generator", function()
     it("generates code for array module-local variables", function()
         local code = [[
             local a: {integer} = {}
-            function len(): integer 
+            function len(): integer
                 return #a
             end
             function seta(x: {integer}): nil
@@ -625,7 +625,7 @@ describe("Titan code generator", function()
     it("generates code for exported array variables", function()
         local code = [[
             a: {integer} = {}
-            function len(): integer 
+            function len(): integer
                 return #a
             end
         ]]
@@ -641,7 +641,7 @@ describe("Titan code generator", function()
 
     it("generates code for string length", function()
         local code = [[
-            function len(a: string): integer 
+            function len(a: string): integer
                 return #a
             end
         ]]
