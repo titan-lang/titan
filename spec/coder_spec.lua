@@ -11,7 +11,7 @@ local function generate(ast, modname)
     local ok, errmsg = util.set_file_contents(modname .. ".c", generated_code)
     if not ok then return ok, errmsg end
 
-    local CC = "gcc"
+    local CC = os.getenv("CC") or "gcc"
     local CFLAGS = "--std=c99 -O2 -Wall -Ilua/src/ -fPIC"
 
     local cc_cmd = string.format([[
