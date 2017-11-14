@@ -232,6 +232,24 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    it("avoids integer overflow in 'for' edge case", function()
+        assert.truthy(compile([[
+            function bignumbers(nth: integer):integer
+                local c = 0
+                for i = 0x7FFFFFFFFFFFFFF8,0x7FFFFFFFFFFFFFFF do
+                    c = c + 1
+                    if c == nth then
+                        return i
+                    end
+                end
+                return 0
+            end
+        ]], [[
+            assert(titan_test.bignumbers(8) == 9223372036854775807)
+            assert(titan_test.bignumbers(9) == 0)
+        ]]))
+    end)
+
     it("tests nil element in 'not'", function()
         local code = [[
             function testset(t: {integer}, i: integer, v: integer): integer
