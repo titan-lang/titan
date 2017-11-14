@@ -26,6 +26,16 @@ local function call(modname, code)
     return os.execute(cmd)
 end
 
+local function compile(titan_code, lua_testcase)
+    local ast = parser.parse(titan_code)
+    local ok, err = checker.check(ast, titan_code, "test.titan")
+    assert.truthy(ok, err)
+    ok, err = generate(ast, "titan_test")
+    assert.truthy(ok, err)
+    ok, err = call("titan_test", lua_testcase)
+    return ok, err, ast
+end
+
 describe("Titan code generator", function()
     it("deletes array element", function()
         local code = [[
