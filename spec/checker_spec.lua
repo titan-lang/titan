@@ -3,9 +3,21 @@ local parser = require 'titan-compiler.parser'
 local types = require 'titan-compiler.types'
 
 local function run_checker(code)
+    checker.imported = {}
     local ast = parser.parse(code)
     local _, err = checker.check("test", ast, code, "test.titan")
     return err == nil, err, ast
+end
+
+local function run_checker_modules(modules, main)
+    checker.imported = {}
+    local function loader(modname)
+        local ast, err = parser.parse(modules[modname])
+        if not ast then return nil, parser.error_to_string(err, modname .. ".titan") end
+        return ast, modules[modname], modname .. ".titan"
+    end
+    local _, err = checker.checkimport(main, loader)
+    return #err == 0, table.concat(err, "\n"), checker.imported
 end
 
 -- Return a version of t2 that only contains fields present in t1 (recursively)
@@ -800,19 +812,17 @@ describe("Titan type checker", function()
     end
 
     it("returns the type of the module with exported members", function()
-        local code = [[
+        local modules = { test = [[
             a: integer = 1
             local b: float = 2
             function geta(): integer
                 return a
             end
             local function foo(): nil end
-        ]]
-        local ast, err = parser.parse(code)
-        assert.truthy(ast, err)
-        local mod, err = checker.check("test", ast, code, "test.titan")
-        assert.truthy(mod, err)
-        assert_ast(mod, {
+        ]] }
+        local ok, err, mods = run_checker_modules(modules, "test")
+        assert.truthy(ok)
+        assert_ast(mods.test.type, {
             _tag = "Module",
             name = "test",
             members = {
@@ -820,8 +830,8 @@ describe("Titan type checker", function()
                 geta = { _tag = "Function" }
             }
         })
-        assert.falsy(mod.members.b)
-        assert.falsy(mod.members.foo)
+        assert.falsy(mods.test.type.members.b)
+        assert.falsy(mods.test.type.members.foo)
     end)
 
     it("fails to load modules that do not exist", function ()
@@ -829,11 +839,64 @@ describe("Titan type checker", function()
             local foo = import "foo"
             local bar = import "bar.baz"
         ]]
-        local ast, err = parser.parse(code)
-        assert.truthy(ast, err)
-        local mod, err = checker.check("test", ast, code, "test.titan")
+        local ok, err, ast = run_checker(code)
+        assert.falsy(ok)
         assert.match("no file './foo.titan'", err)
         assert.match("no file './bar/baz.titan'", err)
+    end)
+
+    it("correctly imports modules that do exist", function ()
+        local modules = {
+            foo = [[
+                a: integer = nil
+                function foo(): nil end
+            ]],
+            bar = [[
+                local foo = import "foo"
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok)
+        assert.truthy(mods.foo)
+        assert_ast(mods.foo.type, {
+            _tag = "Module",
+            name = "foo",
+            members = {
+                a = { _tag = "Integer" },
+                foo = { _tag = "Function" }
+            }
+        })
+    end)
+
+    it("fails on circular module references", function ()
+        local modules = {
+            foo = [[
+                local bar = import "bar"
+                a: integer = nil
+                function foo(): nil end
+            ]],
+            bar = [[
+                local foo = import "foo"
+            ]]
+        }
+        local ok, err = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("circular", err)
+    end)
+
+    it("import fails on modules with syntax errors", function ()
+        local modules = {
+            foo = [[
+                a: integer =
+                function foo(): nil end
+            ]],
+            bar = [[
+                local foo = import "foo"
+            ]]
+        }
+        local ok, err = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("problem loading module", err)
     end)
 end)
 
