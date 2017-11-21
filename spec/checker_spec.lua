@@ -826,8 +826,8 @@ describe("Titan type checker", function()
             _tag = "Module",
             name = "test",
             members = {
-                a = { _tag = "Integer" },
-                geta = { _tag = "Function" }
+                a = { _type = { _tag = "Integer" } },
+                geta = { _type = { _tag = "Function" } }
             }
         })
         assert.falsy(mods.test.type.members.b)
@@ -848,7 +848,7 @@ describe("Titan type checker", function()
     it("correctly imports modules that do exist", function ()
         local modules = {
             foo = [[
-                a: integer = nil
+                a: integer = 1
                 function foo(): nil end
             ]],
             bar = [[
@@ -862,8 +862,8 @@ describe("Titan type checker", function()
             _tag = "Module",
             name = "foo",
             members = {
-                a = { _tag = "Integer" },
-                foo = { _tag = "Function" }
+                a = { _type = { _tag = "Integer" } },
+                foo = { _type = { _tag = "Function" } }
             }
         })
     end)
@@ -898,5 +898,57 @@ describe("Titan type checker", function()
         assert.falsy(ok)
         assert.match("problem loading module", err)
     end)
+
+    it("correctly uses module variable", function ()
+        local modules = {
+            foo = [[
+                a: integer = 1
+            ]],
+            bar = [[
+                local foo = import "foo"
+                function bar(): integer
+                    foo.a = 5
+                    return foo.a
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok)
+    end)
+
+    it("uses module variable with wrong type", function ()
+        local modules = {
+            foo = [[
+                a: integer = 1
+            ]],
+            bar = [[
+                local foo = import "foo"
+                function bar(): string
+                    foo.a = "foo"
+                    return foo.a
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("expected string but found integer", err)
+        assert.match("expected integer but found string", err)
+    end)
+
+    it("catches module variable initialization with wrong type", function()
+        local code = {[[
+            local x: integer = nil
+        ]],
+        [[
+            x: integer = nil
+        ]],
+        }
+        for _, c in ipairs(code) do
+            local ok, err = run_checker(c)
+            assert.falsy(ok)
+            assert.match("expected integer but found nil", err)
+        end
+    end)
+
 end)
 
