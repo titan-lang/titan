@@ -3,7 +3,6 @@ local parser = require 'titan-compiler.parser'
 local types = require 'titan-compiler.types'
 
 local function run_checker(code)
-<<<<<<< 769f76a837b2bee7828e7d7516ed80ba1b7e3be8
     local ast = assert(parser.parse(code))
     local _, err = checker.check("test", ast, code, "test.titan")
     return err == nil, err, ast
@@ -31,11 +30,6 @@ end
 local function assert_ast(program, expected)
     local received = restrict(expected, program)
     assert.are.same(expected, received)
-=======
-    local ast = parser.parse(code)
-    local _, err = checker.check("test", ast, code, "test.titan")
-    return err == nil, err, ast
->>>>>>> recursively check a required module, giving proper error messages if it is not found or there is some problem
 end
 
 -- Return a version of t2 that only contains fields present in t1 (recursively)
