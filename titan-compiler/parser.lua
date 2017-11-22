@@ -58,10 +58,6 @@ function defs.number_exp(pos, n)
     end
 end
 
-function defs.qualname_exp(pos, modname, name)
-    return ast.Exp_Var(pos, ast.Var_QualName(pos, modname, name))
-end
-
 function defs.name_exp(pos, name)
     return ast.Exp_Var(pos, ast.Var_Name(pos, name))
 end
