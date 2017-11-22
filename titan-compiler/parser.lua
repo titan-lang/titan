@@ -180,19 +180,27 @@ end
 local grammar = re.compile([[
 
     program         <-  SKIP*
-                        {| toplevelfunc
+                        {| ( toplevelfunc
                            / toplevelvar
                            / toplevelrecord
                            / import )* |} !.
 
+    toplevelfunc    <- ({} localopt
+                           FUNCTION NAME
+                           LPAREN parlist RPAREN
                            COLON type
                            block END)                       -> TopLevel_Func
 
     toplevelvar     <- ({} localopt decl ASSIGN exp)        -> TopLevel_Var
 
     toplevelrecord  <- ({} RECORD NAME recordfields END)    -> TopLevel_Record
+
+    localopt        <- (LOCAL)?                             -> boolopt
+
     import         <- ({} LOCAL NAME ASSIGN IMPORT
                          (LPAREN STRING RPAREN / STRING))   -> TopLevel_Import
+
+    parlist         <- {| (decl (COMMA decl)*)? |}          -- produces {Decl}
 
     decl            <- ({} NAME (COLON type)? -> opt)       -> Decl_Decl
 
@@ -269,7 +277,6 @@ local grammar = re.compile([[
                      / ({} NUMBER)                          -> number_exp
                      / ({} STRING)                          -> Exp_String
                      / (tablecons)                          -- produces Exp
-                     / ({} NAME DOT NAME)                   -> qualname_exp
                      / ({} NAME)                            -> name_exp
                      / (LPAREN exp RPAREN)                  -- produces Exp
 
