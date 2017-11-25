@@ -237,6 +237,24 @@ local function checkfor(node, st, errors)
     return false
 end
 
+-- Typechecks a for-in statement
+--   node: Stat_For AST node
+--   st: symbol table
+--   errors: list of compile-time errors
+--   returns whether statement always returns from its function (always false for 'for' loop)
+local function checkforin(node, st, errors)
+    checkstat(node.decl, st, errors)
+    checkexp(node.exp, st, errors)
+    if node.decl.type then
+        checkstat(node.decl, st, errors)
+        local dtype = node.decl._type
+        node.exp = trycoerce(node.exp, dtype)
+        checkmatch("'for' expression", dtype, node.exp._type, errors, node.exp._pos)
+    end
+    checkstat(node.block, st, errors)
+    return false
+end
+
 -- Typechecks a block statement
 --   node: Stat_Block AST node
 --   st: symbol table
@@ -281,6 +299,8 @@ function checkstat(node, st, errors)
         st:with_block(checkrepeat, node, st, errors)
     elseif tag == "Stat_For" then
         st:with_block(checkfor, node, st, errors)
+    elseif tag == "Stat_ForIn" then
+        st:with_block(checkforin, node, st, errors)
     elseif tag == "Stat_Assign" then
         checkexp(node.var, st, errors)
         checkexp(node.exp, st, errors, node.var._type)

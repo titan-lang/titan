@@ -187,6 +187,15 @@ describe("Titan parser", function()
               inc =    { _tag = "Exp_Integer", value = 3 },
               start =  { _tag = "Exp_Integer", value = 1 } },
 
+            { _tag = "Stat_ForIn",
+              block = {
+                stats = {
+                  { _tag = "Stat_Assign",
+                    exp = { var = { _tag = "Var_Name", name = "i" } },
+                    var = { _tag = "Var_Name", name = "i" } } } },
+              decl = { _tag = "Decl_Decl", name = "i", type = false },
+              exp = { _tag = "Exp_Call" } },
+
             { _tag = "Stat_Return", exp = { _tag = "Exp_Var" } },
         })
     end)
