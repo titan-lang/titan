@@ -119,12 +119,28 @@ function types.equals(t1, t2)
     end
 end
 
+-- Human-friendly representation of a a function type's
+-- parameter or return type list
+local function typelist_tostring(ts)
+    if #ts == 1 then
+        return types.tostring(ts[1])
+    else
+        local ss = {}
+        for _, t in ipairs(ts) do
+            table.insert(ss, types.tostring(t))
+        end
+        return "(" .. table.concat(ss, ",") .. ")"
+    end
+end
+
 function types.tostring(t)
     local tag = t._tag
     if tag == "Array" then
         return "{ " .. types.tostring(t.elem) .. " }"
     elseif tag == "Function" then
-        error("not implemented")
+        local ptypes   = typelist_tostring(t.params)
+        local rettypes = typelist_tostring(t.rettypes)
+        return ptypes .. ' -> ' .. rettypes
     else
         return string.lower(tag)
     end

@@ -46,7 +46,7 @@ local function typefromnode(typenode, errors)
         end
         return t
     elseif tag == "Type_Function" then
-        if #typenode.argtypes ~= 1 then
+        if #typenode.rettypes ~= 1 then
             error("functions with 0 or 2+ return values are not yet implemented")
         end
 
@@ -199,8 +199,6 @@ function checkstat(node, st, errors)
         local texp = node.var._type
         if types.has_tag(texp, "Module") then
             typeerror(errors, "trying to assign to a module", node._pos)
-        elseif types.has_tag(texp, "Function") then
-            typeerror(errors, "trying to assign to a function", node._pos)
         else
             -- mark this declared variable as assigned to
             if node.var._tag == "Var_Name" and node.var._decl then
@@ -336,9 +334,6 @@ function checkexp(node, st, errors, context)
         local texp = node.var._type
         if types.has_tag(texp, "Module") then
             typeerror(errors, "trying to access module '%s' as a first-class value", node._pos, node.var.name)
-            node._type = types.Integer
-        elseif types.has_tag(texp, "Function") then
-            typeerror(errors, "trying to access a function as a first-class value", node._pos)
             node._type = types.Integer
         else
             node._type = texp
@@ -610,9 +605,8 @@ local function checkfunc(node, st, errors)
         checkstat(param, st, errors)
         if pnames[param.name] then
             typeerror(errors, "duplicate parameter '%s' in declaration of function '%s'", node._pos, param.name, node.name)
-        else
-            pnames[param.name] = true
         end
+        pnames[param.name] = true
     end
     assert(#node._type.rettypes == 1)
     local ret = st:with_block(checkstat, node.block, st, errors)

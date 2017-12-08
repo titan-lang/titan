@@ -1166,21 +1166,19 @@ describe("Titan type checker", function()
         end
     end)
 
-    it("catches use of function as first-class value", function ()
+    it("catches assignment to toplevel function", function ()
+        pending("need to implement constness")
         local code = [[
-            function foo(): integer
-                return foo
+            function f(): integer
+                return 17
             end
-        ]]
-        local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("access a function", err)
-    end)
 
-    it("catches assignment to function", function ()
-        local code = [[
-            function foo(): integer
-                foo = 2
+            function g(): integer
+                return 18
+            end
+
+            function main()
+                f = g
             end
         ]]
         local ok, err = run_checker(code)
@@ -1188,36 +1186,23 @@ describe("Titan type checker", function()
         assert.match("assign to a function", err)
     end)
 
-    it("catches use of external function as first-class value", function ()
+    it("catches assignment to external toplevel function", function ()
+        pending("need to implement constness")
         local modules = {
             foo = [[
-                a: integer = 1
-                function foo()
+                function f(): integer
+                    return 17
                 end
-            ]],
-            bar = [[
-                local foo = import "foo"
-                function bar(): integer
-                    return foo.foo
-                end
-            ]]
-        }
-        local ok, err, mods = run_checker_modules(modules, "bar")
-        assert.falsy(ok)
-        assert.match("access a function", err)
-    end)
 
-    it("catches assignment to external function", function ()
-        local modules = {
-            foo = [[
-                a: integer = 1
-                function foo()
+                function g(): integer
+                    return 18
                 end
             ]],
             bar = [[
                 local foo = import "foo"
-                function bar(): integer
-                    foo.foo = 2
+
+                local function test()
+                    foo.f = foo.g
                 end
             ]]
         }
