@@ -66,7 +66,7 @@ local function getslot(typ --[[:table]], dst --[[:string?]], src --[[:string]])
     elseif tag == "Nil" then tmpl = "$DST 0"
     elseif tag == "String" then tmpl = "$DST tsvalue($SRC)"
     elseif tag == "Array" then tmpl = "$DST hvalue($SRC)"
-    elseif tag == "Function" then error("not implemented")
+    elseif tag == "Function" then tmp = "$DST $SRC" -- ???
     elseif tag == "Value" then tmpl = "$DST *($SRC)"
     else
         error("invalid type " .. types.tostring(typ))
@@ -124,7 +124,7 @@ local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string
     elseif tag == "Nil" then predicate = "ttisnil"
     elseif tag == "String" then predicate = "ttisstring"
     elseif tag == "Array" then predicate = "ttistable"
-    elseif tag == "Function" then error("not implemented")
+    elseif tag == "Function" then predicate = "ttisfunction"
     elseif tag == "Value" then
         return render([[
             setobj2t(L, &$VAR, $EXP);
@@ -172,7 +172,7 @@ local function checkandset(typ --[[:table]], dst --[[:string]], src --[[:string]
     elseif tag == "Nil" then predicate = "ttisnil"
     elseif tag == "String" then predicate "ttisstring"
     elseif tag == "Array" then predicate = "ttistable"
-    elseif tag == "Function" then error("not implemented")
+    elseif tag == "Function" then predicate = "ttisfunction"
     elseif tag == "Value" then
         return render([[
             setobj2t(L, $DST, $SRC);
@@ -207,7 +207,7 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
     elseif tag == "Nil"      then tmpl = "setnilvalue($DST); ((void)$SRC);"
     elseif tag == "String"   then tmpl = "setsvalue(L, $DST, $SRC);"
     elseif tag == "Array"    then tmpl = "sethvalue(L, $DST, $SRC);"
-    elseif tag == "Function" then error("not implemented")
+    elseif tag == "Function" then tmpl = "setobj(L, $DST, $SRC);"
     elseif tag == "Value"    then tmpl = "setobj2t(L, $DST, &$SRC);"
     else error("invalid type " .. types.tostring(typ))
     end
@@ -223,7 +223,7 @@ local function ctype(typ)
     elseif tag == "Nil"      then return "int"
     elseif tag == "String"   then return "TString*"
     elseif tag == "Array"    then return "Table*"
-    elseif tag == "Function" then error("not implemented")
+    elseif tag == "Function" then return "TValue*" -- (Because light C functions are not closures)
     elseif tag == "Value"    then return "TValue"
     else error("invalid type " .. types.tostring(typ))
     end
