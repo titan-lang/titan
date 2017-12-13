@@ -75,6 +75,8 @@ local function getslot(typ --[[:table]], dst --[[:string?]], src --[[:string]])
 end
 
 local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string]], line --[[:number]])
+    local luatagname
+    local predicate
     local tag = typ._tag
     if tag == "Integer" then
         return render([[
@@ -121,10 +123,18 @@ local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string
             EXP = exp,
             VAR = cvar
         })
-    elseif tag == "Nil" then predicate = "ttisnil"
-    elseif tag == "String" then predicate = "ttisstring"
-    elseif tag == "Array" then predicate = "ttistable"
-    elseif tag == "Function" then predicate = "ttisfunction"
+    elseif tag == "Nil" then
+        luatagname = "nil"
+        predicate = "ttisnil"
+    elseif tag == "String" then
+        luatagname = "string"
+        predicate = "ttisstring"
+    elseif tag == "Array" then
+        luatagname = "table"
+        predicate = "ttistable"
+    elseif tag == "Function" then
+        luatagname = "function"
+        predicate = "ttisfunction"
     elseif tag == "Value" then
         return render([[
             setobj2t(L, &$VAR, $EXP);
@@ -143,7 +153,7 @@ local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string
         }
     ]], {
         EXP = exp,
-        TAG = c_string_literal(tag),
+        TAG = c_string_literal(luatagname),
         PREDICATE = predicate,
         GETSLOT = getslot(typ, cvar, exp),
         LINE = c_integer_literal(line),
@@ -151,9 +161,12 @@ local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string
 end
 
 local function checkandset(typ --[[:table]], dst --[[:string]], src --[[:string]], line --[[:number]])
+    local luatagname
     local predicate
     local tag = typ._tag
-    if tag == "Integer" then predicate = "ttisinteger"
+    if tag == "Integer" then
+        luatagname = "integer"
+        predicate = "ttisinteger"
     elseif tag == "Float" then
         return render([[
             if (ttisinteger($SRC)) {
@@ -168,11 +181,21 @@ local function checkandset(typ --[[:table]], dst --[[:string]], src --[[:string]
             DST = dst,
             LINE = c_integer_literal(line),
         })
-    elseif tag == "Boolean" then predicate = "ttisboolean"
-    elseif tag == "Nil" then predicate = "ttisnil"
-    elseif tag == "String" then predicate "ttisstring"
-    elseif tag == "Array" then predicate = "ttistable"
-    elseif tag == "Function" then predicate = "ttisfunction"
+    elseif tag == "Boolean" then
+        luatagname = "boolean"
+        predicate = "ttisboolean"
+    elseif tag == "Nil" then
+        luatagname = "nil"
+        predicate = "ttisnil"
+    elseif tag == "String" then
+        luatagname = "string"
+        predicate "ttisstring"
+    elseif tag == "Array" then
+        luatagname = "table"
+        predicate = "ttistable"
+    elseif tag == "Function" then
+        luatagname = "function"
+        predicate = "ttisfunction"
     elseif tag == "Value" then
         return render([[
             setobj2t(L, $DST, $SRC);
@@ -190,7 +213,7 @@ local function checkandset(typ --[[:table]], dst --[[:string]], src --[[:string]
             luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, $TAG, lua_typename(L, ttnov($SRC)));
         }
     ]], {
-        TAG = c_string_literal(tag),
+        TAG = c_string_literal(luatagname),
         PREDICATE = predicate,
         SRC = src,
         DST = dst,
