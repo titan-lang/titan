@@ -713,6 +713,41 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    it("generate code for string coercion from value", function()
+        local code = [[
+            function concat(a: string): string
+                local v: value = a
+                return v .. 2.5
+            end
+        ]]
+        local ast, err = parser.parse(code)
+        assert.truthy(ast, err)
+        local ok, err = checker.check("test", ast, code, "test.titan")
+        assert.truthy(ok, err)
+        local ok, err = generate(ast, "titan_test")
+        assert.truthy(ok, err)
+        local ok, err = call("titan_test", "assert(titan_test.concat('a') == 'a2.5')")
+        assert.truthy(ok, err)
+    end)
+
+    it("generate code for string coercion from integer/float value", function()
+        local code = [[
+            function concat(a: integer, b: float): string
+                local x: value = a
+                local y: value = b
+                return x .. y
+            end
+        ]]
+        local ast, err = parser.parse(code)
+        assert.truthy(ast, err)
+        local ok, err = checker.check("test", ast, code, "test.titan")
+        assert.truthy(ok, err)
+        local ok, err = generate(ast, "titan_test")
+        assert.truthy(ok, err)
+        local ok, err = call("titan_test", "assert(titan_test.concat(123, 4.5) == '1234.5')")
+        assert.truthy(ok, err)
+    end)
+
     it("generates code for string concatenation of several strings", function()
         local code = [[
             function concat(a: string, b: string, c: string, d: string, e: string): string
@@ -885,7 +920,7 @@ describe("Titan code generator", function()
     local valfailures = {
         integer = "'foo'",
         float = "'foo'",
-        string = 2,
+        string = false,
         ["nil"] = 0,
         table = { type = "{integer}", val = "10" }
     }

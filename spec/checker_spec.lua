@@ -212,12 +212,12 @@ describe("Titan type checker", function()
             function fn()
                 local i: integer = 1
                 local s: string = "foo"
-                s = i
+                i = s
             end
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("expected string but found integer", err)
+        assert.match("expected integer but found string", err)
     end)
 
     it("function can call another function", function()
@@ -236,12 +236,12 @@ describe("Titan type checker", function()
     it("catches mismatching types in arguments", function()
         local code = [[
             function fn(i: integer, s: string): integer
-                s = i
+                i = s
             end
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("expected string but found integer", err)
+        assert.match("expected integer but found string", err)
     end)
 
     it("allows setting element of array as nil", function ()
@@ -330,14 +330,14 @@ describe("Titan type checker", function()
             function fn(x: integer): integer
                 local i: integer = 15
                 while i do
-                    local s: string = i
+                    local a: integer = "a"
                 end
                 return x
             end
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("expected string but found integer", err)
+        assert.match("expected integer but found string", err)
     end)
 
     it("type-checks 'for' with a step", function()
@@ -633,7 +633,7 @@ describe("Titan type checker", function()
         assert.match("cannot concatenate with boolean value", err)
     end)
 
-    it("cannot concatenate with type value", function()
+    it("can concatenate with type value", function()
         local code = [[
             function fn()
                 local v: value = "bar"
@@ -641,8 +641,7 @@ describe("Titan type checker", function()
             end
         ]]
         local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("cannot concatenate with value", err)
+        assert.truthy(ok)
     end)
 
     it("can concatenate with integer and float", function()
@@ -996,7 +995,7 @@ describe("Titan type checker", function()
     it("uses module variable with wrong type", function ()
         local modules = {
             foo = [[
-                a: integer = 1
+                a: {integer} = {}
             ]],
             bar = [[
                 local foo = import "foo"
@@ -1008,8 +1007,8 @@ describe("Titan type checker", function()
         }
         local ok, err, mods = run_checker_modules(modules, "bar")
         assert.falsy(ok)
-        assert.match("expected string but found integer", err)
-        assert.match("expected integer but found string", err)
+        assert.match("expected { integer } but found string", err)
+        assert.match("expected string but found { integer }", err)
     end)
 
     it("catches module variable initialization with wrong type", function()
@@ -1135,7 +1134,7 @@ describe("Titan type checker", function()
     it("uses module variable with wrong type", function ()
         local modules = {
             foo = [[
-                a: integer = 1
+                a: {integer} = {}
             ]],
             bar = [[
                 local foo = import "foo"
@@ -1147,8 +1146,8 @@ describe("Titan type checker", function()
         }
         local ok, err, mods = run_checker_modules(modules, "bar")
         assert.falsy(ok)
-        assert.match("expected string but found integer", err)
-        assert.match("expected integer but found string", err)
+        assert.match("expected { integer } but found string", err)
+        assert.match("expected string but found { integer }", err)
     end)
 
     it("catches module variable initialization with wrong type", function()

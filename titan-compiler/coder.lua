@@ -120,8 +120,27 @@ local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string
             VAR = cvar
         })
     elseif types.equals(typ, types.Nil) then tag = "nil"
+        -- fallthrough
     elseif types.equals(typ, types.String) then tag = "string"
+        return render([[
+            if (TITAN_LIKELY(ttisstring($EXP))) {
+                $GETSLOT;
+            } else if (ttisinteger($EXP)) {
+                $VAR = _integer2str(L, ivalue($EXP));
+            } else if (ttisfloat($EXP)) {
+                $VAR = _float2str(L, fltvalue($EXP));
+            } else {
+                luaL_error(L, "type error at line %d, expected string but "
+                           "found %s", $LINE, lua_typename(L, ttnov($EXP)));
+            }
+        ]], {
+            EXP = exp,
+            GETSLOT = getslot(typ, cvar, exp),
+            VAR = cvar,
+            LINE = c_integer_literal(line),
+        })
     elseif types.has_tag(typ, "Array") then tag = "table"
+        -- fallthrough
     elseif types.equals(typ, types.Value) then
         return render([[
             setobj2t(L, &$VAR, $EXP);
