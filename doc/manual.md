@@ -237,17 +237,17 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
 
     program ::= {tlfunc | tlvar | tlrecord | tlimport}
 
-    tlfunc ::= [local] function Name '(' [parlist] ')'  ':' type block end
+    tlfunc ::= ['local'] 'function' Name '(' [parlist] ')'  ':' type block 'end'
 
-    tlvar ::= [local] Name [':' type] '=' Numeral
+    tlvar ::= ['local'] Name [':' type] '=' Numeral
 
-    tlrecord ::= record Name recordfields end
+    tlrecord ::= 'record' Name recordfields 'end'
 
-    tlimport ::= local Name '=' import LiteralString
+    tlimport ::= 'local' Name '=' 'import' LiteralString
 
     parlist ::= Name ':' type {',' Name ':' type}
 
-    type ::= value | integer | float | boolean | string | '{' type '}'
+    type ::= 'value' | 'integer' | 'float' | 'boolean' | 'string' | '{' type '}'
 
     recordfields ::= recordfield {recordfield}
 
@@ -258,22 +258,22 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
     stat ::=  ';' |
         var '=' exp |
         functioncall |
-        do block end |
-        while exp do block end |
-        repeat block until exp |
-        if exp then block {elseif exp then block} [else block] end |
-        for Name '=' exp ',' exp [',' exp] do block end |
-        local name [':' type] '=' exp
+        'do' block 'end' |
+        'while' exp 'do' block 'end' |
+        'repeat' block 'until' exp |
+        'if' exp 'then' block {'elseif' exp 'then' block} ['else' block] 'end' |
+        'for' Name '=' exp ',' exp [',' exp] 'do' block 'end' |
+        'local' name [':' type] '=' exp
 
-    retstat ::= return exp [';']
+    retstat ::= 'return' exp [';']
 
     var ::=  Name | prefixexp '[' exp ']' | prefixexp '.' Name
 
     explist ::= exp {',' exp}
 
-    exp ::= nil | false | true | Numeral | LiteralString |
+    exp ::= 'nil' | 'false' | 'true' | Numeral | LiteralString |
         prefixexp | tableconstructor | exp binop exp | unop exp |
-        exp as type
+        exp 'as' type
 
     prefixexp ::= var | functioncall | '(' exp ')'
 
@@ -290,6 +290,6 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
     binop ::=  '+' | '-' | '*' | '/' | '//' | '^' | '%' |
         '&' | '~' | '|' | '>>' | '<<' | '..' |
         '<' | '<=' | '>' | '>=' | '==' | '~=' |
-        and | or
+        'and' | 'or'
 
-    unop ::= '-' | not | '#' | '~'
+    unop ::= '-' | 'not' | '#' | '~'
