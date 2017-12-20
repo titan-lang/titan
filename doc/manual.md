@@ -231,23 +231,34 @@ Casts from `float` to `integer` fail if it is not an integral value, and if
 this value is outside the allowable range for integers. Casts from `value`
 fail if the value does not have the target type, or cannot be converted to it.
 
+## Statements
+
+### Local variable declarations
+
+A local variable declaration within a function has the following syntax:
+
+    local <name> [: <type>] { , <name> [: <type>] } = <exp> { , <exp> }
+
+The declaration list on the left-hand side and the expression list on the
+right-hand side must have the same number of elements, and their types must match.
+
 ## The Complete Syntax of Titan
 
 Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, {A} means 0 or more As, and \[A\] means an optional A.
 
     program ::= {tlfunc | tlvar | tlrecord | tlimport}
 
-    tlfunc ::= [local] function Name '(' [parlist] ')'  ':' type block end
+    tlfunc ::= ['local'] 'function' Name '(' [parlist] ')'  ':' type block 'end'
 
-    tlvar ::= [local] Name [':' type] '=' Numeral
+    tlvar ::= ['local'] Name [':' type] '=' Numeral
 
-    tlrecord ::= record Name recordfields end
+    tlrecord ::= 'record' Name recordfields 'end'
 
-    tlimport ::= local Name '=' import LiteralString
+    tlimport ::= 'local' Name '=' 'import' LiteralString
 
     parlist ::= Name ':' type {',' Name ':' type}
 
-    type ::= value | integer | float | boolean | string | '{' type '}'
+    type ::= 'value' | 'integer' | 'float' | 'boolean' | 'string' | '{' type '}'
 
     recordfields ::= recordfield {recordfield}
 
@@ -258,22 +269,22 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
     stat ::=  ';' |
         var '=' exp |
         functioncall |
-        do block end |
-        while exp do block end |
-        repeat block until exp |
-        if exp then block {elseif exp then block} [else block] end |
-        for Name '=' exp ',' exp [',' exp] do block end |
-        local name [':' type] '=' exp
+        'do' block 'end' |
+        'while' exp 'do' block 'end' |
+        'repeat' block 'until' exp |
+        'if' exp 'then' block {'elseif' exp 'then' block} ['else' block] 'end' |
+        'for' Name '=' exp ',' exp [',' exp] 'do' block 'end' |
+        'local' name [':' type] {',' name [':' type]} '=' exp {',' exp}
 
-    retstat ::= return exp [';']
+    retstat ::= 'return' exp [';']
 
     var ::=  Name | prefixexp '[' exp ']' | prefixexp '.' Name
 
     explist ::= exp {',' exp}
 
-    exp ::= nil | false | true | Numeral | LiteralString |
+    exp ::= 'nil' | 'false' | 'true' | Numeral | LiteralString |
         prefixexp | tableconstructor | exp binop exp | unop exp |
-        exp as type
+        exp 'as' type
 
     prefixexp ::= var | functioncall | '(' exp ')'
 
@@ -290,6 +301,6 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
     binop ::=  '+' | '-' | '*' | '/' | '//' | '^' | '%' |
         '&' | '~' | '|' | '>>' | '<<' | '..' |
         '<' | '<=' | '>' | '>=' | '==' | '~=' |
-        and | or
+        'and' | 'or'
 
-    unop ::= '-' | not | '#' | '~'
+    unop ::= '-' | 'not' | '#' | '~'

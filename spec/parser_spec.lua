@@ -382,6 +382,25 @@ describe("Titan parser", function()
         })
     end)
 
+    it("can parse multi-declaration", function()
+        assert_statements_ast([[
+            local a, b, c : {{float}} = 10, 20, {}
+        ]], {
+            { _tag = "Stat_Decl",
+               decl = { { name = "a" },
+                        { name = "b" },
+                        { name = "c",
+                          type = {
+                            subtype = {
+                              subtype = {
+                                name = "float" } } } } },
+               exp = { { value = 10 },
+                       { value = 20 },
+                       { _tag = "Exp_InitList",
+                         fields = {} } } },
+        })
+    end)
+
     it("can parse do-while blocks", function()
         assert_statements_ast([[
             do
@@ -392,8 +411,8 @@ describe("Titan parser", function()
             { _tag = "Stat_Block",
                 stats = {
                     { _tag = "Stat_Decl",
-                        decl = { name = "x" },
-                        exp = { value = 10 } },
+                        decl = { { name = "x" } },
+                        exp = { { value = 10 } } },
                     { _tag = "Stat_Assign",
                         var = { name = "x" },
                         exp = { value = 11 } },
@@ -948,6 +967,18 @@ describe("Titan parser", function()
         assert_statements_syntax_error([[
             local = 3
         ]], "DeclLocal")
+
+        assert_statements_syntax_error([[
+            local x, = 3
+        ]], "DeclLocal")
+
+        assert_statements_syntax_error([[
+            local x, local = 3
+        ]], "DeclLocal")
+
+        assert_statements_syntax_error([[
+            local x, y : = 3
+        ]], "TypeDecl")
 
         assert_statements_syntax_error([[
             local x  3

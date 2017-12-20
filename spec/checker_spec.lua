@@ -63,8 +63,8 @@ describe("Titan type checker", function()
         ]]
         local ok, err, ast = run_checker(code)
         assert.truthy(ok)
-        assert.same("Exp_Cast", ast[1].block.stats[2].exp._tag)
-        assert.same("Integer", ast[1].block.stats[2].exp.target._tag)
+        assert.same("Exp_Cast", ast[1].block.stats[2].exp[1]._tag)
+        assert.same("Integer", ast[1].block.stats[2].exp[1].target._tag)
     end)
 
     it("coerces to float", function()
@@ -77,8 +77,8 @@ describe("Titan type checker", function()
         ]]
         local ok, err, ast = run_checker(code)
         assert.truthy(ok)
-        assert.same("Exp_Cast", ast[1].block.stats[2].exp._tag)
-        assert.same("Float", ast[1].block.stats[2].exp.target._tag)
+        assert.same("Exp_Cast", ast[1].block.stats[2].exp[1]._tag)
+        assert.same("Float", ast[1].block.stats[2].exp[1].target._tag)
     end)
 
     it("catches duplicate function declarations", function()
@@ -110,6 +110,28 @@ describe("Titan type checker", function()
             assert.falsy(ok)
             assert.match("duplicate variable", err)
         end
+    end)
+
+    it("disallows expression list to be shorter in a multi-declaration", function()
+        local code = [[
+            function f()
+                local x, y = 1
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expression list is shorter", err)
+    end)
+
+    it("disallows expression list to be longer in a multi-declaration", function()
+        local code = [[
+            function f()
+                local x, y = 1, 2, 3
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expression list is longer", err)
     end)
 
     it("catches variable not declared", function()
@@ -440,21 +462,21 @@ describe("Titan type checker", function()
             ]]
             local ok, err, ast = run_checker(code)
 
-            assert.same(types.Float, ast[1].block.stats[3].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[3].exp.rhs._type)
-            assert.same(types.Boolean, ast[1].block.stats[3].exp._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1].rhs._type)
+            assert.same(types.Boolean, ast[1].block.stats[3].exp[1]._type)
 
-            assert.same(types.Float, ast[1].block.stats[4].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[4].exp.rhs._type)
-            assert.same(types.Boolean, ast[1].block.stats[4].exp._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1].rhs._type)
+            assert.same(types.Boolean, ast[1].block.stats[4].exp[1]._type)
 
-            assert.same(types.Float, ast[1].block.stats[5].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[5].exp.rhs._type)
-            assert.same(types.Boolean, ast[1].block.stats[5].exp._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1].rhs._type)
+            assert.same(types.Boolean, ast[1].block.stats[5].exp[1]._type)
 
-            assert.same(types.Integer, ast[1].block.stats[6].exp.lhs._type)
-            assert.same(types.Integer, ast[1].block.stats[6].exp.rhs._type)
-            assert.same(types.Boolean, ast[1].block.stats[6].exp._type)
+            assert.same(types.Integer, ast[1].block.stats[6].exp[1].lhs._type)
+            assert.same(types.Integer, ast[1].block.stats[6].exp[1].rhs._type)
+            assert.same(types.Boolean, ast[1].block.stats[6].exp[1]._type)
         end)
     end
 
@@ -472,21 +494,21 @@ describe("Titan type checker", function()
             ]]
             local ok, err, ast = run_checker(code)
 
-            assert.same(types.Float, ast[1].block.stats[3].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[3].exp.rhs._type)
-            assert.same(types.Float, ast[1].block.stats[3].exp._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1].rhs._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1]._type)
 
-            assert.same(types.Float, ast[1].block.stats[4].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[4].exp.rhs._type)
-            assert.same(types.Float, ast[1].block.stats[4].exp._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1].rhs._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1]._type)
 
-            assert.same(types.Float, ast[1].block.stats[5].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[5].exp.rhs._type)
-            assert.same(types.Float, ast[1].block.stats[5].exp._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1].rhs._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1]._type)
 
-            assert.same(types.Integer, ast[1].block.stats[6].exp.lhs._type)
-            assert.same(types.Integer, ast[1].block.stats[6].exp.rhs._type)
-            assert.same(types.Integer, ast[1].block.stats[6].exp._type)
+            assert.same(types.Integer, ast[1].block.stats[6].exp[1].lhs._type)
+            assert.same(types.Integer, ast[1].block.stats[6].exp[1].rhs._type)
+            assert.same(types.Integer, ast[1].block.stats[6].exp[1]._type)
         end)
 
         it("fails if one side of expression is value", function ()
@@ -518,21 +540,21 @@ describe("Titan type checker", function()
             ]]
             local ok, err, ast = run_checker(code)
 
-            assert.same(types.Float, ast[1].block.stats[3].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[3].exp.rhs._type)
-            assert.same(types.Float, ast[1].block.stats[3].exp._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1].rhs._type)
+            assert.same(types.Float, ast[1].block.stats[3].exp[1]._type)
 
-            assert.same(types.Float, ast[1].block.stats[4].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[4].exp.rhs._type)
-            assert.same(types.Float, ast[1].block.stats[4].exp._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1].rhs._type)
+            assert.same(types.Float, ast[1].block.stats[4].exp[1]._type)
 
-            assert.same(types.Float, ast[1].block.stats[5].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[5].exp.rhs._type)
-            assert.same(types.Float, ast[1].block.stats[5].exp._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1].rhs._type)
+            assert.same(types.Float, ast[1].block.stats[5].exp[1]._type)
 
-            assert.same(types.Float, ast[1].block.stats[6].exp.lhs._type)
-            assert.same(types.Float, ast[1].block.stats[6].exp.rhs._type)
-            assert.same(types.Float, ast[1].block.stats[6].exp._type)
+            assert.same(types.Float, ast[1].block.stats[6].exp[1].lhs._type)
+            assert.same(types.Float, ast[1].block.stats[6].exp[1].rhs._type)
+            assert.same(types.Float, ast[1].block.stats[6].exp[1]._type)
         end)
 
         it("fails if one side of expression is value", function ()

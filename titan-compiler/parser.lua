@@ -217,10 +217,12 @@ local grammar = re.compile([[
                             (param / %{DeclParList}))*)? |}      -- produces {Decl}
 
     param           <- ({} NAME (COLON / %{ParamSemicolon})
-                                (type / %{TypeDecl}))           -> Decl_Decl
+                                (type / %{TypeDecl}))            -> Decl_Decl
 
     decl            <- ({} NAME (COLON
                             (type / %{TypeDecl}))? -> opt)       -> Decl_Decl
+
+    decllist        <- {| (decl / %{DeclLocal}) (COMMA (decl / %{DeclLocal}))* |} -- produces {Decl}
 
     simpletype      <- ({} NIL -> 'nil')                         -> Type_Name
                      / ({} NAME)                                 -> Type_Name
@@ -268,8 +270,9 @@ local grammar = re.compile([[
                            (COMMA (exp / %{Exp3For}))? -> opt
                            (DO / %{DoFor}) block
                            (END / %{EndFor}))                    -> Stat_For
-                     / ({} LOCAL (decl / %{DeclLocal}) (ASSIGN / %{AssignLocal})
-                                 (exp / %{ExpLocal}))            -> defstat
+                     / ({} LOCAL decllist
+                                 (ASSIGN / %{AssignLocal})
+                                 (explist1 / %{ExpLocal}))       -> defstat
                      / ({} var (ASSIGN / %{AssignAssign})
                                (exp / %{ExpAssign}))             -> Stat_Assign
                      / &(exp ASSIGN) %{ExpAssign}
@@ -343,12 +346,13 @@ local grammar = re.compile([[
     var             <- (suffixedexp => exp_is_var)               -> exp2var
                      / ({} NAME !expsuffix)                      -> name_exp -> exp2var
 
-    funcargs        <- (LPAREN explist
+    funcargs        <- (LPAREN explist0
                                (RPAREN / %{RParFuncArgs}))       -- produces {Exp}
                      / {| initlist |}                            -- produces {Exp}
                      / {| ({} STRING) -> Exp_String |}           -- produces {Exp}
 
-    explist         <- {| (exp (COMMA (exp / %{ExpExpList}))*)? |} -- produces {Exp}
+    explist0        <- {| (exp (COMMA (exp / %{ExpExpList}))*)? |}  -- produces {Exp}
+    explist1        <- {| exp (COMMA (exp / %{ExpExpList}))*    |}  -- produces {Exp}
 
     initlist        <- ({} LCURLY {| fieldlist? |}
                                   (RCURLY / %{RCurlyInitList})) -> Exp_InitList
