@@ -231,6 +231,17 @@ Casts from `float` to `integer` fail if it is not an integral value, and if
 this value is outside the allowable range for integers. Casts from `value`
 fail if the value does not have the target type, or cannot be converted to it.
 
+## Statements
+
+### Local variable declarations
+
+A local variable declaration within a function has the following syntax:
+
+    local <name> [: <type>] { , <name> [: <type>] } = <exp> { , <exp> }
+
+The declaration list on the left-hand side and the expression list on the
+right-hand side must have the same number of elements, and their types must match.
+
 ## The Complete Syntax of Titan
 
 Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, {A} means 0 or more As, and \[A\] means an optional A.
@@ -263,7 +274,7 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
         'repeat' block 'until' exp |
         'if' exp 'then' block {'elseif' exp 'then' block} ['else' block] 'end' |
         'for' Name '=' exp ',' exp [',' exp] 'do' block 'end' |
-        'local' name [':' type] '=' exp
+        'local' name [':' type] {',' name [':' type]} '=' exp {',' exp}
 
     retstat ::= 'return' exp [';']
 

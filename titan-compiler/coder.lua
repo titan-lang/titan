@@ -684,27 +684,31 @@ local function codereturn(ctx, node)
     })
 end
 
-function codestat(ctx, node)
-    local tag = node._tag
-    if tag == "Stat_Decl" then
-        local cstats, cexp = codeexp(ctx, node.exp)
-        if node.decl._used then
-            local typ = node.decl._type
-            node.decl._cvar = "_local_" .. node.decl.name
-            local cdecl = ctype(typ) .. " " .. node.decl._cvar .. ";"
+local function codedecl(ctx, node)
+    local decls = {}
+    for i = 1, #node.decl do
+        local decl_i = node.decl[i]
+        local exp_i = node.exp[i]
+
+        local cstats, cexp = codeexp(ctx, exp_i)
+        if decl_i._used then
+            local typ = decl_i._type
+            decl_i._cvar = "_local_" .. decl_i.name
+            local cdecl = ctype(typ) .. " " .. decl_i._cvar .. ";"
             local cslot = ""
             local cset = ""
             if types.is_gc(typ) then
-                node.decl._slot = "_localslot_" .. node.decl.name
-                cslot = newslot(ctx, node.decl._slot);
+                decl_i._slot = "_localslot_" .. decl_i.name
+                cslot = newslot(ctx, decl_i._slot);
                 cset = render([[
                     /* update slot */
                     $SETSLOT
                 ]], {
-                    SETSLOT = setslot(typ, node.decl._slot, node.decl._cvar),
+                    SETSLOT = setslot(typ, decl_i._slot, decl_i._cvar),
                 })
             end
-            return render([[
+
+            decls[i] = render([[
                 $CDECL
                 $CSLOT
                 {
@@ -716,12 +720,12 @@ function codestat(ctx, node)
                 CDECL = cdecl,
                 CSLOT = cslot,
                 CSTATS = cstats,
-                CVAR = node.decl._cvar,
+                CVAR = decl_i._cvar,
                 CEXP = cexp,
                 CSET = cset
             })
         else
-            return render([[
+            decls[i] = render([[
                 $CSTATS
                 ((void)$CEXP);
             ]], {
@@ -729,6 +733,14 @@ function codestat(ctx, node)
                 CEXP = cexp
             })
         end
+    end
+    return table.concat(decls, "\n")
+end
+
+function codestat(ctx, node)
+    local tag = node._tag
+    if tag == "Stat_Decl" then
+        return codedecl(ctx, node)
     elseif tag == "Stat_Block" then
         return codeblock(ctx, node)
     elseif tag == "Stat_While" then
