@@ -242,6 +242,14 @@ A local variable declaration within a function has the following syntax:
 The declaration list on the left-hand side and the expression list on the
 right-hand side must have the same number of elements, and their types must match.
 
+Keep in mind that each type declaration refers to a single variable.
+For example,
+
+    local a, b: boolean = 1.5, f()
+
+declares two variables, `a` of type `float` (inferred from the value `1.5`),
+and `b` of type `boolean`.
+
 ## The Complete Syntax of Titan
 
 Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, {A} means 0 or more As, and \[A\] means an optional A.
