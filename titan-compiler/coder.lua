@@ -685,30 +685,30 @@ local function codereturn(ctx, node)
 end
 
 local function codedecl(ctx, node)
-    local decls = {}
-    for i = 1, #node.decl do
-        local decl_i = node.decl[i]
-        local exp_i = node.exp[i]
+    local cfulldecls = {}
+    for i = 1, #node.decls do
+        local decl = node.decls[i]
+        local exp = node.exps[i]
 
-        local cstats, cexp = codeexp(ctx, exp_i)
-        if decl_i._used then
-            local typ = decl_i._type
-            decl_i._cvar = "_local_" .. decl_i.name
-            local cdecl = ctype(typ) .. " " .. decl_i._cvar .. ";"
+        local cstats, cexp = codeexp(ctx, exp)
+        if decl._used then
+            local typ = decl._type
+            decl._cvar = "_local_" .. decl.name
+            local cdecl = ctype(typ) .. " " .. decl._cvar .. ";"
             local cslot = ""
             local cset = ""
             if types.is_gc(typ) then
-                decl_i._slot = "_localslot_" .. decl_i.name
-                cslot = newslot(ctx, decl_i._slot);
+                decl._slot = "_localslot_" .. decl.name
+                cslot = newslot(ctx, decl._slot);
                 cset = render([[
                     /* update slot */
                     $SETSLOT
                 ]], {
-                    SETSLOT = setslot(typ, decl_i._slot, decl_i._cvar),
+                    SETSLOT = setslot(typ, decl._slot, decl._cvar),
                 })
             end
 
-            decls[i] = render([[
+            cfulldecls[i] = render([[
                 $CDECL
                 $CSLOT
                 {
@@ -720,12 +720,12 @@ local function codedecl(ctx, node)
                 CDECL = cdecl,
                 CSLOT = cslot,
                 CSTATS = cstats,
-                CVAR = decl_i._cvar,
+                CVAR = decl._cvar,
                 CEXP = cexp,
                 CSET = cset
             })
         else
-            decls[i] = render([[
+            cfulldecls[i] = render([[
                 $CSTATS
                 ((void)$CEXP);
             ]], {
@@ -734,7 +734,7 @@ local function codedecl(ctx, node)
             })
         end
     end
-    return table.concat(decls, "\n")
+    return table.concat(cfulldecls, "\n")
 end
 
 function codestat(ctx, node)

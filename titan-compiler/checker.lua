@@ -241,29 +241,29 @@ function checkstat(node, st, errors)
         st:add_symbol(node.name, node)
         node._type = node._type or typefromnode(node.type, errors)
     elseif tag == "Stat_Decl" then
-        for i = 1, #node.decl do
-            local decl_i = node.decl[i]
-            local exp_i = node.exp[i]
-            if exp_i then
-                if decl_i.type then
-                    checkstat(decl_i, st, errors)
-                    checkexp(exp_i, st, errors, decl_i._type)
+        for i = 1, #node.decls do
+            local decl = node.decls[i]
+            local exp = node.exps[i]
+            if exp then
+                if decl.type then
+                    checkstat(decl, st, errors)
+                    checkexp(exp, st, errors, decl._type)
                 else
-                    checkexp(exp_i, st, errors)
-                    decl_i._type = exp_i._type
-                    checkstat(decl_i, st, errors)
+                    checkexp(exp, st, errors)
+                    decl._type = exp._type
+                    checkstat(decl, st, errors)
                 end
-                exp_i = trycoerce(exp_i, decl_i._type, errors)
-                node.exp[i] = exp_i
-                checkmatch("declaration of local variable " .. decl_i.name,
-                    decl_i._type, exp_i._type, errors, decl_i._pos)
+                exp = trycoerce(exp, decl._type, errors)
+                node.exps[i] = exp
+                checkmatch("declaration of local variable " .. decl.name,
+                    decl._type, exp._type, errors, decl._pos)
             else
                 local msg = "expression list is shorter than variable list"
                 typeerror(errors, msg, node._pos)
                 break
             end
         end
-        if #node.exp > #node.decl then
+        if #node.exps > #node.decls then
             local msg = "expression list is longer than variable list"
             typeerror(errors, msg, node._pos)
         end
