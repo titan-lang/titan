@@ -5,6 +5,8 @@ local symtab = require "titan-compiler.symtab"
 local types = require "titan-compiler.types"
 local ast = require "titan-compiler.ast"
 local util = require "titan-compiler.util"
+local foreigntypes = require "titan-compiler.foreigntypes"
+local cdriver = require("c-parser.cdriver")
 
 
 -- The typechecker works in two passes, the first one just
@@ -406,7 +408,7 @@ checkvar = util.make_visitor({
         checkvar(var, st, errors)
         node.exp._type = var._type
         local vartype = var._type
-        if vartype._tag == "Type.Module" then
+        if vartype._tag == "Type.Module" or vartype._tag == "Type.ForeignModule" then
             local mod = vartype
             if not mod.members[node.name] then
                 checker.typeerror(errors, node.loc,
@@ -962,6 +964,8 @@ local function toplevel_name(node)
     local tag = node._tag
     if tag == "Ast.TopLevelImport" then
         return node.localname
+    elseif tag == "Ast.TopLevelForeignImport" then
+        return node.localname
     elseif tag == "Ast.TopLevelVar" then
         return node.decl.name
     elseif tag == "Ast.TopLevelFunc" or
@@ -986,6 +990,30 @@ local toplevel_visitor = util.make_visitor({
             checker.typeerror(errors, node.loc,
                 "problem loading module '%s': %s",
                 node.modname, errs)
+        end
+    end,
+
+    ["Ast.TopLevelForeignImport"] = function(node, st, errors)
+        local name = node.headername
+        local ftypes, defines = cdriver.process_file(name)
+        if ftypes then
+            local members = {}
+            for _, item in ipairs(ftypes) do
+                local fname = item.name
+                local ftype = item.type
+                local decl, err = foreigntypes.convert(st, ftype)
+                if decl then
+                    members[fname] = decl
+                    st:add_foreign_type(fname, decl)
+                else
+                    typeerror(errors, err, node._pos)
+                end
+            end
+            local modtype = types.ForeignModule(name, members)
+            node._type = modtype
+            st:add_symbol(node.localname, node)
+        else
+            typeerror(errors, defines, node._pos)
         end
     end,
 

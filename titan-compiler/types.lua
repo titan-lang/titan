@@ -48,8 +48,26 @@ function types.Module(modname, members)
         members = members }
 end
 
+--- Check if two pointer types are different and can be coerced.
+local function can_coerce_pointer(source, target)
+    if types.equals(source, target) then
+        return false
+    end
+    if types.has_tag(target.type, "Nil") then
+        -- all pointers are convertible to void*
+        if types.equals(source, types.String) then
+            return true
+        elseif types.has_tag(source, "Pointer") then
+            return true
+        end
+    end
+    return false
+end
+
 function types.coerceable(source, target)
-    return (source._tag == "Type.Integer" and
+    return (target._tag == "Type.Pointer" and
+            can_coerce_pointer(source, target)) or
+           (source._tag == "Type.Integer" and
             target._tag == "Type.Float") or
            (source._tag == "Type.Float" and
             target._tag == "Type.Integer") or
@@ -65,6 +83,10 @@ end
 function types.compatible(t1, t2)
     if types.equals(t1, t2) then
         return true
+    elseif t1._tag == "Type.Typedef" then
+        return types.compatible(t1.type, t2)
+    elseif t2._tag == "Type.Typedef" then
+        return types.compatible(t1, t2.type)
     elseif t1._tag == "Type.Value" or t2._tag == "Type.Value" then
         return true
     elseif t1._tag == "Type.Array" and t2._tag == "Type.Array" then
@@ -100,6 +122,10 @@ function types.equals(t1, t2)
     local tag1, tag2 = t1._tag, t2._tag
     if tag1 == "Type.Array" and tag2 == "Type.Array" then
         return types.equals(t1.elem, t2.elem)
+    elseif tag1 == "Type.Pointer" and tag2 == "Type.Pointer" then
+        return types.equals(t1.type, t2.type)
+    elseif tag1 == "Type.Typedef" and tag2 == "Type.Typedef" then
+        return t1.name == t2.name
     elseif tag1 == "Type.Function" and tag2 == "Type.Function" then
         if #t1.params ~= #t2.params then
             return false
@@ -138,6 +164,10 @@ function types.tostring(t)
     elseif tag == "Type.Float"       then return "float"
     elseif tag == "Type.Value"       then return "value"
     elseif tag == "Type.Invalid"     then return "invalid type"
+    elseif tag == "Type.Pointer" then
+        return "pointer to " .. types.tostring(t.type)
+    elseif tag == "Type.Typedef" then
+        return t.name
     elseif tag == "Type.Function" then
         return "function" -- TODO implement
     elseif tag == "Type.Array" then

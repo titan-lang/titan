@@ -210,6 +210,26 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
     return render(tmpl, { DST = dst, SRC = src })
 end
 
+local function foreignctype(typ --[[:table]])
+    if types.has_tag(typ, "Pointer") then
+        if types.equals(typ.type, types.Nil) then
+            return "void*"
+        end
+        if types.has_tag(typ.type, "Typedef") then
+            return typ.type.name .. "*"
+        end
+        return foreignctype(typ.type) .. "*"
+    end
+    error("FIXME unknown foreign c type: "..typ.type.name)
+end
+
+local function foreigncast(exp, typ --[[:table]])
+    return render([[(($CASTTYPE)($CEXP))]], {
+        CASTTYPE = foreignctype(typ),
+        CEXP = exp,
+    })
+end
+
 local function ctype(typ --[[:table]])
     if typ._tag == "Type.Integer" then return "lua_Integer"
     elseif typ._tag == "Type.Float" then return "lua_Number"
@@ -219,6 +239,7 @@ local function ctype(typ --[[:table]])
     elseif typ._tag == "Type.Array" then return "Table*"
     elseif typ._tag == "Type.Value" then return "TValue"
     elseif typ._tag == "Type.Record" then return "TValue"
+    elseif typ._tag == "Type.Pointer" then return foreignctype(typ)
     else error("invalid type " .. types.tostring(typ))
     end
 end
@@ -296,6 +317,26 @@ local function newtmp(ctx --[[:table]], typ --[[:table]], isgc --[[:boolean]])
             INIT = initval(typ)
         }), tmpname
     end
+end
+
+local function newforeigntmp(ctx --[[:table]], typ --[[:table]])
+    local tmp = ctx.tmp
+    ctx.tmp = ctx.tmp + 1
+    local tmpname = "_tmp_" .. tmp
+    local ftype
+    if types.has_tag(typ, "String") then
+        ftype = "char*"
+    elseif types.has_tag(typ, "Pointer") then
+        ftype = foreignctype(typ)
+    else
+        error("don't know how to convert foreign type "..types.tostring(typ))
+    end
+    return render([[
+        $TYPE $TMPNAME;
+    ]], {
+        TYPE = ftype,
+        TMPNAME = tmpname,
+    }), tmpname
 end
 
 local function pushd(ctx)
@@ -624,13 +665,74 @@ local function codemultiassignment(ctx, node)
     return table.concat(stats, "\n")
 end
 
+local function nativetoforeignexp(ctx, exp, cexp)
+    if types.has_tag(exp._type, "Integer")
+    or types.has_tag(exp._type, "Float")
+    or types.has_tag(exp._type, "Boolean")
+    or types.has_tag(exp._type, "Pointer") then
+        return "", cexp
+    end
+
+    if types.has_tag(exp._type, "Nil") then
+        return "", "NULL"
+    end
+
+    local texp, tmp = newforeigntmp(ctx, exp._type)
+    local cvtexp
+    if types.has_tag(exp._type, "String") then
+        cvtexp = render([[getstr($CEXP)]], { CEXP = cexp })
+    else
+        error("don't know how to handle type "..types.tostring(exp._type))
+    end
+    return render([[
+        $TEXP
+        $TMP = $CVTEXP;
+    ]], {
+        TEXP = texp,
+        TMP = tmp,
+        CVTEXP = cvtexp,
+    }), tmp
+end
+
+local function codeforeignexp(ctx, node)
+    local tag = node._tag
+    if tag == "Exp_String" then
+        return "", c_string_literal(node.value)
+    else
+        local cstat, cexp = codeexp(ctx, node)
+        local fstat, fexp = nativetoforeignexp(ctx, node, cexp)
+        return cstat .. fstat, fexp
+    end
+end
+
+local function codeforeigncall(ctx, node)
+    -- TODO catch name conflicts among imports
+    local cfuncname = node.exp.var.name
+    local caexps = {}
+    local castats = {}
+    for _, arg in ipairs(node.args.args) do
+        local cstat, cexp = codeforeignexp(ctx, arg)
+        table.insert(castats, cstat)
+        table.insert(caexps, cexp)
+    end
+    local cstats = table.concat(castats, "\n")
+    local ccall = render("$NAME($CAEXPS)", {
+        NAME = cfuncname,
+        CAEXPS = table.concat(caexps, ", "),
+    })
+    return cstats, ccall
+end
+
 local function codecall(ctx, node)
     local castats, caexps, tmpnames, retslots = {}, { "L" }, {}, {}
     local fname
     local fnode = node.exp.var
     if fnode._tag == "Ast.VarName" then
         fname = ctx.prefix .. fnode.name .. '_titan'
-    elseif node.exp.var._tag == "Ast.VarDot" then
+    elseif fnode._tag == "Ast.VarDot" then
+        if fnode.exp._type._tag == "Type.ForeignModule" then
+            return codeforeigncall(ctx, node)
+        end
         fname = fnode.exp._type.prefix .. fnode.name .. "_titan"
     end
     for _, arg in ipairs(node.args.args) do
@@ -1192,6 +1294,10 @@ function codeexp(ctx, node, iscondition, target)
             })
             return code, tmpname
         end
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Pointer" then
+        local cstats, cexp = codeexp(ctx, node.exp)
+        local fstats, fexp = nativetoforeignexp(ctx, node.exp, cexp)
+        return cstats .. fstats, foreigncast(fexp, node._type)
     elseif tag == "Ast.ExpConcat" then
         local strs, copies = {}, {}
         local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
@@ -1447,6 +1553,7 @@ local preamble = [[
 #define TITAN_UNLIKELY(x) (x)
 #endif
 
+$FOREIGNIMPORTS
 $LIBOPEN
 
 #define MAXNUMBER2STR 50
@@ -1642,6 +1749,7 @@ function coder.generate(modname, ast)
     local varslots = {}
     local gvars = {}
     local includes = {}
+    local foreignimports = {}
     local initmods = {}
 
     local deps = {}
@@ -1676,13 +1784,29 @@ function coder.generate(modname, ast)
                         ]], { SLOT = member._slot, HANDLE = mprefix .. "handle" }))
                     end
                 end
+            elseif tag == "TopLevel_ForeignImport" then
+                local include
+                if node.headername:match("^/") then
+                    include = [[#include "$HEADERNAME"]]
+                else
+                    include = [[#include <$HEADERNAME>]]
+                end
+                table.insert(foreignimports, render(include, {
+                    HEADERNAME = node.headername
+                }))
             else
                 -- ignore functions and variables in this pass
             end
         end
     end
 
-    local code = { render(preamble, { INCLUDES = table.concat(includes, "\n"), LIBOPEN = #includes > 0 and libopen or "" }) }
+    local code = {
+        render(preamble, {
+            INCLUDES = table.concat(includes, "\n"),
+            FOREIGNIMPORTS = table.concat(foreignimports, "\n"),
+            LIBOPEN = #includes > 0 and libopen or ""
+        })
+    }
 
     -- has this module already been initialized?
     table.insert(code, "static int _initialized = 0;")
