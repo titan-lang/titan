@@ -1247,6 +1247,17 @@ describe("Titan type checker", function()
         assert.match("module 'bar.baz' not found", err)
     end)
 
+    it("fails to load foreign modules that do not exist", function ()
+        local code = [[
+            local foo = foreign import "does_not_exist.h"
+            local bar = foreign import "not_a_header_file"
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("failed preprocessing 'does_not_exist.h'", err)
+        assert.match("failed preprocessing 'not_a_header_file'", err)
+    end)
+
     it("correctly imports modules that do exist", function ()
         local modules = {
             foo = [[
@@ -1266,6 +1277,26 @@ describe("Titan type checker", function()
             members = {
                 a = { _tag = "Type.Integer" },
                 foo = { _tag = "Type.Function" }
+            }
+        })
+    end)
+
+    it("correctly imports foreign modules that do exist", function ()
+        local code = [[
+            local stdio = foreign import "stdio.h"
+        ]]
+        local ok, err, ast = run_checker(code)
+        assert.truthy(ok)
+        assert_ast(ast[1], {
+            _tag = "TopLevel_ForeignImport",
+            localname = "stdio",
+            _type = {
+                _tag = "ForeignModule",
+                members = {
+                    printf = {
+                        _tag = "Function"
+                    }
+                }
             }
         })
     end)
