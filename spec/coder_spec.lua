@@ -959,6 +959,32 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    it("loads C headers with foreign import", function ()
+        local modules = {
+            foo = [[
+                local stdio = foreign import "stdio.h"
+                function fun()
+                    local fd = stdio.fopen("tmp_test_hello.txt", "w")
+                    local msg = "Hello, Titan!\n"
+                    local n = stdio.fwrite(msg, #msg, 1, fd)
+                    local err = stdio.fclose(fd)
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "foo")
+        assert.truthy(ok, err)
+        local ok, err = call("foo", [[
+            os.remove('tmp_test_hello.txt')
+            foo.fun()
+            local fd = io.open('tmp_test_hello.txt', 'r')
+            local data = fd:read('*a')
+            fd:close()
+            os.remove('tmp_test_hello.txt')
+            assert(data == 'Hello, Titan!\n')
+        ]])
+        assert.truthy(ok, err)
+    end)
+
     it("and between two integers", function()
         local code = [[
             function f (a:integer, b:integer): integer
