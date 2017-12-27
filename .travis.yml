@@ -75,3 +75,5 @@ notifications:
 cache:
   directories:
     - $HOME/.luarocks
+    - $HOME/lua-install
+
