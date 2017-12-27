@@ -51,9 +51,7 @@ matrix:
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
   - if ! which hererocks &> /dev/null; then pip install hererocks; fi
-  - if ! [[ -e $PWD/lua_install/bin/luarocks ]]; then hererocks lua_install -rlatest --$INSTALL_LUA; fi
-  - echo $PWD/lua_install/bin
-  - echo $HOME/lua_install
+  - if ! which luarocks; then hererocks lua_install -rlatest --$INSTALL_LUA; fi
   - export PATH=$PATH:$PWD/lua_install/bin # Add directory with all installed binaries to PATH
   - cd lua; make linux; cd ..
 
@@ -76,7 +74,5 @@ notifications:
 
 cache:
   directories:
-    - $HOME/.luarocks
     - $HOME/virtualenv
-    - $HOME/lua_install
-
+    - $HOME/build/titan-lang/titan/lua_install
