@@ -50,14 +50,14 @@ matrix:
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
-  - pip install hererocks
-  - hererocks lua_install -rlatest --$INSTALL_LUA
+  - if ! [[ -e ~/lua-install ]]; then pip install hererocks; fi
+  - if ! [[ -e ~/lua-install ]]; then hererocks lua_install -rlatest --$INSTALL_LUA; fi
   - export PATH=$PATH:$PWD/lua_install/bin # Add directory with all installed binaries to PATH
   - cd lua; make linux; cd ..
 
 install:
-  - luarocks install busted
-  - luarocks install luacov
+  - if ! luarocks show busted &> /dev/null; then luarocks install busted; fi
+  - if ! luarocks show luacov &> /dev/null; then luarocks install luacov; fi
 #  - luarocks install luacov-coveralls
   - luarocks make # This installs necessary runtime dependencies
 
