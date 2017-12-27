@@ -75,4 +75,3 @@ notifications:
 cache:
   directories:
     - $HOME/virtualenv
-    - $HOME/build/titan-lang/titan/lua_install
