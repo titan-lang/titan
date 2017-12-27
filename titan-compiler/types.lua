@@ -52,10 +52,11 @@ end
 local function can_coerce_pointer(source, target)
     if types.equals(source, target) then
         return false
-    end
-    if types.has_tag(target.type, "Nil") then
+    elseif types.has_tag(target.type, "Nil") then
         -- all pointers are convertible to void*
         if types.equals(source, types.String) then
+            return true
+        elseif types.equals(source, types.Nil) then
             return true
         elseif types.has_tag(source, "Pointer") then
             return true
@@ -64,17 +65,26 @@ local function can_coerce_pointer(source, target)
     return false
 end
 
+function types.explicitly_coerceable(source, target)
+    return (types.equals(target, types.String) and (types.has_tag(source, "Pointer") and (types.has_tag(source.type, "Nil"))))
+end
+
 function types.coerceable(source, target)
     return (target._tag == "Type.Pointer" and
             can_coerce_pointer(source, target)) or
+
            (source._tag == "Type.Integer" and
             target._tag == "Type.Float") or
+
            (source._tag == "Type.Float" and
             target._tag == "Type.Integer") or
+
            (target._tag == "Type.Boolean" and
             source._tag ~= "Type.Boolean") or
+
            (target._tag == "Type.Value" and
             source._tag ~= "Type.Value") or
+
            (source._tag == "Type.Value" and
             target._tag ~= "Type.Value")
 end
@@ -84,9 +94,11 @@ function types.compatible(t1, t2)
     if types.equals(t1, t2) then
         return true
     elseif t1._tag == "Type.Typedef" then
-        return types.compatible(t1.type, t2)
+        return types.compatible(t1._type, t2)
     elseif t2._tag == "Type.Typedef" then
-        return types.compatible(t1, t2.type)
+        return types.compatible(t1, t2._type)
+    elseif types.equals(t2, types.String) and (types.has_tag(t1, "Pointer") and (types.has_tag(t1.type, "Nil"))) then
+        return true
     elseif t1._tag == "Type.Value" or t2._tag == "Type.Value" then
         return true
     elseif t1._tag == "Type.Array" and t2._tag == "Type.Array" then
@@ -164,8 +176,14 @@ function types.tostring(t)
     elseif tag == "Type.Float"       then return "float"
     elseif tag == "Type.Value"       then return "value"
     elseif tag == "Type.Invalid"     then return "invalid type"
+    elseif tag == "Type.Array" then
+        return "{ " .. types.tostring(t.elem) .. " }"
     elseif tag == "Type.Pointer" then
-        return "pointer to " .. types.tostring(t.type)
+        if t.type == types.Nil then
+            return "void pointer"
+        else
+            return "pointer to " .. types.tostring(t.type)
+        end
     elseif tag == "Type.Typedef" then
         return t.name
     elseif tag == "Type.Function" then

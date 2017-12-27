@@ -985,6 +985,37 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    it("can cast a string to void pointer in foreign calls", function ()
+        local modules = {
+            foo = [[
+                local stdio = foreign import "stdio.h"
+                local stdlib = foreign import "stdlib.h"
+                local string_h = foreign import "string.h"
+                function fun()
+                    local mem = stdlib.realloc(nil, 100)
+                    local h = "Hello, cast"
+                    local s = string_h.strcpy(mem as string, h)
+                    stdlib.free(mem)
+                    local fd = stdio.fopen("tmp_test_hello.txt", "w")
+                    local n = stdio.fwrite(s, 11, 1, fd)
+                    local err = stdio.fclose(fd)
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "foo")
+        assert.truthy(ok, err)
+        local ok, err = call("foo", [[
+            os.remove('tmp_test_hello.txt')
+            foo.fun()
+            local fd = io.open('tmp_test_hello.txt', 'r')
+            local data = fd:read('*a')
+            fd:close()
+            os.remove('tmp_test_hello.txt')
+            assert(data == 'Hello, cast')
+        ]])
+        assert.truthy(ok, err)
+    end)
+
     it("and between two integers", function()
         local code = [[
             function f (a:integer, b:integer): integer

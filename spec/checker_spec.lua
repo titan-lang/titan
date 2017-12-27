@@ -1301,6 +1301,33 @@ describe("Titan type checker", function()
         })
     end)
 
+    it("cannot convert void pointer to string without a cast", function()
+        local code = [[
+            local stdlib = foreign import "stdlib.h"
+            local string_h = foreign import "string.h"
+            function f()
+                local mem = stdlib.realloc(nil, 100)
+                local s = string_h.strcpy(mem, "Hello")
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected string but found void pointer", err)
+    end)
+
+    it("can convert void pointer to string with a cast", function()
+        local code = [[
+            local stdlib = foreign import "stdlib.h"
+            local string_h = foreign import "string.h"
+            function f()
+                local mem = stdlib.realloc(nil, 100)
+                local s = string_h.strcpy(mem as string, "Hello")
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok)
+    end)
+
     it("fails on circular module references", function ()
         local modules = {
             foo = [[

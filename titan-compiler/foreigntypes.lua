@@ -86,7 +86,7 @@ local function convert_typedef(st, ftype)
         ttype = types.Integer
     end
     if ttype then
-        decl.type = ttype
+        decl._type = ttype
         return decl
     end
     --decl.data = ftype

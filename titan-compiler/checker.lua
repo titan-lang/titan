@@ -845,10 +845,10 @@ checkexp = util.make_visitor({
     ["Ast.ExpCast"] = function(node, st, errors, context)
         node.target = typefromnode(node.target, st, errors)
         checkexp(node.exp, st, errors, node.target)
-        if not types.coerceable(node.exp._type, node.target) or
-          not types.compatible(node.exp._type, node.target) then
-            checker.typeerror(errors, node.loc,
-                "cannot cast '%s' to '%s'",
+        if not (types.explicitly_coerceable(node.exp._type, node.target) or
+                types.coerceable(node.exp._type, node.target))
+           or not types.compatible(node.exp._type, node.target) then
+            checker.typeerror(errors, node.loc, "cannot cast '%s' to '%s'",
                 types.tostring(node.exp._type), types.tostring(node.target))
         end
         node._type = node.target
@@ -1006,14 +1006,14 @@ local toplevel_visitor = util.make_visitor({
                     members[fname] = decl
                     st:add_foreign_type(fname, decl)
                 else
-                    typeerror(errors, err, node._pos)
+                    checker.typeerror(errors, err, node._pos)
                 end
             end
             local modtype = types.ForeignModule(name, members)
             node._type = modtype
             st:add_symbol(node.localname, node)
         else
-            typeerror(errors, defines, node._pos)
+            checker.typeerror(errors, node.loc, defines)
         end
     end,
 
