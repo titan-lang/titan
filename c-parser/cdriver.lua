@@ -3,6 +3,7 @@ local cdriver = {}
 local cpp = require("c-parser.cpp")
 local c99 = require("c-parser.c99")
 local ctypes = require("c-parser.ctypes")
+local cdefines = require("c-parser.cdefines")
 local util = require("titan-compiler.util")
 
 function cdriver.process_file(filename)
@@ -25,7 +26,10 @@ function cdriver.process_file(filename)
     if not ffi_types then
         return nil, err
     end
-    return ffi_types, ctx.defines
+
+    cdefines.register_defines(ffi_types, ctx.define_list)
+
+    return ffi_types
 end
 
 return cdriver
