@@ -14,6 +14,7 @@ local types = typedecl("Type", {
         InitList    = {"elems"},
         Record      = {"name", "fields"},
         Type        = {"type"},
+        ForeignModule = {"name", "members"},
     }
 })
 
@@ -52,21 +53,25 @@ end
 local function can_coerce_pointer(source, target)
     if types.equals(source, target) then
         return false
-    elseif types.has_tag(target.type, "Nil") then
+    elseif target.type._tag == "Type.Nil" then
         -- all pointers are convertible to void*
-        if types.equals(source, types.String) then
+        if source._tag == "Type.String" then
             return true
-        elseif types.equals(source, types.Nil) then
+        elseif source.tag == "Type.Nil" then
             return true
-        elseif types.has_tag(source, "Pointer") then
+        elseif source._tag == "Type.Pointer" then
             return true
         end
     end
     return false
 end
 
+local function is_void_pointer(typ)
+    return typ._tag == "Type.Pointer" and typ.type._tag == "Type.Nil"
+end
+
 function types.explicitly_coerceable(source, target)
-    return (types.equals(target, types.String) and (types.has_tag(source, "Pointer") and (types.has_tag(source.type, "Nil"))))
+    return is_void_pointer(source) and target._tag == "Type.String"
 end
 
 function types.coerceable(source, target)
@@ -97,7 +102,11 @@ function types.compatible(t1, t2)
         return types.compatible(t1._type, t2)
     elseif t2._tag == "Type.Typedef" then
         return types.compatible(t1, t2._type)
-    elseif types.equals(t2, types.String) and (types.has_tag(t1, "Pointer") and (types.has_tag(t1.type, "Nil"))) then
+    elseif t1._tag == "Type.Pointer" and t2._tag == "Type.Nil" then
+        return true -- nullable pointer
+    elseif t1._tag == "Type.Nil" and t2._tag == "Type.Pointer" then
+        return true -- nullable pointer
+    elseif types.explicitly_coerceable(t1, t2) then
         return true
     elseif t1._tag == "Type.Value" or t2._tag == "Type.Value" then
         return true
@@ -179,7 +188,7 @@ function types.tostring(t)
     elseif tag == "Type.Array" then
         return "{ " .. types.tostring(t.elem) .. " }"
     elseif tag == "Type.Pointer" then
-        if t.type == types.Nil then
+        if is_void_pointer(t) then
             return "void pointer"
         else
             return "pointer to " .. types.tostring(t.type)

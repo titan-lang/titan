@@ -872,6 +872,51 @@ describe("Titan type checker", function()
         end)
     end
 
+    for _, op in ipairs({"==", "~="}) do
+        it("can compare pointers using " .. op, function()
+            local code = [[
+                local stdio = foreign import "stdio.h"
+                function fn(): boolean
+                    local f1 = stdio.fopen("a.txt", "w")
+                    local f2 = stdio.fopen("a.txt", "w")
+                    return f1 ]] .. op .. [[ f2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.truthy(ok)
+        end)
+    end
+
+    for _, op in ipairs({"==", "~="}) do
+        it("can compare pointers to nil using " .. op, function()
+            local code = [[
+                local stdio = foreign import "stdio.h"
+                function fn(): boolean
+                    local f1 = stdio.fopen("a.txt", "w")
+                    return f1 ]] .. op .. [[ nil
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.truthy(ok)
+        end)
+    end
+
+    for _, op in ipairs({"<", ">", "<=", ">="}) do
+        it("cannot compare pointers using " .. op, function()
+            local code = [[
+                local stdio = foreign import "stdio.h"
+                function fn(): boolean
+                    local f1 = stdio.fopen("a.txt", "w")
+                    local f2 = stdio.fopen("a.txt", "w")
+                    return f1 ]] .. op .. [[ f2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.falsy(ok)
+            assert.match("trying to use relational expression", err)
+        end)
+    end
+
     for _, op in ipairs({"==", "~=", "<", ">", "<=", ">="}) do
         it("can compare floats using " .. op, function()
             local code = [[
