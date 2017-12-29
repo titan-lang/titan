@@ -6,11 +6,6 @@ local inspect = require("inspect")
 
 local equal_declarations
 
-local function S(err)
-    --print(debug.traceback())
-    return err
-end
-
 local function add_type(lst, name, typ)
     lst[name] = typ
     table.insert(lst, { name = name, type = typ })
@@ -103,7 +98,7 @@ local function get_field(lst, field_src)
 
     local typ, err = get_type(lst, field_src, ret_pointer)
     if not typ then
-        return nil, S(err)
+        return nil, err
     end
 
     return {
@@ -120,7 +115,7 @@ local function get_fields(lst, fields_src)
     for _, field_src in ipairs(fields_src) do
         local field, err = get_field(lst, field_src)
         if not field then
-            return nil, S(err)
+            return nil, err
         end
         table.insert(fields, field)
     end
@@ -143,7 +138,7 @@ local function get_structunion(lst, spec)
     if spec.fields then
         fields, err = get_fields(lst, spec.fields)
         if not fields then
-            return nil, S(err)
+            return nil, err
         end
     end
 
@@ -179,7 +174,7 @@ local function get_enum(lst, spec)
     if spec.fields then
         fields, err = get_fields(lst, spec.fields)
         if not fields then
-            return nil, S(err)
+            return nil, err
         end
     end
 
@@ -285,13 +280,13 @@ get_type = function(lst, spec, ret_pointer)
         elseif type(part) == "table" and part.type == "struct" or part.type == "union" then
             local su_typ, err = refer(lst, part, get_structunion)
             if not su_typ then
-                return nil, S(err) or "failed to refer struct"
+                return nil, err or "failed to refer struct"
             end
             table.insert(typ, su_typ)
         elseif type(part) == "table" and part.type == "enum" then
             local en_typ, err = refer(lst, part, get_enum)
             if not en_typ then
-                return nil, S(err) or "failed to refer enum"
+                return nil, err or "failed to refer enum"
             end
             table.insert(typ, en_typ)
         else
@@ -328,7 +323,7 @@ local function get_param(lst, param_src)
 
     local typ, err = get_type(lst, param_src, ret_pointer)
     if not typ then
-        return nil, S(err)
+        return nil, err
     end
 
     return {
@@ -350,7 +345,7 @@ local function get_params(lst, params_src)
         else
             local param, err = get_param(lst, param_src.param)
             if not param then
-                return nil, S(err)
+                return nil, err
             end
             table.insert(params, param)
         end
@@ -365,7 +360,7 @@ local function register_extern(lst, item, spec_set)
     end
     local ret_type, err = get_type(lst, item.spec, ret_pointer)
     if not ret_type then
-        return nil, S(err)
+        return nil, err
     end
     local params
     local vararg = false
@@ -408,7 +403,7 @@ local function register_typedef(lst, item)
     end
     local def, err = get_type(lst, item.spec, ret_pointer)
     if not def then
-        return nil, S(err)
+        return nil, err
     end
     local typ = {
         type = "typedef",
@@ -451,33 +446,33 @@ function ctypes.register_types(parsed)
         if spec_set.extern then
             local ok, err = register_extern(lst, item, spec_set)
             if not ok then
-                return nil, S(err) or "failed extern"
+                return nil, err or "failed extern"
             end
         elseif spec_set.static and item["function"] then
             local ok, err = register_static_function(lst, item)
             if not ok then
-                return nil, S(err) or "failed static function"
+                return nil, err or "failed static function"
             end
         elseif spec_set.typedef then
             local ok, err = register_typedef(lst, item)
             if not ok then
-                return nil, S(err) or "failed typedef"
+                return nil, err or "failed typedef"
             end
         elseif item.spec.type == "struct" or item.spec.type == "union" then
             local ok, err = register_structunion(lst, item)
             if not ok then
-                return nil, S(err) or "failed struct/union"
+                return nil, err or "failed struct/union"
             end
         elseif item.spec.type == "enum" then
             local ok, err = register_enum(lst, item)
             if not ok then
-                return nil, S(err) or "failed enum"
+                return nil, err or "failed enum"
             end
         elseif item.ids.decl.params then
             -- a function declared without extern
             local ok, err = register_extern(lst, item, spec_set)
             if not ok then
-                return nil, S(err) or "failed extern"
+                return nil, err or "failed extern"
             end
         else
             return nil, "FIXME Uncategorized declaration: " .. inspect(item)
