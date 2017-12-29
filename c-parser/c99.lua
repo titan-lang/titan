@@ -204,7 +204,7 @@ local language_rules = [[--lpeg.re
 --------------------------------------------------------------------------------
 -- External Definitions
 
-translationUnit <- %s* {| externalDeclaration+ |} "<EOF>"
+translationUnit <- %s* {| externalDeclaration+ |} "$EOF$"
 
 externalDeclaration <- functionDefinition
                      / declaration
@@ -367,8 +367,32 @@ jumpStatement <- "goto" _ IDENTIFIER ";" _
                / "return" _ expression? ";" _
 
 --------------------------------------------------------------------------------
+-- Advanced Language Expression Rules
+-- (which require type names)
+
+postfixExpression <- {| primaryExpression peRec |}
+                   / {| "(" _ {:struct: typeName :} ")" _ "{" _ initializerList ("," _)? "}" _ peRec |}
+
+sizeofOrPostfixExpression <- {| {:op: "sizeof" :} _ "(" _ typeName ")" _ |}
+                           / {| {:op: "sizeof" :} _ unaryExpression      |}
+                           / postfixExpression
+
+castExpression <- "(" _ typeName ")" _ castExpression
+                / unaryExpression
+
+]]
+
+--==============================================================================
+-- Language Expression Rules
+--==============================================================================
+
+local language_expression_rules = [[--lpeg.re
+
+--------------------------------------------------------------------------------
 -- Language Expression Rules
 -- (rules which differ from preprocessing stage)
+
+expression <- {| assignmentExpression ("," _ assignmentExpression)* |}
 
 constant <- ( FLOATING_CONSTANT
             / INTEGER_CONSTANT
@@ -381,8 +405,6 @@ primaryExpression <- IDENTIFIER
                    / STRING_LITERAL+
                    / "(" _ expression ")" _
 
-postfixExpression <- {| primaryExpression peRec |}
-                   / {| "(" _ {:struct: typeName :} ")" _ "{" _ initializerList ("," _)? "}" _ peRec |}
 peRec <- {| "[" _ {:idx: expression :} "]" _ peRec |}
        / {| "(" _ {:args: (argumentExpressionList / EMPTY_TABLE) :} ")" _ peRec |}
        / {| "." _ {:dot: IDENTIFIER :} peRec |}
@@ -395,17 +417,12 @@ argumentExpressionList <- assignmentExpression ("," _ assignmentExpression)*
 
 unaryExpression <- {| {:preop: prefixOp :} unaryExpression     |}
                  / {| {:unop: unaryOperator :} castExpression  |}
-                 / {| {:op: "sizeof" :} _ "(" _ typeName ")" _ |}
-                 / {| {:op: "sizeof" :} _ unaryExpression      |}
-                 / postfixExpression
+                 / sizeofOrPostfixExpression
 
 prefixOp <- { "++" } _
           / { "--" } _
 
-unaryOperator <- [-+~!*&] _
-
-castExpression <- "(" _ typeName ")" _ castExpression
-                / unaryExpression
+unaryOperator <- { [-+~!*&] } _
 
 assignmentExpression <- conditionalExpression
                       / unaryExpression assignmentOperator assignmentExpression
@@ -422,13 +439,25 @@ assignmentOperator <- "=" _
                     / "^=" _
                     / "|=" _
 
-expression <- assignmentExpression ("," _ assignmentExpression)*
-
 --------------------------------------------------------------------------------
 -- Language whitespace
 
 _ <- %s+
 S <- %s+
+
+]]
+
+local simplified_language_expression_rules = [[--lpeg.re
+
+--------------------------------------------------------------------------------
+-- Simplified Language Expression Rules
+-- (versions that do not require knowledge of type names)
+
+postfixExpression <- {| primaryExpression peRec |}
+
+sizeofOrPostfixExpression <- postfixExpression
+
+castExpression <- unaryExpression
 
 ]]
 
@@ -506,6 +535,10 @@ S <- %s+
 
 ]]
 
+--==============================================================================
+-- Preprocessing Expression Rules
+--==============================================================================
+
 local preprocessing_expression_rules = [[--lpeg.re
 
 --------------------------------------------------------------------------------
@@ -553,14 +586,25 @@ local preprocessing_expression_grammar = re.compile(
     lexical_rules ..
     common_expression_rules, defs)
 
+local language_expression_grammar = re.compile(
+    language_expression_rules ..
+    simplified_language_expression_rules ..
+    lexical_rules ..
+    common_expression_rules, defs)
+
 local language_grammar = re.compile(
     language_rules ..
+    language_expression_rules ..
     lexical_rules ..
     common_expression_rules, defs)
 
 function c99.match_language_grammar(subject)
     typedefs = {}
     return language_grammar:match(subject)
+end
+
+function c99.match_language_expression_grammar(subject)
+    return language_expression_grammar:match(subject)
 end
 
 function c99.match_preprocessing_grammar(subject)
