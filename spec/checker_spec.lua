@@ -1333,13 +1333,13 @@ describe("Titan type checker", function()
         local ok, err, ast = run_checker(code)
         assert.truthy(ok)
         assert_ast(ast[1], {
-            _tag = "TopLevel_ForeignImport",
+            _tag = "Ast.TopLevelForeignImport",
             localname = "stdio",
             _type = {
-                _tag = "ForeignModule",
+                _tag = "Type.ForeignModule",
                 members = {
                     printf = {
-                        _tag = "Function"
+                        _tag = "Type.Function"
                     }
                 }
             }
@@ -1381,6 +1381,17 @@ describe("Titan type checker", function()
             function f()
                 local mem = stdlib.realloc(nil, 100)
                 local s = string_h.strcpy(mem as string, "Hello")
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok)
+    end)
+
+    it("can check foreign module variables", function()
+        local code = [[
+            local errno = foreign import "errno.h"
+            function fun(name: string): integer
+                return errno.errno
             end
         ]]
         local ok, err = run_checker(code)

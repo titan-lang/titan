@@ -211,15 +211,15 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
 end
 
 local function foreignctype(typ --[[:table]])
-    if types.has_tag(typ, "Pointer") then
-        if types.equals(typ.type, types.Nil) then
+    if typ._tag == "Type.Pointer" then
+        if typ.type._tag == "Type.Nil" then
             return "void*"
         end
-        if types.has_tag(typ.type, "Typedef") then
+        if typ.type._tag == "Type.Typedef" then
             return typ.type.name .. "*"
         end
         return foreignctype(typ.type) .. "*"
-    elseif types.equals(typ, types.String) then
+    elseif typ._tag == "Type.String" then
         return "char*"
     end
     error("FIXME unknown foreign c type: "..types.tostring(typ))
@@ -326,9 +326,9 @@ local function newforeigntmp(ctx --[[:table]], typ --[[:table]])
     ctx.tmp = ctx.tmp + 1
     local tmpname = "_tmp_" .. tmp
     local ftype
-    if types.has_tag(typ, "String") then
+    if typ._tag == "Type.String" then
         ftype = "char*"
-    elseif types.has_tag(typ, "Pointer") then
+    elseif typ._tag == "Type.Pointer" then
         ftype = foreignctype(typ)
     else
         error("don't know how to convert foreign type "..types.tostring(typ))
@@ -674,7 +674,7 @@ local function makestring(ctx, cexp, target)
     if target then
         return "", cstr
     else
-        local ctmp, tmpname, tmpslot = newtmp(ctx, types.String, true)
+        local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
         return render([[
             $CTMP
             $TMPNAME = $CSTR;
@@ -689,18 +689,18 @@ local function makestring(ctx, cexp, target)
 end
 
 local function nativetoforeignexp(ctx, exp, cexp)
-    if types.has_tag(exp._type, "Integer")
-    or types.has_tag(exp._type, "Float")
-    or types.has_tag(exp._type, "Boolean")
-    or types.has_tag(exp._type, "Pointer") then
+    if exp._type._tag == "Type.Integer"
+    or exp._type._tag == "Type.Float"
+    or exp._type._tag == "Type.Boolean"
+    or exp._type._tag == "Type.Pointer" then
         return "", cexp
     end
 
-    if types.has_tag(exp._type, "Nil") then
+    if exp._type._tag == "Type.Nil" then
         return "", "NULL"
     end
 
-    if types.has_tag(exp._type, "String") then
+    if exp._type._tag == "Type.String" then
         local texp, tmp = newforeigntmp(ctx, exp._type)
         local cvtexp = render([[getstr($CEXP)]], { CEXP = cexp })
         return render([[
@@ -717,22 +717,22 @@ local function nativetoforeignexp(ctx, exp, cexp)
 end
 
 local function foreigntonativeexp(ctx, exp, cexp, target)
-    if types.has_tag(exp._type, "Integer")
-    or types.has_tag(exp._type, "Float")
-    or types.has_tag(exp._type, "Boolean")
-    or types.has_tag(exp._type, "Pointer") then
+    if exp._type._tag == "Type.Integer"
+    or exp._type._tag == "Type.Float"
+    or exp._type._tag == "Type.Boolean"
+    or exp._type._tag == "Type.Pointer" then
         return "", cexp
     end
 
-    if types.has_tag(exp._type, "Nil") then
+    if exp._type._tag == "Type.Nil" then
         return "", "0"
     end
 
-    if types.has_tag(exp._type, "String") then
+    if exp._type._tag == "Type.String" then
         return makestring(ctx, cexp, target)
     end
 
-    if types.has_tag(exp._type, "Typedef") then
+    if exp._type._tag == "Type.Typedef" then
         return foreigntonativeexp(ctx, exp._type, cexp, target)
     end
 
@@ -755,6 +755,10 @@ local function codeforeigncall(ctx, node)
         CAEXPS = table.concat(caexps, ", "),
     })
     return cstats, ccall
+end
+
+local function codeforeignvar(ctx, node)
+    return "", node.name
 end
 
 local function codecall(ctx, node)
@@ -1193,11 +1197,15 @@ end
 -- Generate code for expression 'node'
 -- 'iscondition' is 'true' if expression is used not for value but for
 --    controlling conditinal execution
--- 'target' is not nil if expression is rvalue for a 'Var_Name' lvalue,
+-- 'target' is not nil if expression is rvalue for a 'Ast.VarName' lvalue,
 --    in this case it will be the '_decl' of the lvalue
 function codeexp(ctx, node, iscondition, target)
     local tag = node._tag
-    if tag == "Ast.VarName" or (tag == "Ast.VarDot" and node._decl) then
+    if tag == "Ast.VarDot" and node.exp._type._tag == "Type.ForeignModule" then
+        local fstats, fexp = codeforeignvar(ctx, node)
+        local cstats, cexp = foreigntonativeexp(ctx, node, fexp, target)
+        return fstats .. cstats, cexp
+    elseif tag == "Ast.VarName" or (tag == "Ast.VarDot" and node._decl) then
         return codevar(ctx, node)
     elseif tag == "Ast.VarBracket" then
         return codeindex(ctx, node, iscondition)
@@ -1387,13 +1395,15 @@ end
 
 function codeforeignexp(ctx, node)
     local tag = node._tag
-    if tag == "Exp_Call"
-           and node.exp.var._tag == "Var_Dot"
-           and node.exp.var.exp._type._tag == "ForeignModule" then
+    if tag == "Ast.ExpCall"
+           and node.exp.var._tag == "Ast.VarDot"
+           and node.exp.var.exp._type._tag == "Type.ForeignModule" then
         return codeforeigncall(ctx, node)
-    elseif tag == "Exp_String" then
+    elseif tag == "Ast.VarDot" and node.exp._type._tag == "Type.ForeignModule" then
+        return codeforeignvar(ctx, node)
+    elseif tag == "Ast.ExpString" then
         return "", c_string_literal(node.value)
-    elseif tag == "Exp_Cast" and types.equals(node.target, types.String) then
+    elseif tag == "Ast.ExpCast" and node.target._tag == "Type.String" then
         local cstats, cexp = codeforeignexp(ctx, node.exp)
         return cstats, foreigncast(cexp, node._type)
     else
@@ -1831,7 +1841,7 @@ function coder.generate(modname, ast)
                         ]], { SLOT = member._slot, HANDLE = mprefix .. "handle" }))
                     end
                 end
-            elseif tag == "TopLevel_ForeignImport" then
+            elseif tag == "Ast.TopLevelForeignImport" then
                 local include
                 if node.headername:match("^/") then
                     include = [[#include "$HEADERNAME"]]

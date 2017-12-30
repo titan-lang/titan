@@ -16,22 +16,24 @@ local function type_from_name(st, typename)
         if itype then
             return itype
         elseif typename[1] == "void" then
-            return types.Nil
+            return types.Nil()
         elseif typename[1] == "int" then
-            return types.Integer
+            return types.Integer()
+        elseif typename[1] == "long" then
+            return types.Integer()
         elseif typename[1] == "double" then
-            return types.Float
+            return types.Float()
         end
     elseif #typename == 2 and typename[1] == "char" and typename[2] == "*" then
-        return types.String
+        return types.String()
     elseif typename[#typename] == "*" then
         table.remove(typename)
         return {
-            _tag = "Pointer",
+            _tag = "Type.Pointer",
             type = type_from_name(st, typename)
         }
     end
-    return { _tag = "Unknown", data = typename }
+    return { _tag = "Type.Unknown", data = typename }
 end
 
 local function convert_function(st, ftype)
@@ -54,7 +56,7 @@ end
 
 local function convert_typedef(st, ftype)
     local decl = {
-        _tag = "Typedef",
+        _tag = "Type.Typedef",
         name = ftype.name,
     }
     local ttype
@@ -72,18 +74,18 @@ local function convert_typedef(st, ftype)
                 if longs > 0 then
                     error("NYI long double")
                 end
-                ttype = types.Double
+                ttype = types.Double()
             elseif item == "int" then
-                ttype = types.Integer
+                ttype = types.Integer()
             elseif item == "char" then
-                ttype = types.Integer
+                ttype = types.Integer()
             elseif item == "short" then
-                ttype = types.Integer
+                ttype = types.Integer()
             end
         end
     end
     if not ttype and longs > 0 then
-        ttype = types.Integer
+        ttype = types.Integer()
     end
     if ttype then
         decl._type = ttype
