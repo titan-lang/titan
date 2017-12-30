@@ -1346,6 +1346,20 @@ describe("Titan type checker", function()
         })
     end)
 
+    it("cannot convert different pointers without a cast", function()
+        local code = [[
+            local stdio = foreign import "stdio.h"
+            local dirent = foreign import "dirent.h"
+            function f()
+                local dd = dirent.opendir(".")
+                local n = stdio.fwrite("alo", 3, 1, dd)
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected pointer to FILE but found pointer to DIR", err)
+    end)
+
     it("cannot convert void pointer to string without a cast", function()
         local code = [[
             local stdlib = foreign import "stdlib.h"
