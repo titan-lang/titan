@@ -11,7 +11,14 @@ matrix:
 #        - INSTALL_LUA="lua=5.2"
 #        - LUA="lua"
     - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-5
       env:
+        - CC="gcc-5"
         - INSTALL_LUA="lua=5.3"
         - LUA="lua"
 #    - os: linux
@@ -49,6 +56,7 @@ matrix:
 #        - LUA="luajit"
 
 before_install:
+  - export CC=$CC
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
   - pip install hererocks
   - hererocks lua_install -rlatest --$INSTALL_LUA

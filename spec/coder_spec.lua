@@ -13,7 +13,7 @@ local function generate(ast, modname)
     local ok, errmsg = util.set_file_contents(modname .. ".c", generated_code)
     if not ok then return ok, errmsg end
 
-    local CC = "gcc"
+    local CC = os.getenv("CC") or "gcc"
     local CFLAGS = "--std=c99 -O2 -Wall -Ilua/src/ -fPIC"
 
     local cc_cmd = string.format([[
@@ -40,6 +40,16 @@ local function call(modname, code)
     local cmd = string.format("lua/src/lua -l %s -e \"%s\"",
         modname, code)
     return os.execute(cmd)
+end
+
+local function compile(titan_code, lua_testcase)
+    local ast = parser.parse(titan_code)
+    local ok, err = checker.check(ast, titan_code, "test.titan")
+    assert.truthy(ok, err)
+    ok, err = generate(ast, "titan_test")
+    assert.truthy(ok, err)
+    ok, err = call("titan_test", lua_testcase)
+    return ok, err, ast
 end
 
 describe("Titan code generator", function()
@@ -143,7 +153,7 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
-    it("tests integer postive literals in 'for'", function()
+    it("tests integer positive literals in 'for'", function()
         local code = [[
             function forstep(): integer
                 local v: integer = 0
@@ -241,6 +251,24 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
         local ok, err = call("titan_test", "x = titan_test.forstep();assert(x==93.5)")
         assert.truthy(ok, err)
+    end)
+
+    it("avoids integer overflow in 'for' edge case", function()
+        assert.truthy(compile([[
+            function bignumbers(nth: integer):integer
+                local c = 0
+                for i = 0x7FFFFFFFFFFFFFF8,0x7FFFFFFFFFFFFFFF do
+                    c = c + 1
+                    if c == nth then
+                        return i
+                    end
+                end
+                return 0
+            end
+        ]], [[
+            assert(titan_test.bignumbers(8) == 9223372036854775807)
+            assert(titan_test.bignumbers(9) == 0)
+        ]]))
     end)
 
     it("tests nil element in 'not'", function()
