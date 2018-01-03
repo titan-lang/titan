@@ -44,6 +44,10 @@ function types.coerceable(source, target)
             types.equals(target, types.Float)) or
            (types.equals(source, types.Float) and
             types.equals(target, types.Integer)) or
+           (types.equals(source, types.Float) and
+            types.equals(target, types.String)) or
+           (types.equals(source, types.Integer) and
+            types.equals(target, types.String)) or
            (types.equals(target, types.Boolean) and
             not types.equals(source, types.Boolean)) or
            (types.equals(target, types.Value) and

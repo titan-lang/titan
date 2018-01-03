@@ -10,11 +10,10 @@ local checkexp
 
 local function typeerror(errors, msg, pos, ...)
     local l, c = util.get_line_number(errors.subject, pos)
-    msg = string.format("%s:%d:%d: type error: %s", errors.filename, l, c, string.format(msg, ...))
+    msg = string.format("%s:%d:%d: type error: %s", errors.filename, l, c,
+                        string.format(msg, ...))
     table.insert(errors, msg)
 end
-
-checker.typeerror = typeerror
 
 -- Checks if two types are the same, and logs an error message otherwise
 --   term: string describing what is being compared
@@ -75,18 +74,6 @@ local function trycoerce(node, target, errors)
         local l, _ = util.get_line_number(errors.subject, n._pos)
         n._lin = l
         n._type = target
-        return n
-    else
-        return node
-    end
-end
-
-local function trytostr(node)
-    local source = node._type
-    if types.equals(source, types.Integer) or
-      types.equals(source, types.Float) then
-        local n = ast.Exp_Cast(node._pos, node, types.String)
-        n._type = types.String
         return n
     else
         return node
@@ -377,7 +364,7 @@ function checkexp(node, st, errors, context)
         for i, exp in ipairs(node.exps) do
             checkexp(exp, st, errors, types.String)
             -- always tries to coerce numbers to string
-            exp = trytostr(exp)
+            exp = trycoerce(exp, types.String, errors)
             node.exps[i] = exp
             local texp = exp._type
             if types.equals(texp, types.Value) then
