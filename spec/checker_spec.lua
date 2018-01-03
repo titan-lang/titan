@@ -279,20 +279,6 @@ describe("Titan type checker", function()
         assert.truthy(ok)
     end)
 
-    it("type-checks 'for'", function()
-        local code = [[
-            function fn(x: integer): integer
-                local i: integer = 0
-                for i = 1, 10 do
-                    x = x + i
-                end
-                return x
-            end
-        ]]
-        local ok, err = run_checker(code)
-        assert.truthy(ok)
-    end)
-
     it("type-checks 'while'", function()
         local code = [[
             function fn(x: integer): integer
@@ -888,6 +874,7 @@ describe("Titan type checker", function()
             end
         end
     end
+
     it("returns the type of the module with exported members", function()
         local code = [[
             a: integer = 1
@@ -1027,160 +1014,19 @@ describe("Titan type checker", function()
         end
     end)
 
-    it("returns the type of the module with exported members", function()
-        local modules = { test = [[
-            a: integer = 1
-            local b: float = 2
-            function geta(): integer
-                return a
+    it("catches assignment to toplevel function", function ()
+        pending("need to implement constness")
+        local code = [[
+            function f(): integer
+                return 17
             end
-            local function foo() end
-        ]] }
-        local ok, err, mods = run_checker_modules(modules, "test")
-        assert.truthy(ok)
-        assert_ast(mods.test.type, {
-            _tag = "Module",
-            name = "test",
-            members = {
-                a = { _tag = "Integer" },
-                geta = { _tag = "Function" }
-            }
-        })
-        assert.falsy(mods.test.type.members.b)
-        assert.falsy(mods.test.type.members.foo)
-    end)
 
-    it("fails to load modules that do not exist", function ()
-        local code = [[
-            local foo = import "foo"
-            local bar = import "bar.baz"
-        ]]
-        local ok, err, ast = run_checker(code)
-        assert.falsy(ok)
-        assert.match("module 'foo' not found", err)
-        assert.match("module 'bar.baz' not found", err)
-    end)
-
-    it("correctly imports modules that do exist", function ()
-        local modules = {
-            foo = [[
-                a: integer = 1
-                function foo() end
-            ]],
-            bar = [[
-                local foo = import "foo"
-            ]]
-        }
-        local ok, err, mods = run_checker_modules(modules, "bar")
-        assert.truthy(ok)
-        assert.truthy(mods.foo)
-        assert_ast(mods.foo.type, {
-            _tag = "Module",
-            name = "foo",
-            members = {
-                a = { _tag = "Integer" },
-                foo = { _tag = "Function" }
-            }
-        })
-    end)
-
-    it("fails on circular module references", function ()
-        local modules = {
-            foo = [[
-                local bar = import "bar"
-                a: integer = nil
-                function foo() end
-            ]],
-            bar = [[
-                local foo = import "foo"
-            ]]
-        }
-        local ok, err = run_checker_modules(modules, "bar")
-        assert.falsy(ok)
-        assert.match("circular", err)
-    end)
-
-    it("import fails on modules with syntax errors", function ()
-        local modules = {
-            foo = [[
-                a: integer =
-                function foo() end
-            ]],
-            bar = [[
-                local foo = import "foo"
-            ]]
-        }
-        local ok, err = run_checker_modules(modules, "bar")
-        assert.falsy(ok)
-        assert.match("problem loading module", err)
-    end)
-
-    it("correctly uses module variable", function ()
-        local modules = {
-            foo = [[
-                a: integer = 1
-            ]],
-            bar = [[
-                local foo = import "foo"
-                function bar(): integer
-                    foo.a = 5
-                    return foo.a
-                end
-            ]]
-        }
-        local ok, err, mods = run_checker_modules(modules, "bar")
-        assert.truthy(ok)
-    end)
-
-    it("uses module variable with wrong type", function ()
-        local modules = {
-            foo = [[
-                a: integer = 1
-            ]],
-            bar = [[
-                local foo = import "foo"
-                function bar(): string
-                    foo.a = "foo"
-                    return foo.a
-                end
-            ]]
-        }
-        local ok, err, mods = run_checker_modules(modules, "bar")
-        assert.falsy(ok)
-        assert.match("expected string but found integer", err)
-        assert.match("expected integer but found string", err)
-    end)
-
-    it("catches module variable initialization with wrong type", function()
-        local code = {[[
-            local x: integer = nil
-        ]],
-        [[
-            x: integer = nil
-        ]],
-        }
-        for _, c in ipairs(code) do
-            local ok, err = run_checker(c)
-            assert.falsy(ok)
-            assert.match("expected integer but found nil", err)
-        end
-    end)
-
-    it("catches use of function as first-class value", function ()
-        local code = [[
-            function foo(): integer
-                return foo
+            function g(): integer
+                return 18
             end
-        ]]
-        local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("access a function", err)
-    end)
 
-    it("catches assignment to function", function ()
-        local code = [[
-            function foo(): integer
-                foo = 2
+            function main()
+                f = g
             end
         ]]
         local ok, err = run_checker(code)
@@ -1188,36 +1034,23 @@ describe("Titan type checker", function()
         assert.match("assign to a function", err)
     end)
 
-    it("catches use of external function as first-class value", function ()
+    it("catches assignment to external toplevel function", function ()
+        pending("need to implement constness")
         local modules = {
             foo = [[
-                a: integer = 1
-                function foo()
+                function f(): integer
+                    return 17
                 end
-            ]],
-            bar = [[
-                local foo = import "foo"
-                function bar(): integer
-                    return foo.foo
-                end
-            ]]
-        }
-        local ok, err, mods = run_checker_modules(modules, "bar")
-        assert.falsy(ok)
-        assert.match("access a function", err)
-    end)
 
-    it("catches assignment to external function", function ()
-        local modules = {
-            foo = [[
-                a: integer = 1
-                function foo()
+                function g(): integer
+                    return 18
                 end
             ]],
             bar = [[
                 local foo = import "foo"
-                function bar(): integer
-                    foo.foo = 2
+
+                local function test()
+                    foo.f = foo.g
                 end
             ]]
         }
