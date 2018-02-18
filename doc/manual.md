@@ -93,9 +93,9 @@ run-time error). For example, if variable `i` has type `integer` and variable
 if `t` has type `{ value }` the assignment `t[1] = i` always succeeds.
 
 You can also use an expression that has type `value` in most contexts that
-expect something with another type, but this will generate a runtime check
+expect something with another type, but this will generate a run-time check
 that might fail. In our previous examples with `v`, `i`, and `t` the assignments
-`i = v` and `i = t[1]` are also allowed, but are checked at runtime to see
+`i = v` and `i = t[1]` are also allowed, but are checked at run-time to see
 if the value being assigned is really an integer (or a floating-point value
 that can be safely converted to an integer).
 
@@ -115,7 +115,7 @@ are not compatible:
         x: float
         y: float
     end
-    
+
     record PointV
         x: value
         y: value
@@ -150,7 +150,7 @@ all dots to path separators, and then appending `.so`, for binary modules, or
 modules will correspond to `foo.{so|titan}`, `foo/bar.{so|titan}`, and `foo/bar/baz.{so|titan}`.
 The Titan compiler will recompile the module if its source is newer than its binary.
 
-Binary modules are looked up in the *runtime search path*, a semicolon-separated list
+Binary modules are looked up in the *run-time search path*, a semicolon-separated list
 of paths that defaults to `.;/usr/local/lib/titan/0.5`, but can be overriden with a
 `TITAN_PATH_0_5` or `TITAN_PATH` environment variable. Source modules are looked in
 the *source tree*, which defaults to the current working directory, but can be overriden
@@ -206,7 +206,7 @@ A `local` function is only visible inside the module it is defined. Functions th
 are not local are exported, and visible in modules that import this one, as well
 as callable from Lua if you `require` the module.
 
-As with variables, `<name>` can be any valid identifier, but it is an compile-time
+As with variables, `<name>` can be any valid identifier, but it is a compile-time
 error to declare two functions with the same name, or a function with the same name as
 a module variable. The return types `<rettypes>` are optional, and if not given it
 is assumed that the function does not return anything or just returns `nil`. (Currently
@@ -221,7 +221,7 @@ have the same name. The body is a sequence of statements.
 
 You can use an explicit cast to convert between any two allowable types. For the
 current version of Titan, this means from `value` to any other type, from any
-other type to `value`, from `integer` to `float`, from `float` to `integer`, 
+other type to `value`, from `integer` to `float`, from `float` to `integer`,
 from `integer` and `float` to `string`, and from any type to `boolean`.
 Most of these cannot fail (but you might lose precision when converting from
 `integer` to `float`). The exceptions are conversions from `value` to other
