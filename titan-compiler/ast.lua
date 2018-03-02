@@ -1,103 +1,72 @@
-local ast = {}
+local typedecl = require 'titan-compiler.typedecl'
 
--- Declarations of union types
-local types = {}
+return typedecl("Ast", {
+    Type = {
+        TypeNil         = {"loc"},
+        TypeBoolean     = {"loc"},
+        TypeInteger     = {"loc"},
+        TypeFloat       = {"loc"},
+        TypeString      = {"loc"},
+        TypeValue       = {"loc"},
+        TypeName        = {"loc", "name"},
+        TypeArray       = {"loc", "subtype"},
+        TypeFunction    = {"loc", "argtypes", "rettypes"},
+    },
 
-types.Type = {
-    Name    = {"name"},
-    Array   = {"subtype"},
-    Function= {"argtypes", "rettypes"},
-}
+    TopLevel = {
+        TopLevelFunc    = {"loc", "islocal", "name", "params", "rettypes", "block"},
+        TopLevelVar     = {"loc", "islocal", "decl", "value"},
+        TopLevelRecord  = {"loc", "name", "fields"},
+        TopLevelImport  = {"loc", "localname", "modname"}
+    },
 
-types.TopLevel = {
-    Func    = {"islocal", "name", "params", "rettypes", "block"},
-    Var     = {"islocal", "decl", "value"},
-    Record  = {"name", "fields"},
-    Import  = {"localname", "modname"}
-}
+    Decl = {
+        Decl            = {"loc", "name", "type"},
+    },
 
-types.Decl = {
-    Decl    = {"name", "type"},
-}
+    Stat = {
+        StatBlock       = {"loc", "stats"},
+        StatWhile       = {"loc", "condition", "block"},
+        StatRepeat      = {"loc", "block", "condition"},
+        StatIf          = {"loc", "thens", "elsestat"},
+        StatFor         = {"loc", "decl", "start", "finish", "inc", "block"},
+        StatAssign      = {"loc", "var", "exp"},
+        StatDecl        = {"loc", "decl", "exp"},
+        StatCall        = {"loc", "callexp"},
+        StatReturn      = {"loc", "exp"},
+    },
 
-types.Stat = {
-    Block   = {"stats"},
-    While   = {"condition", "block"},
-    Repeat  = {"block", "condition"},
-    If      = {"thens", "elsestat"},
-    For     = {"decl", "start", "finish", "inc", "block"},
-    Assign  = {"var", "exp"},
-    Decl    = {"decl", "exp"},
-    Call    = {"callexp"},
-    Return  = {"exp"},
-}
+    Then = {
+        Then            = {"loc", "condition", "block"},
+    },
 
-types.Then = {
-    Then    = {"condition", "block"},
-}
+    Var = {
+        VarName         = {"loc", "name"},
+        VarBracket      = {"loc", "exp1", "exp2"},
+        VarDot          = {"loc", "exp", "name"}
+    },
 
-types.Var = {
-    Name    = {"name"},
-    Bracket = {"exp1", "exp2"},
-    Dot     = {"exp", "name"}
-}
+    Exp = {
+        ExpNil          = {"loc"},
+        ExpBool         = {"loc", "value"},
+        ExpInteger      = {"loc", "value"},
+        ExpFloat        = {"loc", "value"},
+        ExpString       = {"loc", "value"},
+        ExpInitList     = {"loc", "fields"},
+        ExpCall         = {"loc", "exp", "args"},
+        ExpVar          = {"loc", "var"},
+        ExpUnop         = {"loc", "op", "exp"},
+        ExpConcat       = {"loc", "exps"},
+        ExpBinop        = {"loc", "lhs", "op", "rhs"},
+        ExpCast         = {"loc", "exp", "target"}
+    },
 
-types.Exp = {
-    Nil     = {},
-    Bool    = {"value"},
-    Integer = {"value"},
-    Float   = {"value"},
-    String  = {"value"},
-    InitList= {"fields"},
-    Call    = {"exp", "args"},
-    Var     = {"var"},
-    Unop    = {"op", "exp"},
-    Concat  = {"exps"},
-    Binop   = {"lhs", "op", "rhs"},
-    Cast    = {"exp", "target"}
-}
+    Args = {
+        ArgsFunc        = {"loc", "args"},
+        ArgsMethod      = {"loc", "method", "args"},
+    },
 
-types.Args = {
-    Func    = {"args"},
-    Method  = {"method", "args"},
-}
-
-types.Field = {
-    Field   = {"name", "exp"},
-}
-
--- Create a function for each type constructor
-for typename, conss in pairs(types) do
-    for consname, fields in pairs(conss) do
-        local tag = typename .. "_" .. consname
-
-        local function iter(node, i)
-            i = i + 1
-            if i <= #fields then
-                return i, node[fields[i]]
-            end
-        end
-
-        local mt = { __index = {
-            children = function(node)
-                return iter, node, 0
-            end
-        }}
-
-        ast[tag] = function(pos, ...)
-            local args = table.pack(...)
-            if args.n ~= #fields then
-                error("missing arguments for " .. tag)
-            end
-            local node = { _tag = tag, _pos = pos }
-            setmetatable(node, mt)
-            for i, field in ipairs(fields) do
-                assert(field ~= "_tag")
-                node[field] = args[i]
-            end
-            return node
-        end
-    end
-end
-
-return ast
+    Field = {
+        Field           = {"loc", "name", "exp"},
+    },
+})

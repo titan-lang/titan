@@ -95,6 +95,8 @@ do
                 return open == close
             end)
 
+    -- A sequence of up to 3 decimal digits
+    -- representing a non-negative integer less than 256
     local decimal_escape = P("1") * R("09") * R("09") +
         P("2") * R("04") * R("09") +
         P("2") * P("5") * R("05") +
@@ -140,7 +142,7 @@ do
     ) / function(parts) return table.concat(parts) end
 end
 
-lexer.STRING = shortstring + longstring
+lexer.STRINGLIT = shortstring + longstring
 
 --
 -- Spaces and Comments
@@ -166,7 +168,9 @@ local keywords = {
     "and", "break", "do", "else", "elseif", "end", "for", "false",
     "function", "goto", "if", "in", "local", "nil", "not", "or",
     "repeat", "return", "then", "true", "until", "while", "import",
-    "record", "as"
+    "record", "as",
+
+    "boolean", "integer", "float", "string", "value"
 }
 
 for _, keyword in ipairs(keywords) do
