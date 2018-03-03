@@ -149,7 +149,7 @@ function types.tostring(t)
     elseif tag == "Type.Type" then
         return "type" -- TODO remove
     else
-        error("impossible ")
+        error("impossible")
     end
 end
 
