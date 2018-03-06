@@ -217,7 +217,7 @@ local grammar = re.compile([[
 
     paramlist       <- {| (param (COMMA param^DeclParList)*)? |} -- produces {Decl}
 
-    param           <- (P  NAME COLON^ParamSemicolon 
+    param           <- (P  NAME COLON^ParamSemicolon
                            type^TypeDecl)                        -> Decl
 
     decl            <- (P  NAME (COLON type^TypeDecl)? -> opt)   -> Decl
@@ -229,7 +229,7 @@ local grammar = re.compile([[
                      / (P  STRING)                               -> TypeString
                      / (P  VALUE)                                -> TypeValue
                      / (P  NAME)                                 -> TypeName
-                     / (P  LCURLY type^TypeType 
+                     / (P  LCURLY type^TypeType
                            RCURLY^RCurlyType)                    -> TypeArray
 
     typelist        <- ( LPAREN
@@ -264,7 +264,7 @@ local grammar = re.compile([[
                                       exp^ExpRepeat)             -> StatRepeat
                      / (P  IF exp^ExpIf THEN^ThenIf block
                            elseifstats elseopt END^EndIf)        -> ifstat
-                     / (P  FOR decl^DeclFor 
+                     / (P  FOR decl^DeclFor
                            ASSIGN^AssignFor exp^Exp1For
                            COMMA^CommaFor exp^Exp2For
                            (COMMA exp^Exp3For)?                  -> opt
@@ -453,9 +453,13 @@ local grammar = re.compile([[
 ]], defs)
 
 function parser.parse(filename, input)
-    THE_FILENAME = filename
+    -- Abort if someone calls this non-reentrant parser recursively
+    assert(type(filename) == "string")
+    assert(THIS_FILENAME == nil)
+
+    THIS_FILENAME = filename
     local ast, err, errpos = grammar:match(input)
-    THE_FILENAME = nil
+    THIS_FILENAME = nil
 
     if ast then
         return ast
