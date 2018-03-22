@@ -756,6 +756,7 @@ checkexp = util.make_visitor({
             end
             assert(#ftype.rettypes == 1)
             node._type = ftype.rettypes[1]
+            node._types = ftype.rettypes
         else
             checker.typeerror(errors, node.loc,
                 "'%s' is not a function but %s",
