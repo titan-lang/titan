@@ -81,6 +81,14 @@ function defs.name_exp(pos, name)
     return ast.ExpVar(pos, ast.VarName(pos, name))
 end
 
+function defs.adjust_exp(pos, exp)
+    if exp._tag == "Ast.ExpCall" then
+        return ast.ExpAdjust(pos, exp)
+    else
+        return exp
+    end
+end
+
 function defs.ifstat(pos, exp, block, thens, elseopt)
     table.insert(thens, 1, ast.Then(pos, exp, block))
     return ast.StatIf(pos, thens, elseopt)
@@ -284,7 +292,7 @@ local grammar = re.compile([[
 
     elseopt         <- (ELSE block)?                             -> opt
 
-    returnstat      <- (P  RETURN (exp? -> opt) SEMICOLON?)      -> StatReturn
+    returnstat      <- (P  RETURN (explist? -> opt) SEMICOLON?)      -> StatReturn
 
     op1             <- ( OR -> 'or' )
     op2             <- ( AND -> 'and' )
@@ -324,8 +332,8 @@ local grammar = re.compile([[
                      / (P  DOT NAME^NameDotExpSuf)               -> suffix_dot
 
     prefixexp       <- (P  NAME)                                 -> name_exp
-                     / (LPAREN exp^ExpSimpleExp
-                               RPAREN^RParSimpleExp)             -- produces Exp
+                     / (P  LPAREN exp^ExpSimpleExp
+                               RPAREN^RParSimpleExp)             -> adjust_exp
 
 
     castexp         <- (P  simpleexp AS type^CastMissingType)    -> ExpCast

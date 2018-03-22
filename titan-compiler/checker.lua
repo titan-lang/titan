@@ -285,10 +285,20 @@ checkstat = util.make_visitor({
     ["Ast.StatReturn"] = function(node, st, errors)
         local ftype = st:find_symbol("$function")._type
         assert(#ftype.rettypes == 1)
+        -- TODO: last expression can be call that returns several values
+        if #ftype.rettypes ~= #node.exps then
+            checker.typeerror(errors, node.loc, "number of returned values do not match")
+        end
         local tret = ftype.rettypes[1]
-        checkexp(node.exp, st, errors, tret)
-        node.exp = trycoerce(node.exp, tret, errors)
-        checkmatch("return", tret, node.exp._type, errors, node.exp.loc)
+        for i, exp in ipairs(node.exps) do
+            checkexp(exp, st, errors, tret)
+            local tret = ftype.rettypes[i]
+            if tret then
+                exp = trycoerce(exp, tret, errors)
+                node.exps[i] = exp
+            end
+            checkmatch("return", tret, exp._type, errors, exp.loc)
+        end
         return true
     end,
 
@@ -768,6 +778,11 @@ checkexp = util.make_visitor({
         end
         node._type = node.target
     end,
+
+    ["Ast.ExpAdjust"] = function(node, st, errors, context)
+        checkexp(node.exp, st, errors, context)
+        node._type = node.exp._type
+    end
 })
 
 --

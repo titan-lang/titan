@@ -794,7 +794,7 @@ describe("Titan code generator", function()
             assert.truthy(ast, err)
             local ok, err = checker.check("test", ast, code, "test.titan")
             assert.truthy(ok)
-            assert.are.same(#err, 0)
+            assert.are.same(0, #err)
             local ok, err = driver.compile("titan_test", ast)
             assert.truthy(ok, err)
             local code = 'local x = titan_test.fn(); assert(' .. test .. ')'
