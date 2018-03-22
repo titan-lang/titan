@@ -605,7 +605,7 @@ local function codeassignment(ctx, node)
 end
 
 local function codecall(ctx, node)
-    local castats, caexps = {}, { "L" }
+    local castats, caexps, tmpnames, retslots = {}, { "L" }, {}, {}
     local fname
     local fnode = node.exp.var
     if fnode._tag == "Ast.VarName" then
@@ -618,24 +618,40 @@ local function codecall(ctx, node)
         table.insert(castats, cstat)
         table.insert(caexps, cexp)
     end
+    for i = 2, #node._types do
+        local typ = node._types[i]
+        local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
+        tmpnames[i] = tmpname
+        table.insert(castats, ctmp)
+        table.insert(caexps, "&" .. tmpname)
+        retslots[i] = tmpslot
+    end
     local cstats = table.concat(castats, "\n")
     local ccall = render("$NAME($CAEXPS)", {
         NAME = fname,
         CAEXPS = table.concat(caexps, ", "),
     })
-    if types.is_gc(node._type) then
-        local ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
+    if util.any(types.is_gc, node._types) then
+        local ctmp, tmpname, tmpslot = newtmp(ctx, node._type, types.is_gc(node._type))
+        tmpnames[1] = tmpname
+        retslots[1] = tmpslot
+        local cslots = {}
+        for i, typ in ipairs(node._types) do
+            if types.is_gc(typ) then
+                table.insert(cslots, setslot(typ, retslots[i], tmpnames[i]) .. ";")
+            end
+        end
         return render([[
             $CSTATS
             $CTMP
             $TMPNAME = $CCALL;
-            $SETSLOT;
+            $SLOTS
         ]], {
             CSTATS = cstats,
             CTMP = ctmp,
             TMPNAME = tmpname,
             CCALL = ccall,
-            SETSLOT = setslot(node._type, tmpslot, tmpname),
+            SLOTS = table.concat(cslots, "\n"),
         }), tmpname
     else
         return cstats, ccall

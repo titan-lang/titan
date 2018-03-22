@@ -56,4 +56,13 @@ function util.curry(f, a)
     end
 end
 
+function util.any(f, l)
+    for _, elem in ipairs(l) do
+        if f(l) then
+            return true
+        end
+    end
+    return false
+end
+
 return util
