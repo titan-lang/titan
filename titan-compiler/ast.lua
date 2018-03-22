@@ -33,7 +33,7 @@ return typedecl("Ast", {
         StatAssign      = {"loc", "var", "exp"},
         StatDecl        = {"loc", "decl", "exp"},
         StatCall        = {"loc", "callexp"},
-        StatReturn      = {"loc", "exp"},
+        StatReturn      = {"loc", "exps"},
     },
 
     Then = {
@@ -58,7 +58,8 @@ return typedecl("Ast", {
         ExpUnop         = {"loc", "op", "exp"},
         ExpConcat       = {"loc", "exps"},
         ExpBinop        = {"loc", "lhs", "op", "rhs"},
-        ExpCast         = {"loc", "exp", "target"}
+        ExpCast         = {"loc", "exp", "target"},
+        ExpAdjust       = {"loc", "exp"}
     },
 
     Args = {

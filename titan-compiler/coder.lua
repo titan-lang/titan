@@ -643,9 +643,9 @@ local function codecall(ctx, node)
 end
 
 local function codereturn(ctx, node)
-    local cstats, cexp = codeexp(ctx, node.exp)
+    local cstats, cexp = codeexp(ctx, node.exps[1])
     local tmpl
-    if types.is_gc(node.exp._type) then
+    if types.is_gc(node.exps[1]._type) then
         return render([[
             $CSTATS
             $CTYPE ret = $CEXP;
@@ -656,8 +656,8 @@ local function codereturn(ctx, node)
         ]], {
             CSTATS = cstats,
             CEXP = cexp,
-            CTYPE = ctype(node.exp._type),
-            SETSLOT = setslot(node.exp._type, "_retslot", "ret")
+            CTYPE = ctype(node.exps[1]._type),
+            SETSLOT = setslot(node.exps[1]._type, "_retslot", "ret")
         })
     elseif ctx.nslots > 0 then
         tmpl = [[
@@ -1198,6 +1198,8 @@ function codeexp(ctx, node, iscondition, target)
             TMPSLOT = tmpslot,
         })
         return code, tmpname
+    elseif tag == "Ast.ExpAdjust" then
+        codeexp(ctx, node.exp, iscondition, target)
     else
         error("invalid node tag " .. tag)
     end
