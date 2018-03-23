@@ -1551,5 +1551,22 @@ describe("Titan typecheck of records", function()
         assert_type_error("expected Point but found float",
                           wrap_record[[ local p: Point = p.x ]])
     end)
+
+    it("catches local variable initialization with wrong type", function()
+        local code = {[[
+            function f()
+                local x: integer = "foo"
+            end
+        ]], [[
+            function f()
+                local x: integer, y: integer = 20, "foo"
+            end
+        ]]}
+        for _, c in ipairs(code) do
+            local ok, err = run_checker(c)
+            assert.falsy(ok)
+            assert.match("expected integer but found string", err)
+        end
+    end)
 end)
 

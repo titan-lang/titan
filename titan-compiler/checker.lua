@@ -136,6 +136,9 @@ end
 
 checkdecl = function(node, st, errors)
     node._type = node._type or typefromnode(node.type, st, errors)
+end
+
+local function declare(node, st)
     st:add_symbol(node.name, node)
 end
 
@@ -173,9 +176,10 @@ local function checkfor(node, st, errors)
         node.decl._type = node.start._type
     end
     checkdecl(node.decl, st, errors)
+    declare(node.decl, st)
 
     local loop_type_is_valid
-    if     node.decl._type._tag == "Type.Integer" then
+    if node.decl._type._tag == "Type.Integer" then
         loop_type_is_valid = true
         if not node.inc then
             node.inc = ast.ExpInteger(node.finish.loc, 1)
@@ -255,6 +259,9 @@ checkstat = util.make_visitor({
             elseif exp then
                 checkexp(exp, st, errors)
             end
+        end
+        for _, decl in ipairs(node.decls) do
+            declare(decl, st)
         end
     end,
 
