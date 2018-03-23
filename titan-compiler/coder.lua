@@ -704,51 +704,51 @@ end
 function codestat(ctx, node)
     local tag = node._tag
     if tag == "Ast.StatDecl" then
-        assert(#node.exps == 1)
-        assert(#node.decls == 1)
-        local exp = node.exps[1]
-        local decl = node.decls[1]
-        local cstats, cexp = codeexp(ctx, exp)
-        if decl._used then
-            local typ = decl._type
-            decl._cvar = "_local_" .. localname(ctx, decl.name)
-            local cdecl = ctype(typ) .. " " .. decl._cvar .. ";"
-            local cslot = ""
-            local cset = ""
-            if types.is_gc(typ) then
-                decl._slot = "_localslot_" .. localname(ctx, decl.name)
-                cslot = newslot(ctx, decl._slot);
-                cset = render([[
-                    /* update slot */
-                    $SETSLOT
+        for i = 1, #node.decls do
+            local exp = node.exps[i]
+            local decl = node.decls[i]
+            local cstats, cexp = codeexp(ctx, exp)
+            if decl._used then
+                local typ = decl._type
+                decl._cvar = "_local_" .. localname(ctx, decl.name)
+                local cdecl = ctype(typ) .. " " .. decl._cvar .. ";"
+                local cslot = ""
+                local cset = ""
+                if types.is_gc(typ) then
+                    decl._slot = "_localslot_" .. localname(ctx, decl.name)
+                    cslot = newslot(ctx, decl._slot);
+                    cset = render([[
+                        /* update slot */
+                        $SETSLOT
+                    ]], {
+                        SETSLOT = setslot(typ, decl._slot, decl._cvar),
+                    })
+                end
+                return render([[
+                    $CDECL
+                    $CSLOT
+                    {
+                        $CSTATS
+                        $CVAR = $CEXP;
+                        $CSET
+                    }
                 ]], {
-                    SETSLOT = setslot(typ, decl._slot, decl._cvar),
+                    CDECL = cdecl,
+                    CSLOT = cslot,
+                    CSTATS = cstats,
+                    CVAR = decl._cvar,
+                    CEXP = cexp,
+                    CSET = cset
+                })
+            else
+                return render([[
+                    $CSTATS
+                    ((void)$CEXP);
+                ]], {
+                    CSTATS = cstats,
+                    CEXP = cexp
                 })
             end
-            return render([[
-                $CDECL
-                $CSLOT
-                {
-                    $CSTATS
-                    $CVAR = $CEXP;
-                    $CSET
-                }
-            ]], {
-                CDECL = cdecl,
-                CSLOT = cslot,
-                CSTATS = cstats,
-                CVAR = decl._cvar,
-                CEXP = cexp,
-                CSET = cset
-            })
-        else
-            return render([[
-                $CSTATS
-                ((void)$CEXP);
-            ]], {
-                CSTATS = cstats,
-                CEXP = cexp
-            })
         end
     elseif tag == "Ast.StatBlock" then
         return codeblock(ctx, node)
