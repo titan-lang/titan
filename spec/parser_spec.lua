@@ -434,6 +434,12 @@ describe("Titan parser", function()
         assert_statements_ast("return x;", {
             { _tag = "Ast.StatReturn", exps = {{ _tag = "Ast.ExpVar" }} },
         })
+        assert_statements_ast("return x, y", {
+            { _tag = "Ast.StatReturn", exps = {{ _tag = "Ast.ExpVar" },{ _tag = "Ast.ExpVar" }} },
+        })
+        assert_statements_ast("return x, y;", {
+            { _tag = "Ast.StatReturn", exps = {{ _tag = "Ast.ExpVar" },{ _tag = "Ast.ExpVar" }} },
+        })
     end)
 
     it("requires that return statements be the last in the block", function()
@@ -447,6 +453,20 @@ describe("Titan parser", function()
         assert_statements_syntax_error([[
             return;;
         ]], "EndFunc")
+    end)
+
+    it("can parse parenthesis around calls", function()
+        assert_expression_ast([[ (f()) ]],
+            { _tag = "Ast.ExpAdjust", exp = { _tag = "Ast.ExpCall" } })
+
+        assert_expression_ast([[ ((f())) ]],
+            { _tag = "Ast.ExpAdjust", exp = { _tag = "Ast.ExpCall" } })
+
+        assert_expression_ast([[ (o:m ()) ]],
+            { _tag = "Ast.ExpAdjust", exp = { _tag = "Ast.ExpCall" } })
+
+        assert_expression_ast([[ ((o:m ())) ]],
+            { _tag = "Ast.ExpAdjust", exp = { _tag = "Ast.ExpCall" } })
     end)
 
     it("can parse binary and unary operators", function()
