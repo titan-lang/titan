@@ -254,7 +254,8 @@ local function newcontext(tlcontext)
         allocations = 0, -- number of allocations
         depth = 0,  -- current stack depth
         dstack = {}, -- stack of stack depths
-        prefix = tlcontext.prefix -- prefix for module member functions and variables
+        prefix = tlcontext.prefix, -- prefix for module member functions and variables
+        names = {} -- map of names to autoincrement suffixes for disambiguation
     }
 end
 
@@ -694,6 +695,12 @@ local function codereturn(ctx, node)
     })
 end
 
+local function localname(ctx, name)
+    local idx = ctx.names[name] or 1
+    ctx.names[name] = idx + 1
+    return name .. "_" .. tostring(idx)
+end
+
 function codestat(ctx, node)
     local tag = node._tag
     if tag == "Ast.StatDecl" then
@@ -704,12 +711,12 @@ function codestat(ctx, node)
         local cstats, cexp = codeexp(ctx, exp)
         if decl._used then
             local typ = decl._type
-            decl._cvar = "_local_" .. decl.name
+            decl._cvar = "_local_" .. localname(ctx, decl.name)
             local cdecl = ctype(typ) .. " " .. decl._cvar .. ";"
             local cslot = ""
             local cset = ""
             if types.is_gc(typ) then
-                decl._slot = "_localslot_" .. decl.name
+                decl._slot = "_localslot_" .. localname(ctx, decl.name)
                 cslot = newslot(ctx, decl._slot);
                 cset = render([[
                     /* update slot */
