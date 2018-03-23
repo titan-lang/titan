@@ -228,17 +228,34 @@ end
 --   returns whether statement always returns from its function (always false for repeat/until)
 checkstat = util.make_visitor({
     ["Ast.StatDecl"] = function(node, st, errors)
-        if node.decl.type then
-          checkdecl(node.decl, st, errors)
-          checkexp(node.exp, st, errors, node.decl._type)
-        else
-          checkexp(node.exp, st, errors)
-          node.decl._type = node.exp._type
-          checkdecl(node.decl, st, errors)
+        if #node.exps ~= #node.decls then
+            checker.typeerror(errors, node.loc, "declaration has %d local(s) but %d expression(s) on the right-hand side", #node.decls, #node.exps)
         end
-        node.exp = trycoerce(node.exp, node.decl._type, errors)
-        checkmatch("declaration of local variable " .. node.decl.name,
-            node.decl._type, node.exp._type, errors, node.decl.loc)
+        for i = 1, math.max(#node.decls, #node.exps) do
+            local decl = node.decls[i]
+            local exp = node.exps[i]
+            if decl and exp then
+                if decl.type then
+                    checkdecl(decl, st, errors)
+                    checkexp(exp, st, errors, decl._type)
+                else
+                    checkexp(exp, st, errors)
+                    decl._type = exp._type
+                    checkdecl(decl, st, errors)
+                end
+                exp = trycoerce(exp, decl._type, errors)
+                node.exps[i] = exp
+                checkmatch("declaration of local variable " .. decl.name,
+                    decl._type, exp._type, errors, decl.loc)
+            elseif decl then
+                if not decl.type then
+                    decl.type = types.Invalid()
+                end
+                checkdecl(decl, st, errors)
+            elseif exp then
+                checkexp(exp, st, errors)
+            end
+        end
     end,
 
     ["Ast.StatBlock"] = function(node, st, errors)

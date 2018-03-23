@@ -31,7 +31,7 @@ return typedecl("Ast", {
         StatIf          = {"loc", "thens", "elsestat"},
         StatFor         = {"loc", "decl", "start", "finish", "inc", "block"},
         StatAssign      = {"loc", "var", "exp"},
-        StatDecl        = {"loc", "decl", "exp"},
+        StatDecl        = {"loc", "decls", "exps"},
         StatCall        = {"loc", "callexp"},
         StatReturn      = {"loc", "exps"},
     },
