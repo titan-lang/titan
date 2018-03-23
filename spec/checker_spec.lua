@@ -501,6 +501,62 @@ describe("Titan type checker", function()
         end
     end)
 
+    it("checks return type against declared type for one return value", function()
+        local code = [[
+            function fn(): integer
+                return "foo"
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("types in return do not match", err)
+    end)
+
+    it("checks returning less values than function expects", function()
+        local code = [[
+            function fn(): (integer, string)
+                return 20
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("returned 1 value%(s%) but function expected 2", err)
+    end)
+
+    it("checks returning more values than function expects", function()
+        local code = [[
+            function fn(): (integer, string)
+                return 20, "foo", true
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("returned 3 value%(s%) but function expected 2", err)
+    end)
+
+    it("checks that returned values correctly match signature", function()
+        local code = [[
+            function fn(): (integer, string, boolean)
+                return 20, "foo", true
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok)
+    end)
+
+    it("checks that returned values incorrectly match signature", function()
+        local code = [[
+            function fn(): (integer, string, string)
+                return "foo", true, 20
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected integer but found string", err)
+        assert.match("expected string but found boolean", err)
+        assert.match("expected string but found integer", err)
+    end)
+
     it("detects attempts to call non-functions", function()
         local code = [[
             function fn(): integer

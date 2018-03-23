@@ -284,10 +284,9 @@ checkstat = util.make_visitor({
 
     ["Ast.StatReturn"] = function(node, st, errors)
         local ftype = st:find_symbol("$function")._type
-        assert(#ftype.rettypes == 1)
         -- TODO: last expression can be call that returns several values
         if #ftype.rettypes ~= #node.exps then
-            checker.typeerror(errors, node.loc, "number of returned values do not match")
+            checker.typeerror(errors, node.loc, "returned %d value(s) but function expected %d", #node.exps, #ftype.rettypes)
         end
         local tret = ftype.rettypes[1]
         for i, exp in ipairs(node.exps) do
@@ -296,8 +295,8 @@ checkstat = util.make_visitor({
             if tret then
                 exp = trycoerce(exp, tret, errors)
                 node.exps[i] = exp
+                checkmatch("return", tret, exp._type, errors, exp.loc)
             end
-            checkmatch("return", tret, exp._type, errors, exp.loc)
         end
         return true
     end,
@@ -809,7 +808,6 @@ local function checkfunc(node, st, errors)
             pnames[param.name] = true
         end
     end
-    assert(#node._type.rettypes == 1)
     local ret = st:with_block(checkstat, node.block, st, errors)
     if not ret and node._type.rettypes[1]._tag ~= "Type.Nil" then
         checker.typeerror(errors, node.loc,
@@ -936,9 +934,6 @@ local toplevel_visitor = util.make_visitor({
     end,
 
     ["Ast.TopLevelFunc"] = function(node, st, errors)
-        if #node.rettypes ~= 1 then
-            error("functions with 0 or 2+ return values are not yet implemented")
-        end
         local ptypes = {}
         for _, pdecl in ipairs(node.params) do
             table.insert(ptypes, typefromnode(pdecl.type, st, errors))
