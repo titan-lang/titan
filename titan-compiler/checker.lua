@@ -232,13 +232,10 @@ end
 --   returns whether statement always returns from its function (always false for repeat/until)
 checkstat = util.make_visitor({
     ["Ast.StatDecl"] = function(node, st, errors)
-        if #node.exps ~= #node.decls then
-            checker.typeerror(errors, node.loc, "declaration has %d local(s) but %d expression(s) on the right-hand side", #node.decls, #node.exps)
-        end
-        for i = 1, math.max(#node.decls, #node.exps) do
+        for i = 1, #node.exps do
             local decl = node.decls[i]
             local exp = node.exps[i]
-            if decl and exp then
+            if decl then
                 if decl.type then
                     checkdecl(decl, st, errors)
                     checkexp(exp, st, errors, decl._type)
@@ -251,14 +248,23 @@ checkstat = util.make_visitor({
                 node.exps[i] = exp
                 checkmatch("declaration of local variable " .. decl.name,
                     decl._type, exp._type, errors, decl.loc)
-            elseif decl then
-                if not decl.type then
-                    decl.type = types.Invalid()
-                end
-                checkdecl(decl, st, errors)
-            elseif exp then
-                checkexp(exp, st, errors)
             end
+        end
+        local lastexp = node.exps[#node.exps]
+        if lastexp._types then -- multiple return values
+            for i = 2, #lastexp._types do
+                local decl = node.decls[#node.exps + i - 1]
+                if decl then
+                    -- TODO: coercions
+                    local typ = lastexp._types[i]
+                    checkmatch("declaration of local variable " .. decl.name,
+                        decl._type, typ, errors, decl.loc)
+                end
+            end
+        end
+        local nvalues = #node.exps + (lastexp._types and #lastexp._types or 1) - 1
+        if #node.decls > nvalues then
+            checker.typeerror(errors, node.loc, "declaration has %d local(s) but right-hand side produces %d value(s)", #node.decls, nvalues)
         end
         for _, decl in ipairs(node.decls) do
             declare(decl, st)
