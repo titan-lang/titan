@@ -697,21 +697,25 @@ end
 function codestat(ctx, node)
     local tag = node._tag
     if tag == "Ast.StatDecl" then
-        local cstats, cexp = codeexp(ctx, node.exp)
-        if node.decl._used then
-            local typ = node.decl._type
-            node.decl._cvar = "_local_" .. node.decl.name
-            local cdecl = ctype(typ) .. " " .. node.decl._cvar .. ";"
+        assert(#node.exps == 1)
+        assert(#node.decls == 1)
+        local exp = node.exps[1]
+        local decl = node.decls[1]
+        local cstats, cexp = codeexp(ctx, exp)
+        if decl._used then
+            local typ = decl._type
+            decl._cvar = "_local_" .. decl.name
+            local cdecl = ctype(typ) .. " " .. decl._cvar .. ";"
             local cslot = ""
             local cset = ""
             if types.is_gc(typ) then
-                node.decl._slot = "_localslot_" .. node.decl.name
-                cslot = newslot(ctx, node.decl._slot);
+                decl._slot = "_localslot_" .. decl.name
+                cslot = newslot(ctx, decl._slot);
                 cset = render([[
                     /* update slot */
                     $SETSLOT
                 ]], {
-                    SETSLOT = setslot(typ, node.decl._slot, node.decl._cvar),
+                    SETSLOT = setslot(typ, decl._slot, decl._cvar),
                 })
             end
             return render([[
@@ -726,7 +730,7 @@ function codestat(ctx, node)
                 CDECL = cdecl,
                 CSLOT = cslot,
                 CSTATS = cstats,
-                CVAR = node.decl._cvar,
+                CVAR = decl._cvar,
                 CEXP = cexp,
                 CSET = cset
             })

@@ -392,14 +392,39 @@ describe("Titan parser", function()
             { _tag = "Ast.StatBlock",
                 stats = {
                     { _tag = "Ast.StatDecl",
-                        decl = { name = "x" },
-                        exp = { value = 10 } },
+                        decls = {{ name = "x" }},
+                        exps = {{ value = 10 }} },
                     { _tag = "Ast.StatAssign",
                         var = { name = "x" },
                         exp = { value = 11 } },
                     { _tag = "Ast.StatCall",
                         callexp = { _tag = "Ast.ExpCall" } } } },
         })
+    end)
+
+    it("can parse multiple variable declaration", function()
+        assert_statements_ast([[
+            local x, y = 10, 20
+        ]], {
+            { _tag = "Ast.StatDecl",
+                        decls = {{ name = "x" }, { name = "y" }},
+                        exps = {{ value = 10 }, { value = 20 }} }
+        })
+    end)
+
+    it("requires lhs and rhs of local variable declaration", function()
+        assert_statements_syntax_error([[
+            local  = 10
+        ]], "DeclLocal")
+        assert_statements_syntax_error([[
+            local x, = 10, 20
+        ]], "DeclParList")
+        assert_statements_syntax_error([[
+            local x =
+        ]], "ExpLocal")
+        assert_statements_syntax_error([[
+            local x, y = 10,
+        ]], "ExpExpList")
     end)
 
     it("can parse numeric for loops", function()

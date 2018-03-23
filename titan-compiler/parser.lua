@@ -57,6 +57,15 @@ function defs.opt(x)
         return x
     end
 end
+
+function defs.listopt(x)
+    if x == "" then
+        return {}
+    else
+        return x
+    end
+end
+
 function defs.boolopt(x)
     return x ~= ""
 end
@@ -230,6 +239,8 @@ local grammar = re.compile([[
 
     decl            <- (P  NAME (COLON type^TypeDecl)? -> opt)   -> Decl
 
+    decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
+
     simpletype      <- (P  NIL)                                  -> TypeNil
                      / (P  BOOLEAN)                              -> TypeBoolean
                      / (P  INTEGER)                              -> TypeInteger
@@ -277,8 +288,8 @@ local grammar = re.compile([[
                            COMMA^CommaFor exp^Exp2For
                            (COMMA exp^Exp3For)?                  -> opt
                            DO^DoFor block END^EndFor)            -> StatFor
-                     / (P  LOCAL decl^DeclLocal ASSIGN^AssignLocal
-                                 exp^ExpLocal)                   -> StatDecl
+                     / (P  LOCAL decllist^DeclLocal ASSIGN^AssignLocal
+                                 explist^ExpLocal)                   -> StatDecl
                      / (P  var ASSIGN^AssignAssign
                                exp^ExpAssign)                    -> StatAssign
                      / &(exp ASSIGN) %{ExpAssign}
@@ -292,7 +303,7 @@ local grammar = re.compile([[
 
     elseopt         <- (ELSE block)?                             -> opt
 
-    returnstat      <- (P  RETURN (explist? -> opt) SEMICOLON?)      -> StatReturn
+    returnstat      <- (P  RETURN (explist? -> listopt) SEMICOLON?)      -> StatReturn
 
     op1             <- ( OR -> 'or' )
     op2             <- ( AND -> 'and' )
@@ -351,11 +362,11 @@ local grammar = re.compile([[
     var             <- (suffixedexp => exp_is_var)               -> exp2var
                      / (P  NAME !expsuffix)                      -> name_exp -> exp2var
 
-    funcargs        <- (LPAREN explist RPAREN^RParFuncArgs)      -- produces {Exp}
+    funcargs        <- (LPAREN (explist? -> listopt) RPAREN^RParFuncArgs)      -- produces {Exp}
                      / {| initlist |}                            -- produces {Exp}
                      / {| (P  STRINGLIT) -> ExpString |}         -- produces {Exp}
 
-    explist         <- {| (exp (COMMA exp^ExpExpList)*)? |}      -- produces {Exp}
+    explist         <- {| exp (COMMA exp^ExpExpList)* |}      -- produces {Exp}
 
     initlist        <- (P  LCURLY {| fieldlist? |}
                                   RCURLY^RCurlyInitList)         -> ExpInitList
