@@ -766,28 +766,31 @@ checkexp = util.make_visitor({
             local nparams = #ftype.params
             local args = node.args.args
             local nargs = #args
-            local arity = math.max(nparams, nargs)
-            for i = 1, arity do
+            local lastarg = args[nargs]
+            for i = 1, nargs do
                 local arg = args[i]
                 local ptype = ftype.params[i]
-                local atype
-                if not arg then
-                    atype = ptype
-                else
-                    checkexp(arg, st, errors, ptype)
-                    ptype = ptype or arg._type
-                    args[i] = trycoerce(args[i], ptype, errors)
-                    atype = args[i]._type
+                checkexp(arg, st, errors, ptype)
+                ptype = ptype or arg._type
+                args[i] = trycoerce(args[i], ptype, errors)
+                local atype = args[i]._type
+                checkmatch("argument " .. i .. " of call to function '" .. fname .. "'", ptype, atype, errors, arg.loc)
+            end
+            if lastarg and lastarg._types then
+                for i = 2, #lastarg._types do
+                    local pidx = nargs + i - 1
+                    local ptype = ftype.params[pidx]
+                    local exp = ast.ExpExtra(lastarg.loc, lastarg, i, lastarg._types[i])
+                    ptype = ptype or exp._type
+                    exp = trycoerce(exp, ptype, errors)
+                    table.insert(args, exp)
+                    checkmatch("argument " .. pidx .. " of call to function '" .. fname .. "'", ptype, exp._type, errors, exp.loc)
                 end
-                if not ptype then
-                    ptype = atype
-                end
-                checkmatch("argument " .. i .. " of call to function '" .. fname .. "'", ptype, atype, errors, node.exp.loc)
             end
             if not (#args == nparams or (ftype.vararg and #args > nparams)) then
                 checker.typeerror(errors, node.loc,
                     "function %s called with %d arguments but expects %d.\n%s",
-                    fname, nargs, nparams, types.tostring(ftype))
+                    fname, #args, nparams, types.tostring(ftype))
             end
             node._type = ftype.rettypes[1]
             node._types = ftype.rettypes

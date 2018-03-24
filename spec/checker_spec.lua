@@ -1454,6 +1454,100 @@ describe("Titan type checker", function()
         assert.falsy(ok)
         assert.match('duplicate parameter', err)
     end)
+
+    it("catches local variable initialization with wrong type", function()
+        local code = {[[
+            function f()
+                local x: integer = "foo"
+            end
+        ]], [[
+            function f()
+                local x: integer, y: integer = 20, "foo"
+            end
+        ]]}
+        for _, c in ipairs(code) do
+            local ok, err = run_checker(c)
+            assert.falsy(ok)
+            assert.match("expected integer but found string", err)
+        end
+    end)
+
+    it("typechecks extra values on right hand side", function()
+        assert_type_check([[
+            function f()
+                local x: float = 10, 20, "foo"
+            end
+        ]])
+    end)
+
+    it("typechecks adjustment of argument lists", function()
+        assert_type_check([[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function f(x: string, y: integer, z: string)
+            end
+            function h()
+                f("bar", g())
+            end
+        ]])
+    end)
+
+    it("catches too few values on right hand side", function()
+        local code = {[[
+            function f()
+                local x: integer, y: string, z: integer = 20, "foo"
+            end
+        ]],[[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function f()
+                local x: integer, y: string, z: integer = g()
+            end
+        ]]}
+        for _, c in ipairs(code) do
+            local ok, err = run_checker(c)
+            assert.falsy(ok)
+            assert.match("left%-hand side expects 3 value%(s%) but right%-hand side produces 2 value%(s%)", err)
+        end
+    end)
+
+    it("catches functions called with wrong arity", function()
+        local cases = {{ code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            function f(x: integer, y: integer, z: integer)
+            end
+            function h()
+                f(g())
+            end
+        ]], args = 2, params = 3 }, { code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            function f(x: integer, y: integer, z: integer)
+            end
+            function h()
+                f(20, 30, g())
+            end
+        ]], args = 4, params = 3 }, { code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            function f(x: integer, y: integer, z: integer)
+            end
+            function h()
+                f(20, (g()))
+            end
+        ]], args = 2, params = 3 }}
+        for _, c in ipairs(cases) do
+            local ok, err = run_checker(c.code)
+            assert.falsy(ok)
+            assert.match("function f called with " .. c.args .. " arguments but expects " .. c.params, err)
+        end
+    end)
 end)
 
 describe("Titan typecheck of records", function()
@@ -1550,51 +1644,6 @@ describe("Titan typecheck of records", function()
                           wrap_record[[ p.x = p ]])
         assert_type_error("expected Point but found float",
                           wrap_record[[ local p: Point = p.x ]])
-    end)
-
-    it("catches local variable initialization with wrong type", function()
-        local code = {[[
-            function f()
-                local x: integer = "foo"
-            end
-        ]], [[
-            function f()
-                local x: integer, y: integer = 20, "foo"
-            end
-        ]]}
-        for _, c in ipairs(code) do
-            local ok, err = run_checker(c)
-            assert.falsy(ok)
-            assert.match("expected integer but found string", err)
-        end
-    end)
-
-    it("typechecks extra values on right hand side", function()
-        assert_type_check([[
-            function f()
-                local x: float = 10, 20, "foo"
-            end
-        ]])
-    end)
-
-    it("catches too few values on right hand side", function()
-        local code = {[[
-            function f()
-                local x: integer, y: string, z: integer = 20, "foo"
-            end
-        ]],[[
-            function g(): (integer, string)
-                return 20, "foo"
-            end
-            function f()
-                local x: integer, y: string, z: integer = g()
-            end
-        ]]}
-        for _, c in ipairs(code) do
-            local ok, err = run_checker(c)
-            assert.falsy(ok)
-            assert.match("left%-hand side expects 3 value%(s%) but right%-hand side produces 2 value%(s%)", err)
-        end
     end)
 end)
 
