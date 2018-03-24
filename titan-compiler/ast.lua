@@ -59,7 +59,8 @@ return typedecl("Ast", {
         ExpConcat       = {"loc", "exps"},
         ExpBinop        = {"loc", "lhs", "op", "rhs"},
         ExpCast         = {"loc", "exp", "target"},
-        ExpAdjust       = {"loc", "exp"}
+        ExpAdjust       = {"loc", "exp"},                   -- adjust call to just first value
+        ExpExtra        = {"loc", "exp", "index", "_type"}  -- index-th (>1) value of call
     },
 
     Args = {
