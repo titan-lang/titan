@@ -250,21 +250,27 @@ checkstat = util.make_visitor({
                     decl._type, exp._type, errors, decl.loc)
             end
         end
-        local lastexp = node.exps[#node.exps]
+        local nlastexp = #node.exps
+        local lastexp = node.exps[nlastexp]
         if lastexp._types then -- multiple return values
             for i = 2, #lastexp._types do
-                local decl = node.decls[#node.exps + i - 1]
+                local decl = node.decls[nlastexp + i - 1]
                 if decl then
-                    -- TODO: coercions
-                    local typ = lastexp._types[i]
+                    local exp = ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i])
+                    if decl.type then
+                        checkdecl(decl, st, errors)
+                        exp = trycoerce(exp, decl._type, errors)
+                    else
+                        decl._type = exp._type
+                    end
+                    table.insert(node.exps, exp)
                     checkmatch("declaration of local variable " .. decl.name,
-                        decl._type, typ, errors, decl.loc)
+                        decl._type, exp._type, errors, decl.loc)
                 end
             end
         end
-        local nvalues = #node.exps + (lastexp._types and #lastexp._types or 1) - 1
-        if #node.decls > nvalues then
-            checker.typeerror(errors, node.loc, "declaration has %d local(s) but right-hand side produces %d value(s)", #node.decls, nvalues)
+        if #node.decls > #node.exps then
+            checker.typeerror(errors, node.loc, "left-hand side expects %d value(s) but right-hand side produces %d value(s)", #node.decls, #node.exps)
         end
         for _, decl in ipairs(node.decls) do
             declare(decl, st)
@@ -783,7 +789,6 @@ checkexp = util.make_visitor({
                     "function %s called with %d arguments but expects %d.\n%s",
                     fname, nargs, nparams, types.tostring(ftype))
             end
-            assert(#ftype.rettypes == 1)
             node._type = ftype.rettypes[1]
             node._types = ftype.rettypes
         else

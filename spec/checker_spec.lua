@@ -1568,5 +1568,33 @@ describe("Titan typecheck of records", function()
             assert.match("expected integer but found string", err)
         end
     end)
+
+    it("typechecks extra values on right hand side", function()
+        assert_type_check([[
+            function f()
+                local x: float = 10, 20, "foo"
+            end
+        ]])
+    end)
+
+    it("catches too few values on right hand side", function()
+        local code = {[[
+            function f()
+                local x: integer, y: string, z: integer = 20, "foo"
+            end
+        ]],[[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function f()
+                local x: integer, y: string, z: integer = g()
+            end
+        ]]}
+        for _, c in ipairs(code) do
+            local ok, err = run_checker(c)
+            assert.falsy(ok)
+            assert.match("left%-hand side expects 3 value%(s%) but right%-hand side produces 2 value%(s%)", err)
+        end
+    end)
 end)
 
