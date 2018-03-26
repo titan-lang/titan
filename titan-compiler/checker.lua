@@ -100,7 +100,7 @@ typefromnode = util.make_visitor({
         for _, rettype in ipairs(node.rettypes) do
             table.insert(rettypes, typefromnode(rettype, st, errors))
         end
-        return types.Function(ptypes, rettypes)
+        return types.Function(ptypes, rettypes, false)
     end,
 })
 
@@ -356,7 +356,7 @@ checkvar = util.make_visitor({
                         table.insert(params, field.type)
                     end
                     node._decl = typ
-                    node._type = types.Function(params, {typ})
+                    node._type = types.Function(params, {typ}, false)
                 else
                     checker.typeerror(errors, node.loc,
                         "trying to access invalid record member '%s'", node.name)
@@ -739,10 +739,10 @@ checkexp = util.make_visitor({
                 end
                 checkmatch("argument " .. i .. " of call to function '" .. fname .. "'", ptype, atype, errors, node.exp.loc)
             end
-            if nargs ~= nparams then
+            if not (#args == nparams or (ftype.vararg and #args > nparams)) then
                 checker.typeerror(errors, node.loc,
-                    "function %s called with %d arguments but expects %d",
-                    fname, nargs, nparams)
+                    "function %s called with %d arguments but expects %d.\n%s",
+                    fname, nargs, nparams, types.tostring(ftype))
             end
             assert(#ftype.rettypes == 1)
             node._type = ftype.rettypes[1]
@@ -931,7 +931,7 @@ local toplevel_visitor = util.make_visitor({
         for _, rt in ipairs(node.rettypes) do
             table.insert(rettypes, typefromnode(rt, st, errors))
         end
-        node._type = types.Function(ptypes, rettypes)
+        node._type = types.Function(ptypes, rettypes, false)
     end,
 
     ["Ast.TopLevelRecord"] = function(node, st, errors)
