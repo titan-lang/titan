@@ -592,6 +592,13 @@ function cpp.parse_file(filename, fd, ctx)
             output = {},
             current_dir = {}
         }
+        -- if not absolute path
+        if not filename:match("^/") then
+            local found_name, found_fd = find_file(ctx, filename, "system")
+            if found_fd then
+                filename, fd = found_name, found_fd
+            end
+        end
     end
 
     local current_dir = filename:gsub("/[^/]*$", "")
