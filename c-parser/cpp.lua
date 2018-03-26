@@ -18,30 +18,46 @@ end
 ]]
 local function debug() end
 
-local function gcc_default_defines()
-    local pd = io.popen("LANG=C gcc -dM -E - < /dev/null")
-    if not pd then
-        return {}
+local gcc_default_defines
+do
+    local default_defines
+
+    local function shallow_copy(t)
+        local u = {}
+        for k,v in pairs(t) do
+            u[k] = v
+        end
+        return u
     end
-    local blank_ctx = {
-        incdirs = {},
-        defines = {},
-        define_list = {},
-        define_indices = {},
-        ifmode = { true },
-        output = {},
-        current_dir = {},
-    }
-    local ctx = cpp.parse_file("-", pd, blank_ctx)
 
-    ctx.defines["__builtin_va_list"] = { "char", "*" }
-    ctx.defines["__extension__"] = {}
-    ctx.defines["__attribute__"] = { args = { "arg" }, repl = {} }
-    ctx.defines["__restrict"] = { "restrict" }
-    ctx.defines["__inline__"] = { "inline" }
-    ctx.defines["__inline"] = { "inline" }
+    gcc_default_defines = function()
+        if default_defines then
+            return shallow_copy(default_defines)
+        end
 
-    return ctx.defines
+        local pd = io.popen("LANG=C gcc -dM -E - < /dev/null")
+        if not pd then
+            return {}
+        end
+        local blank_ctx = {
+            incdirs = {},
+            defines = {},
+            ifmode = { true },
+            output = {},
+            current_dir = {},
+        }
+        local ctx = cpp.parse_file("-", pd, blank_ctx)
+
+        ctx.defines["__builtin_va_list"] = { "char", "*" }
+        ctx.defines["__extension__"] = {}
+        ctx.defines["__attribute__"] = { args = { "arg" }, repl = {} }
+        ctx.defines["__restrict"] = { "restrict" }
+        ctx.defines["__inline__"] = { "inline" }
+        ctx.defines["__inline"] = { "inline" }
+
+        default_defines = ctx.defines
+        return shallow_copy(ctx.defines)
+    end
 end
 
 local function cpp_include_paths()
