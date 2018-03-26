@@ -539,7 +539,7 @@ macro_expand = function(ctx, tokens, linelist, expr_mode)
             end
         end
         local define = ctx.defines[token]
-        if define then
+        if define and not (define[1] == token and define[2] == nil) then -- not `#define bla bla`
             debug(token, define)
             local repl = define.repl
             if define.args then
