@@ -463,7 +463,7 @@ end
 
 local macro_expand
 
-local function replace_args(ctx, tokens, args)
+local function replace_args(ctx, tokens, args, linelist)
     local i = 1
     local hash_next = false
     local join_next = false
@@ -479,7 +479,7 @@ local function replace_args(ctx, tokens, args)
             join_next = true
             table.remove(tokens, i)
         elseif args[token] then
-            macro_expand(ctx, args[token], nil, false) -- FIXME linelist == nil??
+            macro_expand(ctx, args[token], linelist, false)
             if hash_next then
                 tokens[i] = stringify(args[token])
                 hash_next = false
@@ -535,7 +535,7 @@ macro_expand = function(ctx, tokens, linelist, expr_mode)
                         named_args[define.args[i]] = args[i] or {}
                     end
                     local expansion = array_copy(repl)
-                    replace_args(ctx, expansion, named_args)
+                    replace_args(ctx, expansion, named_args, linelist)
                     local nexpansion = #expansion
                     if nexpansion == 0 then
                         table_remove(tokens, i, (j - i + 1))
