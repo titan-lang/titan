@@ -356,7 +356,7 @@ compoundStatement <- "{" _ blockItem+ "}" _
 blockItem <- declaration
            / statement
 
-expressionStatement <- expression? _ ";" _
+expressionStatement <- expression? ";" _
 
 selectionStatement <- "if" _ "(" _ expression ")" _ statement "else" _ statement
                     / "if" _ "(" _ expression ")" _ statement
@@ -376,8 +376,8 @@ jumpStatement <- "goto" _ IDENTIFIER ";" _
 -- Advanced Language Expression Rules
 -- (which require type names)
 
-postfixExpression <- {| primaryExpression peRec |}
-                   / {| "(" _ {:struct: typeName :} ")" _ "{" _ initializerList ("," _)? "}" _ peRec |}
+postfixExpression <- {| "(" _ {:struct: typeName :} ")" _ "{" _ initializerList ("," _)? "}" _ peRec |}
+                   / {| primaryExpression peRec |}
 
 sizeofOrPostfixExpression <- {| {:op: "sizeof" :} _ "(" _ typeName ")" _ |}
                            / {| {:op: "sizeof" :} _ unaryExpression      |}
@@ -430,8 +430,8 @@ prefixOp <- { "++" } _
 
 unaryOperator <- { [-+~!*&] } _
 
-assignmentExpression <- conditionalExpression
-                      / unaryExpression assignmentOperator assignmentExpression
+assignmentExpression <- unaryExpression assignmentOperator assignmentExpression
+                      / conditionalExpression
 
 assignmentOperator <- "=" _
                     / "*=" _
