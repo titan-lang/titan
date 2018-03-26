@@ -304,7 +304,7 @@ ddRec <- "[" _ {| {:idx: typeQualifier* assignmentExpression?          :} |} "]"
        / "(" _ {:params: {| identifierList?   |} :} ")" _ ddRec
        / ""
 
-pointer <- ({ "*" } _ typeQualifier*)+
+pointer <- {| ({ "*" } _ typeQualifier*)+ |}
 
 parameterTypeList <- parameterList ("," _ { "..." } _)?
 

@@ -57,6 +57,17 @@ equal_declarations = function(t1, t2)
     return true
 end
 
+local function is_modifier(str)
+    return str == "*" or str == "restrict" or str == "const"
+end
+
+local function extract_modifiers(ret_pointer, items)
+    while is_modifier(items[1]) do
+        table.insert(ret_pointer, table.remove(items, 1))
+    end
+end
+
+-- @return ((true, string, array)|(nil, string))
 local function get_name(name_src)
     local ret_pointer = {}
     if name_src == nil then
@@ -64,32 +75,45 @@ local function get_name(name_src)
     end
     local name
     if type(name_src) == "string" then
-        name = name_src
+        if is_modifier(name_src) then
+            table.insert(ret_pointer, name_src)
+        else
+            name = name_src
+        end
     else
-        while name_src[1] do
-            table.insert(ret_pointer, table.remove(name_src, 1))
+        if type(name_src[1]) == "table" then
+            extract_modifiers(ret_pointer, name_src[1])
+        else
+            extract_modifiers(ret_pointer, name_src)
         end
         name = name_src.name
     end
-    if not type(name) == "string" then
-        return nil, "failed finding name: " .. inspect(name_src)
-    end
-    return name, ret_pointer
+    return true, name, ret_pointer
 end
 
 local get_type
+local get_fields
 
-local function get_field(lst, field_src)
+-- Interpret field data from `field_src` and add it to `fields`.
+local function add_to_fields(lst, field_src, fields)
     local name, ret_pointer
     if type(field_src) == "string" then
         name = nil
         field_src = { field_src }
         ret_pointer = {}
+    elseif type(field_src) == "table" and not field_src.ids then
+        assert(field_src.type.type == "union")
+        local subfields = get_fields(lst, field_src.type.fields)
+        for _, subfield in ipairs(subfields) do
+            table.insert(fields, subfield)
+        end
+        return true
     elseif type(field_src) == "table" and field_src.ids.name then
         -- FIXME multiple ids, e.g.: int *x, y, *z;
-        name, ret_pointer = get_name(field_src.ids)
-        if not name then
-            return nil, ret_pointer
+        local ok
+        ok, name, ret_pointer = get_name(field_src.ids)
+        if not ok then
+            return nil, name
         end
     else
         name = nil
@@ -101,23 +125,24 @@ local function get_field(lst, field_src)
         return nil, err
     end
 
-    return {
+    local field = {
         name = name,
         type = typ
     }
+    table.insert(fields, field)
+    return true
 end
 
-local function get_fields(lst, fields_src)
+get_fields = function(lst, fields_src)
     local fields = {}
     if not fields_src[1] then
         fields_src = { fields_src }
     end
     for _, field_src in ipairs(fields_src) do
-        local field, err = get_field(lst, field_src)
-        if not field then
+        local ok, err = add_to_fields(lst, field_src, fields)
+        if not ok then
             return nil, err
         end
-        table.insert(fields, field)
     end
     return fields
 end
@@ -273,6 +298,8 @@ get_type = function(lst, spec, ret_pointer)
             -- skip
         elseif part == "restrict" then
             -- skip
+        elseif part == "inline" then
+            -- skip
         elseif base_types[part] then
             table.insert(typ, part)
         elseif lst[part] and lst[part].type == "typedef" then
@@ -307,14 +334,16 @@ end
 
 local function get_param(lst, param_src)
     local name, ret_pointer
+
     if type(param_src) == "string" then
         name = nil
         param_src = { param_src }
         ret_pointer = {}
-    elseif type(param_src.id) == "table" and param_src.id.name then
-        name, ret_pointer = get_name(param_src.id)
-        if not name then
-            return nil, ret_pointer
+    elseif type(param_src.id) == "table" then
+        local ok
+        ok, name, ret_pointer = get_name(param_src.id)
+        if not ok then
+            return nil, name
         end
     else
         name = nil
@@ -332,6 +361,10 @@ local function get_param(lst, param_src)
     }
 end
 
+local function is_void(param)
+    return #param.type == 1 and param.type[1] == "void"
+end
+
 local function get_params(lst, params_src)
     local params = {}
     local vararg = false
@@ -347,41 +380,45 @@ local function get_params(lst, params_src)
             if not param then
                 return nil, err
             end
-            table.insert(params, param)
+            if not is_void(param) then
+                table.insert(params, param)
+            end
         end
     end
     return params, vararg
 end
 
-local function register_extern(lst, item, spec_set)
-    local name, ret_pointer = get_name(item.ids.decl)
-    if not name then
-        return nil, ret_pointer
+local function register_extern_decl(lst, item)
+    local ok, name, ret_pointer = get_name(item.ids.decl)
+    if not ok then
+        return nil, name
     end
     local ret_type, err = get_type(lst, item.spec, ret_pointer)
     if not ret_type then
         return nil, err
     end
-    local params
-    local vararg = false
+    local typ
     if item.ids.decl.params then
-        params, vararg = get_params(lst, item.ids.decl.params)
+        local params, vararg = get_params(lst, item.ids.decl.params)
         if not params then
             return nil, vararg
         end
+        typ = {
+            type = "function",
+            name = name,
+            ret = {
+                type = ret_type,
+            },
+            params = params,
+            vararg = vararg,
+        }
     else
-        params = {}
+        typ = {
+            type = ret_type,
+            name = name,
+        }
     end
 
-    local typ = {
-        type = "function",
-        name = name,
-        ret = {
-            type = ret_type,
-        },
-        params = params,
-        vararg = vararg,
-    }
     if lst[name] then
         if not equal_declarations(lst[name], typ) then
             return nil, "inconsistent declaration for " .. name .. " - " .. inspect(lst[name]) .. " VERSUS " .. inspect(typ)
@@ -392,14 +429,29 @@ local function register_extern(lst, item, spec_set)
     return true
 end
 
+-- Convert an table produced by an `extern inline` declaration
+-- into one compatible with `register_extern_decl`.
+local function register_extern_function(lst, item)
+    local decl = {
+        spec = item.spec,
+        ids = {
+            decl = {
+                name = item.func.name,
+                params = item.func.params,
+            }
+        }
+    }
+    return register_extern_decl(lst, decl)
+end
+
 local function register_static_function(lst, item)
     return true
 end
 
 local function register_typedef(lst, item)
-    local name, ret_pointer = get_name(item.ids.decl.declarator or item.ids.decl)
-    if not name then
-        return nil, ret_pointer
+    local ok, name, ret_pointer = get_name(item.ids.decl.declarator or item.ids.decl)
+    if not ok then
+        return nil, name
     end
     local def, err = get_type(lst, item.spec, ret_pointer)
     if not def then
@@ -443,8 +495,13 @@ function ctypes.register_types(parsed)
             item.spec = { item.spec }
         end
         local spec_set = util.to_set(item.spec)
-        if spec_set.extern then
-            local ok, err = register_extern(lst, item, spec_set)
+        if spec_set.extern and item.ids then
+            local ok, err = register_extern_decl(lst, item, spec_set)
+            if not ok then
+                return nil, err or "failed extern"
+            end
+        elseif spec_set.extern and item.func then
+            local ok, err = register_extern_function(lst, item)
             if not ok then
                 return nil, err or "failed extern"
             end
@@ -470,7 +527,7 @@ function ctypes.register_types(parsed)
             end
         elseif item.ids.decl.params then
             -- a function declared without extern
-            local ok, err = register_extern(lst, item, spec_set)
+            local ok, err = register_extern_decl(lst, item, spec_set)
             if not ok then
                 return nil, err or "failed extern"
             end
