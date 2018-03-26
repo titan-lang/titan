@@ -1011,10 +1011,11 @@ local toplevel_visitor = util.make_visitor({
             end
             local modtype = types.ForeignModule(name, members)
             node._type = modtype
-            st:add_symbol(node.localname, node)
         else
+            node._type = types.Nil()
             checker.typeerror(errors, node.loc, defines)
         end
+        st:add_symbol(node.localname, node)
     end,
 
     ["Ast.TopLevelVar"] = function(node, st, errors)
