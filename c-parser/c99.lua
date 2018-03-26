@@ -212,7 +212,7 @@ translationUnit <- %s* {| externalDeclaration+ |} "$EOF$"
 externalDeclaration <- functionDefinition
                      / declaration
 
-functionDefinition <- {| {:spec: {| declarationSpecifier+ |} :} {:function: declarator :} {:decls: declaration* :} {:code: compoundStatement :} |}
+functionDefinition <- {| {:spec: {| declarationSpecifier+ |} :} {:func: declarator :} {:decls: declaration* :} {:code: compoundStatement :} |}
 
 --------------------------------------------------------------------------------
 -- Declarations

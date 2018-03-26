@@ -448,7 +448,7 @@ function ctypes.register_types(parsed)
             if not ok then
                 return nil, err or "failed extern"
             end
-        elseif spec_set.static and item["function"] then
+        elseif spec_set.static and item.func then
             local ok, err = register_static_function(lst, item)
             if not ok then
                 return nil, err or "failed static function"
