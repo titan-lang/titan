@@ -124,7 +124,7 @@ function cdefines.register_define(define, lst)
     end
 
     local text = table.concat(def, " ") .. " "
-    local exp, err, rest = c99.match_language_expression_grammar(text)
+    local exp = c99.match_language_expression_grammar(text)
     if not exp then
         -- failed parsing expression
         return

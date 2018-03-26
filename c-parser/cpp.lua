@@ -292,9 +292,9 @@ end
 
 local function parse_expression(tokens)
     local text = table.concat(tokens, " ")
-    local exp, err, rest = c99.match_preprocessing_expression_grammar(text)
+    local exp, err, _, _, fragment = c99.match_preprocessing_expression_grammar(text)
     if not exp then
-        print("Error parsing expression: " .. tostring(err) .. ": " .. rest:sub(1, 20))
+        print("Error parsing expression: " .. tostring(err) .. ": " .. fragment)
     end
     exp = cpp.remove_wrapping_subtables(exp)
     return exp

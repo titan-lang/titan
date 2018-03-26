@@ -31,13 +31,13 @@ local re = require("relabel")
 
 local defs = {}
 
-local util = require("titan-compiler.util")
+local location = require("titan-compiler.location")
 
 c99.tracing = false
 
 defs["trace"] = function(s, i)
     if c99.tracing then
-        local line, col = util.get_line_number(s, i)
+        local line, col = location.get_line_number(s, i)
         print("TRACE", line, col, "[[" ..s:sub(i, i+ 256):gsub("\n.*", "") .. "]]")
     end
     return true
@@ -598,21 +598,31 @@ local language_grammar = re.compile(
     lexical_rules ..
     common_expression_rules, defs)
 
+local function match(grammar, subject)
+    local res, err, pos = grammar:match(subject)
+    if res == nil then
+        local l, c = re.calcline(subject, pos)
+        local fragment = subject:sub(pos, pos+20)
+        return res, err, l, c, fragment
+    end
+    return res
+end
+
 function c99.match_language_grammar(subject)
     typedefs = {}
-    return language_grammar:match(subject)
+    return match(language_grammar, subject)
 end
 
 function c99.match_language_expression_grammar(subject)
-    return language_expression_grammar:match(subject)
+    return match(language_expression_grammar, subject)
 end
 
 function c99.match_preprocessing_grammar(subject)
-    return preprocessing_grammar:match(subject)
+    return match(preprocessing_grammar, subject)
 end
 
 function c99.match_preprocessing_expression_grammar(subject)
-    return preprocessing_expression_grammar:match(subject)
+    return match(preprocessing_expression_grammar, subject)
 end
 
 return c99
