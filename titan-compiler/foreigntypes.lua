@@ -74,7 +74,7 @@ local function convert_typedef(st, ftype)
                 if longs > 0 then
                     error("NYI long double")
                 end
-                ttype = types.Double()
+                ttype = types.Float()
             elseif item == "int" then
                 ttype = types.Integer()
             elseif item == "char" then
