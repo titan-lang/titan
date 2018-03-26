@@ -2,6 +2,7 @@
 local foreigntypes = {}
 
 local types = require "titan-compiler.types"
+local inspect = require "inspect"
 
 local function type_from_name(st, typename)
     for i = #typename, 1, -1 do
@@ -139,8 +140,7 @@ function foreigntypes.convert(st, ftype)
     elseif type(ftype.type) == "table" and ftype.type[1] then
         return type_from_name(st, ftype.type)
     else
-        print("FIXME unconverted " .. types.tostring(ftype))
-        os.exit(1)
+        return nil, "FIXME unconverted " .. inspect(ftype)
     end
 end
 
