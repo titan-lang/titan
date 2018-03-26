@@ -1396,6 +1396,15 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.truthy(ok)
+        code = [[
+            local errno = foreign import "errno.h"
+            function fun(name: string): string
+                return errno.errno
+            end
+        ]]
+         ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected string but found integer", err)
     end)
 
     it("fails on circular module references", function ()
