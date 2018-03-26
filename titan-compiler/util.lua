@@ -54,6 +54,19 @@ function util.to_set(array)
     return set
 end
 
+function util.split_string(str, delim)
+    local result = {}
+    local n = 1
+    local last_pos = 1
+    for part, pos in string.gmatch(str, "(.-)" .. delim .. "()") do
+        result[n] = part
+        n = n + 1
+        last_pos = pos
+    end
+    result[n] = string.sub(str, last_pos)
+    return result
+end
+
 --
 -- Functional
 --

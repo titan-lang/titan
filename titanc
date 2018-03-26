@@ -3,17 +3,15 @@
 local argparse = require 'argparse'
 
 local checker = require 'titan-compiler.checker'
-local coder = require 'titan-compiler.coder'
 local parser = require 'titan-compiler.parser'
-local util = require 'titan-compiler.util'
-local pretty = require 'titan-compiler.pretty'
 local driver = require 'titan-compiler.driver'
 
 local p = argparse('titan', 'Titan compiler')
 p:argument('module', 'Names of the modules to compile.'):args("+")
 p:flag('--print-ast', 'Print the AST.')
-p:option('-l --lua', 'Path to Lua source tree (to find Lua headers, defaults to "lua/src").')
+p:option('-u --lua', 'Path to Lua source tree (to find Lua headers, defaults to "lua/src").')
 p:option('-t --tree', 'Root of the source tree, used for looking for source modules (defaults to ".").')
+p:option('-l --link', 'Comma-separated list of additional libraries to link into module.')
 local args = p:parse()
 
 -- Work like assert, but don't print the stack trace
@@ -43,7 +41,7 @@ end
 if #errors > 0 then exit(table.concat(errors, "\n")) end
 
 for name, mod in pairs(driver.imported) do
-    local ok, err = driver.compile_module(name, mod)
+    local ok, err = driver.compile_module(name, mod, args.link)
     if not ok then table.insert(errors, err) end
 end
 
