@@ -56,6 +56,9 @@ end
 
 defs["store_typedef"] = function(s, i, decl)
     if elem(decl.spec, "typedef") then
+        if not (decl.ids and decl.ids[1] and decl.ids[1].decl) then
+            return false
+        end
         local name = decl.ids[1].decl.name or decl.ids[1].decl.declarator.name
         if name then
             typedefs[name] = true
