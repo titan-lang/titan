@@ -271,7 +271,10 @@ structOrUnionSpecifier <- {| {:type: structOrUnion :} ({:id: IDENTIFIER :})? "{"
 structOrUnion <- { "struct" } _
                / { "union"  } _
 
-structDeclaration <- {| {:type: {| specifierQualifier+ |} :} {:ids: {| structDeclaratorList |} :} |} ";" _
+anonymousUnion <- {| {:type: {| {:type: { "union" } :} _ "{" _ {:fields: {| structDeclaration+ |} :} "}" _ |} :} |} ";" _
+
+structDeclaration <- anonymousUnion
+                   / {| {:type: {| specifierQualifier+ |} :} {:ids: {| structDeclaratorList |} :} |} ";" _
 
 specifierQualifier <- typeSpecifier
                     / typeQualifier
