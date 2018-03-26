@@ -572,8 +572,6 @@ function cpp.parse_file(filename, fd, ctx)
         ctx = {
             incdirs = cpp_include_paths(),
             defines = gcc_default_defines(),
-            define_list = {},
-            define_indices = {},
             ifmode = { true },
             output = {},
             current_dir = {}
@@ -626,14 +624,8 @@ function cpp.parse_file(filename, fd, ctx)
                 local k = tk.id
                 local v = tk.args and tk or tk.repl
                 ctx.defines[k] = v
-                table.insert(ctx.define_list, { name = k, def = v })
-                ctx.define_indices[k] = #ctx.define_list
             elseif tk.directive == "undef" then
                 ctx.defines[tk.id] = nil
-                if ctx.define_indices[tk.id] then
-                    table.remove(ctx.define_list, ctx.define_indices[tk.id])
-                    ctx.define_indices[tk.id] = nil
-                end
             elseif tk.directive == "ifdef" then
                 table.insert(ifmode, (ctx.defines[tk.id] ~= nil))
             elseif tk.directive == "ifndef" then

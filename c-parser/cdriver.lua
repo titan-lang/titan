@@ -25,7 +25,7 @@ function cdriver.process_file(filename)
         return nil, err
     end
 
-    cdefines.register_defines(ffi_types, ctx.define_list)
+    cdefines.register_defines(ffi_types, ctx.defines)
 
     return ffi_types
 end

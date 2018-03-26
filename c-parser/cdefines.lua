@@ -116,9 +116,7 @@ local function get_type_of_exp(exp, lst)
     end
 end
 
-function cdefines.register_define(define, lst)
-    local name = define.name
-    local def = define.def
+function cdefines.register_define(lst, name, def)
     if #def == 0 then
         return nil
     end
@@ -137,9 +135,9 @@ function cdefines.register_define(define, lst)
     end
 end
 
-function cdefines.register_defines(lst, define_list)
-    for _, define in ipairs(define_list) do
-        cdefines.register_define(define, lst)
+function cdefines.register_defines(lst, define_set)
+    for name, def in pairs(define_set) do
+        cdefines.register_define(lst, name, def)
     end
 end
 
