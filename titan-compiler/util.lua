@@ -31,7 +31,7 @@ function util.render(code, substs)
     return (string.gsub(code, "$([%w_]+)", function(k)
         local v = substs[k]
         if not v then
-            error("Internal compiler error: missing template variable " .. k)
+            error("Internal compiler error: missing template variable " .. k .. "\n" .. code)
         end
         return v
     end))
@@ -58,7 +58,7 @@ end
 
 function util.any(f, l)
     for _, elem in ipairs(l) do
-        if f(l) then
+        if f(elem) then
             return true
         end
     end
