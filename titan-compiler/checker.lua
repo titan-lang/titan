@@ -320,15 +320,25 @@ checkstat = util.make_visitor({
 
     ["Ast.StatReturn"] = function(node, st, errors)
         local ftype = st:find_symbol("$function")._type
-        -- TODO: last expression can be call that returns several values
-        if #ftype.rettypes ~= #node.exps then
-            checker.typeerror(errors, node.loc, "returned %d value(s) but function expected %d", #node.exps, #ftype.rettypes)
-        end
-        local tret = ftype.rettypes[1]
         for i, exp in ipairs(node.exps) do
-            checkexp(exp, st, errors, tret)
-            local tret = ftype.rettypes[i]
-            if tret then
+            checkexp(exp, st, errors, ftype.rettypes[i])
+        end
+        local lastexp = node.exps[#node.exps]
+        local nexps = #node.exps
+        local nrets = #ftype.rettypes
+        if lastexp._types and #lastexp._types > 1 then
+            for i = 2, #lastexp._types do
+                if nexps + i - 1 <= nrets then
+                    table.insert(node.exps, ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i]))
+                end
+            end
+        end
+        if #ftype.rettypes > #node.exps then
+            checker.typeerror(errors, node.loc, "returned just %d value(s) but function expected %d", #node.exps, #ftype.rettypes)
+        end
+        for i, tret in ipairs(ftype.rettypes) do
+            local exp = node.exps[i]
+            if exp then
                 exp = trycoerce(exp, tret, errors)
                 node.exps[i] = exp
                 checkmatch("return", tret, exp._type, errors, exp.loc)
