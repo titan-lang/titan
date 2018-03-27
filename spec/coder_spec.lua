@@ -994,6 +994,90 @@ describe("Titan code generator", function()
         ]])
         assert.truthy(ok, err)
     end)
+
+    it("calls function with multiple returns from Lua", function()
+        local code = [[
+            function f(x: integer): (integer, string)
+                return x * 2, "foo"
+            end
+        ]]
+        local ast, err = parse(code)
+        assert.truthy(ast, err)
+        local ok, err = checker.check("test", ast, code, "test.titan")
+        assert.truthy(ok, err)
+        local ok, err = driver.compile("titan_test", ast)
+        assert.truthy(ok, err)
+        local ok, err = call("titan_test", [[
+            local x, y = titan_test.f(2)
+            assert(4 == x)
+            assert('foo' == y)
+            assert(pcall(titan_test.f, 2, 'foo') == false)
+        ]])
+        assert.truthy(ok, err)
+    end)
+
+    it("calls function with multiple returns from Titan declaration", function()
+        local code = [[
+            function f(x: integer): (integer, string)
+                return x * 2, "foo"
+            end
+
+            function g1(): integer
+                local x = f(2)
+                return x
+            end
+
+            function g2(): integer
+                local x = (f(2))
+                return x
+            end
+
+            function g3(): integer
+                return f(2)
+            end
+
+            function g4(): integer
+                return (f(2))
+            end
+
+            function h(): string
+                local x, y = f(2)
+                return y
+            end
+
+            function cf1(x: integer, y: string): integer
+                return x
+            end
+
+            function cf2(x: integer, y: string): string
+                return y
+            end
+
+            function i(): integer
+                return cf1(f(2))
+            end
+
+            function j(): string
+                return cf2(f(2))
+            end
+        ]]
+        local ast, err = parse(code)
+        assert.truthy(ast, err)
+        local ok, err = checker.check("test", ast, code, "test.titan")
+        assert.truthy(ok, err)
+        local ok, err = driver.compile("titan_test", ast)
+        assert.truthy(ok, err)
+        local ok, err = call("titan_test", [[
+            assert(4 == titan_test.g1())
+            assert(4 == titan_test.g2())
+            assert(4 == titan_test.g3())
+            assert(4 == titan_test.g4())
+            assert('foo' == titan_test.h())
+            assert(4 == titan_test.i())
+            assert('foo' == titan_test.j())
+        ]])
+        assert.truthy(ok, err)
+    end)
 end)
 
 

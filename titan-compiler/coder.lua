@@ -620,8 +620,10 @@ local function codecall(ctx, node)
         table.insert(caexps, cexp)
     end
     for i = 2, #node._types do
+        node._extras = node._extras or {}
         local typ = node._types[i]
         local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
+        node._extras[i] = tmpname
         tmpnames[i] = tmpname
         table.insert(castats, ctmp)
         table.insert(caexps, "&" .. tmpname)
@@ -660,27 +662,18 @@ local function codecall(ctx, node)
 end
 
 local function codereturn(ctx, node)
-    local cstats, cexp = codeexp(ctx, node.exps[1])
+    local cs, cexp = codeexp(ctx, node.exps[1])
+    local cstats = { cs }
+    for i = 2, #node.exps do
+        local cs, ce = codeexp(ctx, node.exps[i])
+        table.insert(cstats, cs)
+        table.insert(cstats, "*_outparam_" .. i .. " = " .. ce .. ";")
+    end
     local tmpl
-    if types.is_gc(node.exps[1]._type) then
-        return render([[
-            $CSTATS
-            $CTYPE ret = $CEXP;
-            $SETSLOT
-            L->top = _retslot + 1;
-            luaC_checkGC(L);
-            return ret;
-        ]], {
-            CSTATS = cstats,
-            CEXP = cexp,
-            CTYPE = ctype(node.exps[1]._type),
-            SETSLOT = setslot(node.exps[1]._type, "_retslot", "ret")
-        })
-    elseif ctx.nslots > 0 then
+    if ctx.nslots > 0 then
         tmpl = [[
             $CSTATS
             L->top = _base;
-            luaC_checkGC(L);
             return $CEXP;
         ]]
     else
@@ -690,7 +683,7 @@ local function codereturn(ctx, node)
         ]]
     end
     return render(tmpl, {
-        CSTATS = cstats,
+        CSTATS = table.concat(cstats, "\n"),
         CEXP = cexp,
     })
 end
@@ -704,6 +697,7 @@ end
 function codestat(ctx, node)
     local tag = node._tag
     if tag == "Ast.StatDecl" then
+        local code = {}
         for i = 1, #node.decls do
             local exp = node.exps[i]
             local decl = node.decls[i]
@@ -724,7 +718,7 @@ function codestat(ctx, node)
                         SETSLOT = setslot(typ, decl._slot, decl._cvar),
                     })
                 end
-                return render([[
+                table.insert(code, render([[
                     $CDECL
                     $CSLOT
                     {
@@ -739,17 +733,18 @@ function codestat(ctx, node)
                     CVAR = decl._cvar,
                     CEXP = cexp,
                     CSET = cset
-                })
+                }))
             else
-                return render([[
+                table.insert(code, render([[
                     $CSTATS
                     ((void)$CEXP);
                 ]], {
                     CSTATS = cstats,
                     CEXP = cexp
-                })
+                }))
             end
         end
+        return table.concat(code, "\n")
     elseif tag == "Ast.StatBlock" then
         return codeblock(ctx, node)
     elseif tag == "Ast.StatWhile" then
@@ -1071,11 +1066,13 @@ function codeexp(ctx, node, iscondition, target)
     elseif tag == "Ast.ExpVar" then
         return codeexp(ctx, node.var, iscondition)
     elseif tag == "Ast.ExpUnop" then
-            return codeunaryop(ctx, node, iscondition)
+        return codeunaryop(ctx, node, iscondition)
     elseif tag == "Ast.ExpBinop" then
-            return codebinaryop(ctx, node, iscondition)
+        return codebinaryop(ctx, node, iscondition)
     elseif tag == "Ast.ExpCall" then
         return codecall(ctx, node, target)
+    elseif tag == "Ast.ExpExtra" then
+        return "", node.exp._extras[node.index]
     elseif tag == "Ast.ExpCast" and node.exp._tag == "Ast.ExpVar" and node.exp.var._tag == "Ast.VarBracket" then
         local t = node.exp.var._type
         node.exp.var._type = node.target
@@ -1226,7 +1223,7 @@ function codeexp(ctx, node, iscondition, target)
         })
         return code, tmpname
     elseif tag == "Ast.ExpAdjust" then
-        codeexp(ctx, node.exp, iscondition, target)
+        return codeexp(ctx, node.exp, iscondition, target)
     else
         error("invalid node tag " .. tag)
     end
@@ -1238,17 +1235,15 @@ end
 --     native type. Garbage-collectable arguments also need
 --     to be pushed to the Lua stack by the *caller*. The
 --     function returns its first return value directly.
---     If it is a gc-able value it must also be pushed to
---     the Lua stack, and must be the only value pushed
---     to the Lua stack when the function returns.
+--     Other return values go in out parameters, following
+--     the in parameters. Gc-able return values *do not*
+--     need to be pushed by the callee, as it is assumed
+--     that the caller is going to push them if needed and
+--     just returning from a function does not call GC
 local function codefuncdec(tlcontext, node)
     local ctx = newcontext(tlcontext)
     local stats = {}
-    assert(#node._type.rettypes == 1)
     local rettype = node._type.rettypes[1]
-    if types.is_gc(rettype) then
-        newslot(ctx, "_retslot");
-    end
     local cparams = { "lua_State *L" }
     for i, param in ipairs(node.params) do
         param._cvar = "_param_" .. param.name
@@ -1258,10 +1253,15 @@ local function codefuncdec(tlcontext, node)
         end
         table.insert(cparams, ctype(param._type) .. " " .. param._cvar)
     end
+    for i = 2, #node._type.rettypes do
+        local outtype = node._type.rettypes[i]
+        table.insert(cparams, ctype(outtype) .. " *" .. "_outparam_" .. i)
+    end
     local body = codestat(ctx, node.block)
     local nslots = ctx.nslots
     if nslots > 0 then
         table.insert(stats, 1, render([[
+        luaC_checkGC(L);
         /* function preamble: reserve needed stack space */
         if (L->stack_last - L->top > $NSLOTS) {
             if (L->ci->top < L->top + $NSLOTS) L->ci->top = L->top + $NSLOTS;
@@ -1277,17 +1277,11 @@ local function codefuncdec(tlcontext, node)
             NSLOTS = c_integer_literal(nslots),
         }))
     end
-    if types.is_gc(rettype) then
-        table.insert(stats, [[
-        /* reserve slot for return value */
-        TValue *_retslot = _base;]])
-    end
     table.insert(stats, body)
     if rettype._tag == "Type.Nil" then
         if nslots > 0 then
             table.insert(stats, [[
             L->top = _base;
-            luaC_checkGC(L);
             return 0;]])
         else
             table.insert(stats, "        return 0;")
@@ -1320,16 +1314,38 @@ local function codefuncdec(tlcontext, node)
         table.insert(stats, checkandget(param._type, param._cvar,
             "(func+ " .. i .. ")", node.loc.line))
     end
+    for i = 2, #node._type.rettypes do
+        local ptype = node._type.rettypes[i]
+        local pname = "_outparam_" .. i
+        table.insert(pnames, "&" .. pname)
+        table.insert(stats, ctype(ptype) .. " " .. pname .. " = " .. initval(ptype) .. ";")
+    end
     table.insert(stats, render([[
+        lua_checkstack(L, $NRET);
+        TValue *_firstret = L->top;
+        L->top += $NRET;
         $TYPE res = $NAME($PARAMS);
-        $SETSLOT
-        api_incr_top(L);
-        return 1;
+        $SETSLOT;
+        _firstret++;
     ]], {
         TYPE = ctype(rettype),
         NAME = tlcontext.prefix .. node.name .. '_titan',
         PARAMS = table.concat(pnames, ", "),
-        SETSLOT = setslot(rettype, "L->top", "res"),
+        SETSLOT = setslot(rettype, "_firstret", "res"),
+        NRET = #node._type.rettypes
+    }))
+    for i = 2, #node._type.rettypes do
+        table.insert(stats, render([[
+            $SETSLOT;
+            _firstret++;
+        ]], {
+            SETSLOT = setslot(node._type.rettypes[i], "_firstret", "_outparam_" .. i)
+        }))
+    end
+    table.insert(stats, render([[
+        return $NRET;
+    ]], {
+        NRET = #node._type.rettypes
     }))
     node._luabody = render([[
     static int $LUANAME(lua_State *L) {
