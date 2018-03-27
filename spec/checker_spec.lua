@@ -520,18 +520,17 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("returned 1 value%(s%) but function expected 2", err)
+        assert.match("returned just 1 value%(s%) but function expected 2", err)
     end)
 
-    it("checks returning more values than function expects", function()
+    it("typechecks returning more values than function expects", function()
         local code = [[
             function fn(): (integer, string)
                 return 20, "foo", true
             end
         ]]
         local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("returned 3 value%(s%) but function expected 2", err)
+        assert.truthy(ok)
     end)
 
     it("checks that returned values correctly match signature", function()
