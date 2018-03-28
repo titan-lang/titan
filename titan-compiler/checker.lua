@@ -520,6 +520,15 @@ checkexp = util.make_visitor({
             table.insert(etypes, exp._type)
             isarray = isarray and not field.name
         end
+        local lastfield = node.fields[#node.fields]
+        if lastfield and not lastfield.name and lastfield.exp._types and #lastfield.exp._types > 1 then
+            for i = 2, #lastfield.exp._types do
+                table.insert(node.fields,
+                    ast.Field(lastfield.loc, nil,
+                        ast.ExpExtra(lastfield.loc, lastfield.exp,
+                            i, lastfield.exp._types[i])))
+            end
+        end
         if isarray then
             local etype = econtext or etypes[1] or types.Integer()
             node._type = types.Array(etype)

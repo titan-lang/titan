@@ -279,6 +279,37 @@ describe("Titan type checker", function()
         assert.truthy(ok, err)
     end)
 
+    it("typechecks multiple return values in array initialization", function ()
+        local code = [[
+            function f(): (integer, integer)
+                return 10, 20
+            end
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function fn()
+                local arr: {integer} = { 10, g(), 30, f() }
+                local arr: {integer} = { 10, g(), 30, (g()) }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok, err)
+    end)
+
+    it("catches wrong type in multiple return values for array initialization", function ()
+        local code = [[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function fn()
+                local arr: {integer} = { 10, g() }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected integer but found string", err)
+    end)
+
     it("catches named init list assigned to an array", function()
         local code = [[
             function fn(x: integer)
