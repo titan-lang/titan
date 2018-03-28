@@ -232,6 +232,8 @@ end
 --   returns whether statement always returns from its function (always false for repeat/until)
 checkstat = util.make_visitor({
     ["Ast.StatDecl"] = function(node, st, errors)
+        local nlastexp = #node.exps
+        local lastexp = node.exps[nlastexp]
         for i = 1, #node.exps do
             local decl = node.decls[i]
             local exp = node.exps[i]
@@ -250,8 +252,6 @@ checkstat = util.make_visitor({
                     decl._type, exp._type, errors, decl.loc)
             end
         end
-        local nlastexp = #node.exps
-        local lastexp = node.exps[nlastexp]
         if lastexp._types then -- multiple return values
             for i = 2, #lastexp._types do
                 local decl = node.decls[nlastexp + i - 1]
@@ -295,24 +295,43 @@ checkstat = util.make_visitor({
     end,
 
     ["Ast.StatAssign"] = function(node, st, errors)
-        local var = node.vars[1]
-        local exp = node.exps[1]
-        checkvar(var, st, errors)
-        checkexp(exp, st, errors, var._type)
-        local texp = var._type
-        if texp._tag == "Type.Module" then
-            checker.typeerror(errors, var.loc, "trying to assign to a module")
-        elseif texp._tag == "Type.Function" then
-            checker.typeerror(errors, var.loc, "trying to assign to a function")
-        else
-            -- mark this declared variable as assigned to
-            if var._tag == "Ast.VarName" and var._decl then
-                var._decl._assigned = true
+        for _, var in ipairs(node.vars) do
+            checkvar(var, st, errors)
+        end
+        for i, exp in ipairs(node.exps) do
+            checkexp(exp, st, errors, node.vars[i] and node.vars[i]._type)
+        end
+        local nexps = #node.exps
+        local lastexp = node.exps[nexps]
+        if lastexp._types and #lastexp._types > 1 then
+            for i = 2, #lastexp._types do
+                if nexps + i - 1 <= #node.vars then
+                    table.insert(node.exps, ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i]))
+                end
             end
-            exp = trycoerce(exp, var._type, errors)
-            node.exps[1] = exp
-            if var._tag ~= "Ast.VarBracket" or exp._type._tag ~= "Type.Nil" then
-                checkmatch("assignment", var._type, exp._type, errors, var.loc)
+        end
+        if #node.vars > #node.exps then
+            checker.typeerror(errors, node.loc, "left-hand side expects %d value(s) but right-hand side produces %d value(s)", #node.vars, #node.exps)
+        end
+        for i, exp in ipairs(node.exps) do
+            local var = node.vars[i]
+            if var then
+                local texp = var._type
+                if texp._tag == "Type.Module" then
+                    checker.typeerror(errors, var.loc, "trying to assign to a module")
+                elseif texp._tag == "Type.Function" then
+                    checker.typeerror(errors, var.loc, "trying to assign to a function")
+                else
+                    -- mark this declared variable as assigned to
+                    if var._tag == "Ast.VarName" and var._decl then
+                        var._decl._assigned = true
+                    end
+                    exp = trycoerce(exp, var._type, errors)
+                    node.exps[i] = exp
+                    if var._tag ~= "Ast.VarBracket" or exp._type._tag ~= "Type.Nil" then
+                        checkmatch("assignment", var._type, exp._type, errors, var.loc)
+                    end
+                end
             end
         end
     end,
