@@ -290,8 +290,8 @@ local grammar = re.compile([[
                            DO^DoFor block END^EndFor)            -> StatFor
                      / (P  LOCAL decllist^DeclLocal ASSIGN^AssignLocal
                                  explist^ExpLocal)                   -> StatDecl
-                     / (P  var ASSIGN^AssignAssign
-                               exp^ExpAssign)                    -> StatAssign
+                     / (P  varlist ASSIGN^AssignAssign
+                               explist^ExpAssign)                    -> StatAssign
                      / &(exp ASSIGN) %{ExpAssign}
                      / (P  (suffixedexp => exp_is_call))         -> StatCall
                      / &exp %{ExpStat}
@@ -361,6 +361,8 @@ local grammar = re.compile([[
 
     var             <- (suffixedexp => exp_is_var)               -> exp2var
                      / (P  NAME !expsuffix)                      -> name_exp -> exp2var
+
+    varlist         <- {| var (COMMA var^ExpVarList)* |}            -- produces {Var}
 
     funcargs        <- (LPAREN (explist? -> listopt) RPAREN^RParFuncArgs)      -- produces {Exp}
                      / {| initlist |}                            -- produces {Exp}

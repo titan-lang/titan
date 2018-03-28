@@ -508,28 +508,30 @@ local function codefor(ctx, node)
 end
 
 local function codeassignment(ctx, node)
+    local var = node.vars[1]
+    local exp = node.exps[1]
     -- has to generate different code if lvar is just a variable
     -- or an array indexing.
-    local vtag = node.var._tag
-    if vtag == "Ast.VarName" or (vtag == "Ast.VarDot" and node.var._decl) then
-        if vtag == "Ast.VarDot" or (node.var._decl._tag == "Ast.TopLevelVar" and not node.var._decl.islocal) then
-            local cstats, cexp = codeexp(ctx, node.exp)
+    local vtag = var._tag
+    if vtag == "Ast.VarName" or (vtag == "Ast.VarDot" and var._decl) then
+        if vtag == "Ast.VarDot" or (var._decl._tag == "Ast.TopLevelVar" and not var._decl.islocal) then
+            local cstats, cexp = codeexp(ctx, exp)
             return render([[
                 $CSTATS
                 $SETSLOT
             ]], {
                 CSTATS = cstats,
-                SETSLOT = setslot(node.var._type, node.var._decl._slot, cexp)
+                SETSLOT = setslot(var._type, var._decl._slot, cexp)
             })
         else
-            local cstats, cexp = codeexp(ctx, node.exp, false, node.var._decl)
+            local cstats, cexp = codeexp(ctx, exp, false, var._decl)
             local cset = ""
-            if types.is_gc(node.var._type) then
+            if types.is_gc(var._type) then
                 cset = render([[
                     /* update slot */
                     $SETSLOT
                 ]], {
-                    SETSLOT = setslot(node.var._type, node.var._decl._slot, node.var._decl._cvar)
+                    SETSLOT = setslot(var._type, var._decl._slot, var._decl._cvar)
                 })
             end
             return render([[
@@ -540,18 +542,18 @@ local function codeassignment(ctx, node)
                 }
             ]], {
                 CSTATS = cstats,
-                CVAR = node.var._decl._cvar,
+                CVAR = var._decl._cvar,
                 CEXP = cexp,
                 CSET = cset,
             })
         end
     elseif vtag == "Ast.VarBracket" then
-        local arr = node.var.exp1
-        local idx = node.var.exp2
-        local etype = node.exp._type
+        local arr = var.exp1
+        local idx = var.exp2
+        local etype = exp._type
         local castats, caexp = codeexp(ctx, arr)
         local cistats, ciexp = codeexp(ctx, idx)
-        local cstats, cexp = codeexp(ctx, node.exp)
+        local cstats, cexp = codeexp(ctx, exp)
         local cset
         if types.is_gc(arr._type.elem) then
             -- write barrier
