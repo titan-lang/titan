@@ -30,7 +30,7 @@ return typedecl("Ast", {
         StatRepeat      = {"loc", "block", "condition"},
         StatIf          = {"loc", "thens", "elsestat"},
         StatFor         = {"loc", "decl", "start", "finish", "inc", "block"},
-        StatAssign      = {"loc", "var", "exp"},
+        StatAssign      = {"loc", "vars", "exps"},
         StatDecl        = {"loc", "decls", "exps"},
         StatCall        = {"loc", "callexp"},
         StatReturn      = {"loc", "exps"},

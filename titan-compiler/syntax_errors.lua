@@ -153,6 +153,8 @@ local errors = {
 
     ExpExpList = "Expected an expression after ','.",
 
+    ExpVarList = "Expected a destination for an assignment after ','.",
+
     RCurlyInitList = "Expected '{' to match '}'.",
 
     ExpFieldList = "Expected an expression after ',' or ';'.",
@@ -165,6 +167,6 @@ local errors = {
 
 }
 
-syntax_errors.errors = errors 
+syntax_errors.errors = errors
 
 return syntax_errors

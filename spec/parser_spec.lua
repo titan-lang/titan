@@ -93,7 +93,7 @@ end
 local function assert_expression_ast(code, expected_ast)
     local program_str = expression_test_program(code)
     local program_ast = assert_parses_successfuly(program_str)
-    local ast = program_ast[1].block.stats[1].exp
+    local ast = program_ast[1].block.stats[1].exps[1]
     assert_is_subset(expected_ast, ast)
 end
 
@@ -395,8 +395,8 @@ describe("Titan parser", function()
                         decls = {{ name = "x" }},
                         exps = {{ value = 10 }} },
                     { _tag = "Ast.StatAssign",
-                        var = { name = "x" },
-                        exp = { value = 11 } },
+                        vars = {{ name = "x" }},
+                        exps = {{ value = 11 }} },
                     { _tag = "Ast.StatCall",
                         callexp = { _tag = "Ast.ExpCall" } } } },
         })
@@ -437,8 +437,8 @@ describe("Titan parser", function()
               block = {
                 stats = {
                   { _tag = "Ast.StatAssign",
-                    exp = { var = { _tag = "Ast.VarName", name = "i" } },
-                    var = { _tag = "Ast.VarName", name = "x" } } } },
+                    exps = {{ var = { _tag = "Ast.VarName", name = "i" }} },
+                    vars = {{ _tag = "Ast.VarName", name = "x" }} } } },
               decl = { _tag = "Ast.Decl", name = "i", type = false },
               finish = { _tag = "Ast.ExpInteger", value = 2 },
               inc =    { _tag = "Ast.ExpInteger", value = 3 },
@@ -644,18 +644,36 @@ describe("Titan parser", function()
         })
     end)
 
+    it("can parse multiple assignment", function ()
+        assert_statements_ast([[
+            x, foo.bar, z[2] = 20, 30, "foo"
+        ]],{ {
+            vars = {
+                { name = "x" },
+                { _tag = "Ast.VarDot" },
+                { _tag = "Ast.VarBracket" }
+            }
+        }})
+    end)
+
+    it("expects lvalue after comma in lhs of assignment", function()
+        assert_statements_syntax_error([[
+            x, = 20
+        ]], "ExpVarList")
+    end)
+
     it("can parse references to module members", function ()
         assert_statements_ast([[
             foo.bar = 50
             print(foo.bar)
             foo.write(a, b, c)
         ]], {
-            { var = {
+            { vars = {{
                 _tag = "Ast.VarDot",
                 exp = { _tag = "Ast.ExpVar",
                   var = { _tag = "Ast.VarName", name = "foo" }
                 },
-                name = "bar" } },
+                name = "bar" }} },
             { callexp = { args = { args = { { var = {
                 _tag = "Ast.VarDot",
                 exp = { _tag = "Ast.ExpVar",

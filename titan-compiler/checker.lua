@@ -295,21 +295,24 @@ checkstat = util.make_visitor({
     end,
 
     ["Ast.StatAssign"] = function(node, st, errors)
-        checkvar(node.var, st, errors)
-        checkexp(node.exp, st, errors, node.var._type)
-        local texp = node.var._type
+        local var = node.vars[1]
+        local exp = node.exps[1]
+        checkvar(var, st, errors)
+        checkexp(exp, st, errors, var._type)
+        local texp = var._type
         if texp._tag == "Type.Module" then
-            checker.typeerror(errors, node.loc, "trying to assign to a module")
+            checker.typeerror(errors, var.loc, "trying to assign to a module")
         elseif texp._tag == "Type.Function" then
-            checker.typeerror(errors, node.loc, "trying to assign to a function")
+            checker.typeerror(errors, var.loc, "trying to assign to a function")
         else
             -- mark this declared variable as assigned to
-            if node.var._tag == "Ast.VarName" and node.var._decl then
-                node.var._decl._assigned = true
+            if var._tag == "Ast.VarName" and var._decl then
+                var._decl._assigned = true
             end
-            node.exp = trycoerce(node.exp, node.var._type, errors)
-            if node.var._tag ~= "Ast.VarBracket" or node.exp._type._tag ~= "Type.Nil" then
-                checkmatch("assignment", node.var._type, node.exp._type, errors, node.var.loc)
+            exp = trycoerce(exp, var._type, errors)
+            node.exps[1] = exp
+            if var._tag ~= "Ast.VarBracket" or exp._type._tag ~= "Type.Nil" then
+                checkmatch("assignment", var._type, exp._type, errors, var.loc)
             end
         end
     end,
