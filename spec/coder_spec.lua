@@ -1078,6 +1078,38 @@ describe("Titan code generator", function()
         ]])
         assert.truthy(ok, err)
     end)
+
+    it("handles multiple return values in array initialization", function ()
+        local code = [[
+            function f(): (integer, integer)
+                return 40, 50
+            end
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function fn(): {integer}
+                local arr: {integer} = { 10, g(), 30, f() }
+                return arr
+            end
+        ]]
+        local ast, err = parse(code)
+        assert.truthy(ast, err)
+        local ok, err = checker.check("test", ast, code, "test.titan")
+        assert.truthy(ok, err)
+        local ok, err = driver.compile("titan_test", ast)
+        assert.truthy(ok, err)
+        local ok, err = call("titan_test", [[
+            local arr = titan_test.fn()
+            assert(5 == #arr)
+            assert(10 == arr[1])
+            assert(20 == arr[2])
+            assert(30 == arr[3])
+            assert(40 == arr[4])
+            assert(50 == arr[5])
+        ]])
+        assert.truthy(ok, err)
+    end)
+
 end)
 
 
