@@ -1475,6 +1475,19 @@ describe("Titan type checker", function()
         assert_type_check([[
             function f()
                 local x: float = 10, 20, "foo"
+                x = 10, 20, "foo"
+            end
+        ]])
+    end)
+
+    it("typechecks multiple declarations and assignment", function()
+        assert_type_check([[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function f()
+                local x: float, y: integer, z: string = 10, g()
+                x = 10, g()
             end
         ]])
     end)
@@ -1503,6 +1516,23 @@ describe("Titan type checker", function()
             end
             function f()
                 local x: integer, y: string, z: integer = g()
+            end
+        ]],[[
+            function f()
+                local x: integer = 0
+                local y: string = ""
+                local z: integer = 0
+                x, y, z = 20, "foo"
+            end
+        ]],[[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function f()
+                local x: integer = 0
+                local y: string = ""
+                local z: integer = 0
+                x, y, z = g()
             end
         ]]}
         for _, c in ipairs(code) do
