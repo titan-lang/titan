@@ -1023,7 +1023,7 @@ describe("Titan code generator", function()
             end
 
             function g1(): integer
-                local x = f(2)
+                local x, _ = f(2)
                 return x
             end
 
@@ -1033,7 +1033,7 @@ describe("Titan code generator", function()
             end
 
             function g3(): integer
-                return f(2)
+                return (f(2))
             end
 
             function g4(): integer
@@ -1064,7 +1064,7 @@ describe("Titan code generator", function()
         local ast, err = parse(code)
         assert.truthy(ast, err)
         local ok, err = checker.check("test", ast, code, "test.titan")
-        assert.truthy(ok, err)
+        assert.equal(0, #err, table.concat(err, "\n"))
         local ok, err = driver.compile("titan_test", ast)
         assert.truthy(ok, err)
         local ok, err = call("titan_test", [[
