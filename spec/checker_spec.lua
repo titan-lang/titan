@@ -568,17 +568,18 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("returned just 1 value%(s%) but function expected 2", err)
+        assert.match("returned 1 value%(s%) but function expected 2", err)
     end)
 
-    it("typechecks returning more values than function expects", function()
+    it("checks returning more values than function expects", function()
         local code = [[
             function fn(): (integer, string)
                 return 20, "foo", true
             end
         ]]
         local ok, err = run_checker(code)
-        assert.truthy(ok)
+        assert.falsy(ok)
+        assert.match("returned 3 value%(s%) but function expected 2", err)
     end)
 
     it("checks that returned values correctly match signature", function()
@@ -1519,8 +1520,8 @@ describe("Titan type checker", function()
         end
     end)
 
-    it("typechecks extra values on right hand side", function()
-        assert_type_check([[
+    it("checks extra values on right hand side", function()
+        assert_type_error("left%-hand side expects 1 value%(s%) but right%-hand side produces 3 value%(s%)", [[
             function f()
                 local x: float = 10, 20, "foo"
                 x = 10, 20, "foo"
@@ -1528,14 +1529,26 @@ describe("Titan type checker", function()
         ]])
     end)
 
-    it("typechecks multiple declarations and assignment", function()
+    it("checks multiple declarations and assignment", function()
         assert_type_check([[
             function g(): (integer, string)
                 return 20, "foo"
             end
             function f()
                 local x: float, y: integer, z: string = 10, g()
-                x = 10, g()
+                x, y, z = 10, g()
+            end
+        ]])
+    end)
+
+    it("checks that lhs and rhs arities match on declaration and assignment", function()
+        assert_type_error("left%-hand side expects 2 value%(s%) but right%-hand side produces 3 value%(s%)", [[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function f()
+                local x: float, y: integer = 10, g()
+                x, y = 10, g()
             end
         ]])
     end)
