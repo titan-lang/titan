@@ -310,6 +310,23 @@ describe("Titan type checker", function()
         assert.match("expected integer but found string", err)
     end)
 
+    it("catches wrong type in multiple return values for array initialization", function ()
+        local code = [[
+            function f(x: integer): (integer, string)
+                return x * 2, "foo"
+            end
+
+            function g(): string
+                local x, y = 0, ""
+                x, y = f(2)
+                return x
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected string but found integer", err)
+    end)
+
     it("catches named init list assigned to an array", function()
         local code = [[
             function fn(x: integer)

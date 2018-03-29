@@ -402,7 +402,6 @@ checkvar = util.make_visitor({
                 "variable '%s' not declared", node.name)
             node._type = types.Invalid()
         else
-            decl._used = true
             node._decl = decl
             node._type = decl._type
         end
@@ -545,6 +544,7 @@ checkexp = util.make_visitor({
 
     ["Ast.ExpVar"] = function(node, st, errors, context)
         checkvar(node.var, st, errors, context)
+        if node.var._decl then node.var._decl._used = true end
         local texp = node.var._type
         if texp._tag == "Type.Module" then
             checker.typeerror(errors, node.loc,
