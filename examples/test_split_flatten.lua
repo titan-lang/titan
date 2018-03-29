@@ -1,4 +1,4 @@
-local titan = require "artisanal"
+local titan = require "examples.utils"
 
 local t = {}
 
