@@ -104,17 +104,17 @@ end
 
 function driver.compile_module(modname, mod)
     if mod.compiled then return true end
-    local ok, err = driver.compile(modname, mod.ast)
+    local ok, err = driver.compile(modname, mod.ast, mod.filename)
     if not ok then return nil, err end
     mod.compiled = true
     return true
 end
 
-function driver.compile(modname, ast)
+function driver.compile(modname, ast, sourcef)
     local code = coder.generate(modname, ast)
     code = pretty.reindent_c(code)
-    local filename = modname .. ".c"
-    local soname = modname .. ".so"
+    local filename = sourcef:gsub("[.]titan$", "") .. ".c"
+    local soname = sourcef:gsub("[.]titan$", "") .. ".so"
     os.remove(filename)
     os.remove(soname)
     local ok, err = util.set_file_contents(filename, code)

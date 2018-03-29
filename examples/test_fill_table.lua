@@ -1,4 +1,4 @@
-local mod = require "artisanal"
+local mod = require "examples.artisanal"
 
 local f = mod.filltable
 

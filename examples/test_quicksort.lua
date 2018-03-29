@@ -1,6 +1,6 @@
 local N    = arg[1] and tonumber(arg[1]) or 5000
 
-local sort = require("artisanal").qsort
+local sort = require("examples.artisanal").qsort
 
 local function make_input(N)
     local xs = {}
