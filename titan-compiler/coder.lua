@@ -507,62 +507,36 @@ local function codefor(ctx, node)
     })
 end
 
-local function codesingleassignment(ctx, node)
-    local var = node.vars[1]
-    local exp = node.exps[1]
-    -- has to generate different code if lvar is just a variable
-    -- or an array indexing.
+local function codeassignment(ctx, var, cexp, etype)
     local vtag = var._tag
     if vtag == "Ast.VarName" or (vtag == "Ast.VarDot" and var._decl) then
         if vtag == "Ast.VarDot" or (var._decl._tag == "Ast.TopLevelVar" and not var._decl.islocal) then
-            local cstats, cexp = codeexp(ctx, exp)
-            return render([[
-                $CSTATS
-                $SETSLOT
-            ]], {
-                CSTATS = cstats,
-                SETSLOT = setslot(var._type, var._decl._slot, cexp)
-            })
+            return setslot(var._type, var._decl._slot, cexp)
         elseif var._decl._used then
-            local cstats, cexp = codeexp(ctx, exp, false, var._decl)
             local cset = ""
             if types.is_gc(var._type) then
-                cset = render([[
-                    /* update slot */
-                    $SETSLOT
-                ]], {
-                    SETSLOT = setslot(var._type, var._decl._slot, var._decl._cvar)
-                })
+                cset = setslot(var._type, var._decl._slot, var._decl._cvar)
             end
             return render([[
-                {
-                    $CSTATS
-                    $CVAR = $CEXP;
-                    $CSET
-                }
+                $CVAR = $CEXP;
+                $CSET
             ]], {
-                CSTATS = cstats,
                 CVAR = var._decl._cvar,
                 CEXP = cexp,
                 CSET = cset,
             })
         else
-            local cstats, cexp = codeexp(ctx, exp)
             return render([[
-                $CSTATS
                 ((void)$CEXP);
             ]], {
-                CSTATS = cstats,
                 CEXP = cexp,
             })
         end
     elseif vtag == "Ast.VarBracket" then
         local arr = var.exp1
         local idx = var.exp2
-        local etype = exp._type
         local castats, caexp = codeexp(ctx, arr)
         local cistats, ciexp = codeexp(ctx, idx)
-        local cstats, cexp = codeexp(ctx, exp)
         local cset
         if types.is_gc(arr._type.elem) then
             -- write barrier
@@ -581,7 +555,6 @@ local function codesingleassignment(ctx, node)
             {
                 $CASTATS
                 $CISTATS
-                $CSTATS
                 Table *_t = $CAEXP;
                 lua_Integer _k = $CIEXP;
                 unsigned int _actual_i = l_castS2U(_k) - 1;
@@ -606,7 +579,6 @@ local function codesingleassignment(ctx, node)
         ]], {
             CASTATS = castats,
             CISTATS = cistats,
-            CSTATS = cstats,
             CAEXP = caexp,
             CIEXP = ciexp,
             CSET = cset
@@ -616,17 +588,24 @@ local function codesingleassignment(ctx, node)
     end
 end
 
-local function codemultipleassignment(ctx, node)
+local function codesingleassignment(ctx, node)
+    local var = node.vars[1]
+    local exp = node.exps[1]
+    local cstats, cexp = codeexp(ctx, exp, false, var._decl)
+    return cstats .. "\n" .. codeassignment(ctx, var, cexp, exp._type)
+end
+
+local function codemultiassignment(ctx, node)
     local stats = {}
     local tmps = {}
     for i, exp in ipairs(node.exps) do
         local var = node.vars[i]
         local vtag = var and var._tag
-        if var and (vtag ~= "Ast.VarName" or var._decl._used) then
+        if var then
             local typ = exp._type
             local ctmp, tmpname = newtmp(ctx, typ)
             tmps[i] = tmpname
-            local cstats, cexp = codeexp(ctx, exp, false, tmpname)
+            local cstats, cexp = codeexp(ctx, exp)
             table.insert(stats, render([[
                 $CTMP
                 $CSTATS
@@ -637,93 +616,10 @@ local function codemultipleassignment(ctx, node)
                 TMPNAME = tmpname,
                 CEXP = cexp
             }))
-        else
-            local cstats, cexp = codeexp(ctx, exp)
-            table.insert(stats, render([[
-                $CSTATS
-                ((void)$CEXP);
-            ]], {
-                CSTATS = cstats,
-                CEXP = cexp
-            }))
         end
     end
     for i, var in ipairs(node.vars) do
-        -- has to generate different code if lvar is just a variable
-        -- or an array indexing.
-        local vtag = var._tag
-        if vtag == "Ast.VarName" or (vtag == "Ast.VarDot" and var._decl) then
-            if vtag == "Ast.VarDot" or (var._decl._tag == "Ast.TopLevelVar" and not var._decl.islocal) then
-                table.insert(stats, setslot(var._type, var._decl._slot, tmps[i]))
-            elseif var._decl._used then
-                local cset = ""
-                if types.is_gc(var._type) then
-                    cset = setslot(var._type, var._decl._slot, var._decl._cvar)
-                end
-                table.insert(stats, render([[
-                    $CVAR = $CEXP;
-                    $CSET
-                ]], {
-                    CVAR = var._decl._cvar,
-                    CEXP = tmps[i],
-                    CSET = cset,
-                }))
-            end
-        elseif vtag == "Ast.VarBracket" then
-            local arr = var.exp1
-            local idx = var.exp2
-            local etype = node.exps[i]._type
-            local castats, caexp = codeexp(ctx, arr)
-            local cistats, ciexp = codeexp(ctx, idx)
-            local cset
-            if types.is_gc(arr._type.elem) then
-                -- write barrier
-                cset = render([[
-                    TValue _vv;
-                    $SETSLOT
-                    setobj2t(L, _slot, &_vv);
-                    luaC_barrierback(L, _t, &_vv);
-                ]], {
-                    SETSLOT = setslot(etype, "&_vv", tmps[i])
-                })
-            else
-                cset = setslot(etype, "_slot", tmps[i])
-            end
-            table.insert(stats, render([[
-                {
-                    $CASTATS
-                    $CISTATS
-                    Table *_t = $CAEXP;
-                    lua_Integer _k = $CIEXP;
-                    unsigned int _actual_i = l_castS2U(_k) - 1;
-                    unsigned int _asize = _t->sizearray;
-                    TValue *_slot;
-                    if (_actual_i < _asize) {
-                        _slot = &_t->array[_actual_i];
-                    } else if (_actual_i < 2*_asize) {
-                        unsigned int _hsize = sizenode(_t);
-                        luaH_resize(L, _t, 2*_asize, _hsize);
-                        _slot = &_t->array[_actual_i];
-                    } else {
-                        _slot = (TValue *)luaH_getint(_t, _k);
-                        TValue _vk; setivalue(&_vk, _k);
-                        if (_slot == luaO_nilobject) {
-                            /* create new entry if no previous one */
-                            _slot = luaH_newkey(L, _t, &_vk);
-                        }
-                    }
-                    $CSET
-                }
-            ]], {
-                CASTATS = castats,
-                CISTATS = cistats,
-                CAEXP = caexp,
-                CIEXP = ciexp,
-                CSET = cset
-            }))
-        else
-            error("invalid tag for lvalue of assignment: " .. vtag)
-        end
+        if tmps[i] then table.insert(stats, codeassignment(ctx, var, tmps[i], node.exps[i]._type)) end
     end
     return table.concat(stats, "\n")
 end
@@ -844,11 +740,9 @@ function codestat(ctx, node)
                 table.insert(code, render([[
                     $CDECL
                     $CSLOT
-                    {
-                        $CSTATS
-                        $CVAR = $CEXP;
-                        $CSET
-                    }
+                    $CSTATS
+                    $CVAR = $CEXP;
+                    $CSET
                 ]], {
                     CDECL = cdecl,
                     CSLOT = cslot,
@@ -882,7 +776,7 @@ function codestat(ctx, node)
         if #node.vars == 1 then
             return codesingleassignment(ctx, node)
         else
-            return codemultipleassignment(ctx, node)
+            return codemultiassignment(ctx, node)
         end
     elseif tag == "Ast.StatCall" then
       local cstats, cexp = codecall(ctx, node.callexp)
