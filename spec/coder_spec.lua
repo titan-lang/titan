@@ -1110,6 +1110,113 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    it("handles multiple assignment", function()
+        local code = [[
+            function f(x: integer): (integer, string)
+                return x * 2, "foo"
+            end
+
+            function m1(): integer
+                local x, y = 0, ""
+                x, y = f(2)
+                return x
+            end
+
+            function m2(): string
+                local x, y = 0, ""
+                x, y = f(2)
+                return y
+            end
+
+            function m3(): integer
+                local x, y = 0, ""
+                x, y = 4, "foo"
+                return x
+            end
+
+            function m4(): string
+                local x, y = 0, ""
+                x, y = 4, "foo"
+                return y
+            end
+
+            function m5(): integer
+                local x: {integer} = {}
+                x[1], x[2] = 4, 2
+                return x[1]
+            end
+
+            function m6(): integer
+                local x: {integer} = {}
+                x[1], x[2] = 2, 4
+                return x[2]
+            end
+
+            function m7(): string
+                local x: {string} = {}
+                x[1], x[2] = "foo", ""
+                return x[1]
+            end
+
+            function m8(): string
+                local x: {string} = {}
+                x[1], x[2] = "", "foo"
+                return x[2]
+            end
+
+            function m9(): integer
+                local x, y = 2, 4
+                x, y = y, x
+                return x
+            end
+
+            function m10(): string
+                local x, y = "bar", "foo"
+                x, y = y, x
+                return x
+            end
+        ]]
+        local ast, err = parse(code)
+        assert.truthy(ast, err)
+        local ok, err = checker.check("test", ast, code, "test.titan")
+        assert.equal(0, #err)
+        local ok, err = driver.compile("titan_test", ast)
+        assert.truthy(ok, err)
+        local ok, err = call("titan_test", [[
+            assert(4 == titan_test.m1())
+            assert(4 == titan_test.m3())
+            assert(4 == titan_test.m5())
+            assert(4 == titan_test.m6())
+            assert(4 == titan_test.m9())
+            assert('foo' == titan_test.m2())
+            assert('foo' == titan_test.m4())
+            assert('foo' == titan_test.m7())
+            assert('foo' == titan_test.m8())
+            assert('foo' == titan_test.m10())
+        ]])
+        assert.truthy(ok, err)
+    end)
+
+    it("correctly uses module variable in multiple assignment", function ()
+        local modules = {
+            foo = [[
+                a: integer = 1
+            ]],
+            bar = [[
+                local foo = import "foo"
+                function bar(): integer
+                    local x = 0
+                    x, foo.a = 2, 5
+                    return foo.a
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "bar")
+        assert.truthy(ok, err)
+        local ok, err = call("bar", "assert(bar.bar() == 5); assert((require 'foo').a == 5)")
+        assert.truthy(ok, err)
+    end)
+
 end)
 
 
