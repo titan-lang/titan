@@ -255,21 +255,21 @@ checkstat = util.make_visitor({
         if lastexp._types then -- multiple return values
             for i = 2, #lastexp._types do
                 local decl = node.decls[nlastexp + i - 1]
+                local exp = ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i])
                 if decl then
-                    local exp = ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i])
                     if decl.type then
                         checkdecl(decl, st, errors)
                         exp = trycoerce(exp, decl._type, errors)
                     else
                         decl._type = exp._type
                     end
-                    table.insert(node.exps, exp)
                     checkmatch("declaration of local variable " .. decl.name,
                         decl._type, exp._type, errors, decl.loc)
                 end
+                table.insert(node.exps, exp)
             end
         end
-        if #node.decls > #node.exps then
+        if #node.decls ~= #node.exps then
             checker.typeerror(errors, node.loc, "left-hand side expects %d value(s) but right-hand side produces %d value(s)", #node.decls, #node.exps)
         end
         for _, decl in ipairs(node.decls) do
@@ -305,12 +305,10 @@ checkstat = util.make_visitor({
         local lastexp = node.exps[nexps]
         if lastexp._types and #lastexp._types > 1 then
             for i = 2, #lastexp._types do
-                if nexps + i - 1 <= #node.vars then
-                    table.insert(node.exps, ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i]))
-                end
+                table.insert(node.exps, ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i]))
             end
         end
-        if #node.vars > #node.exps then
+        if #node.vars ~= #node.exps then
             checker.typeerror(errors, node.loc, "left-hand side expects %d value(s) but right-hand side produces %d value(s)", #node.vars, #node.exps)
         end
         for i, exp in ipairs(node.exps) do
@@ -346,17 +344,13 @@ checkstat = util.make_visitor({
             checkexp(exp, st, errors, ftype.rettypes[i])
         end
         local lastexp = node.exps[#node.exps]
-        local nexps = #node.exps
-        local nrets = #ftype.rettypes
         if lastexp._types and #lastexp._types > 1 then
             for i = 2, #lastexp._types do
-                if nexps + i - 1 <= nrets then
-                    table.insert(node.exps, ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i]))
-                end
+                table.insert(node.exps, ast.ExpExtra(lastexp.loc, lastexp, i, lastexp._types[i]))
             end
         end
-        if #ftype.rettypes > #node.exps then
-            checker.typeerror(errors, node.loc, "returned just %d value(s) but function expected %d", #node.exps, #ftype.rettypes)
+        if #ftype.rettypes ~= #node.exps then
+            checker.typeerror(errors, node.loc, "returned %d value(s) but function expected %d", #node.exps, #ftype.rettypes)
         end
         for i, tret in ipairs(ftype.rettypes) do
             local exp = node.exps[i]
@@ -402,7 +396,6 @@ checkvar = util.make_visitor({
                 "variable '%s' not declared", node.name)
             node._type = types.Invalid()
         else
-            decl._used = true
             node._decl = decl
             node._type = decl._type
         end
@@ -545,6 +538,7 @@ checkexp = util.make_visitor({
 
     ["Ast.ExpVar"] = function(node, st, errors, context)
         checkvar(node.var, st, errors, context)
+        if node.var._decl then node.var._decl._used = true end
         local texp = node.var._type
         if texp._tag == "Type.Module" then
             checker.typeerror(errors, node.loc,
