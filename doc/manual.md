@@ -47,12 +47,44 @@ dynamically-typed Lua function from Titan, Titan will check whether the Lua
 function returned the correct types and number of arguments and it will raise a
 run-time error if it does not receive what it expected.
 
-#### Limitations
+#### Rules for function arity
 
-In the current version of Titan, Titan functions can only return a single return
-value and a run-time error is produced if a Lua function called from Titan returns
-more than one return value. A future of version of Titan will implement multiple
-return values for functions.
+Arity rules for calling functions are strict: if you call a Titan function with
+too many or too few arguments, you will get a compile-time error.
+
+Likewise, rules for the return value arity are strict: if you call `return`
+with too many or too few arguments, you will get a compile-time error.
+
+A function that returns multiple values returns an expression list; this 
+expression list can be used in multiple-assignment, as long as their arities
+match. For a function that returns multiple results, you can force the arity
+of the result to 1 by wrapping the call in parentheses: `(f())` produces
+a single value.
+
+```
+function divmod(a: integer, b: integer): (integer, integer)
+    return a // b, a % b
+end
+
+local x, y = divmod(13, 2) -- ok
+local x = divmod(13, 2) -- error
+local x, _ = divmod(13, 2) -- ok
+local x, y, z = divmod(13, 2) -- error
+local x, _ = divmod(13) -- error
+local x, _ = divmod(13, 2, 9) -- error
+
+function too_many(a: integer, b: integer): integer
+    return divmod(a, b) -- error, too many return values
+end
+
+function just_div(a: integer, b: integer): integer
+    return (divmod(a, b)) -- ok, arity of divmod is adjusted to 1
+end
+
+function too_few(a: integer, b: integer): (integer, integer, integer)
+    return divmod(a, b) -- error, too many return values
+end
+```
 
 ### Records
 
