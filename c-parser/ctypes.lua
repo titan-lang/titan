@@ -183,30 +183,23 @@ local function get_structunion(lst, spec)
     return typ, key
 end
 
+local function get_enum_items(values)
+    local items = {}
+    for _, v in ipairs(values) do
+        -- TODO store enum actual values
+        table.insert(items, { name = v.id })
+    end
+    return items
+end
+
 local function get_enum(lst, spec)
     local name = spec.id
     local key = spec.type .. "@"..(name or tostring(spec))
---
---    if not lst[key] then
---        -- "Forward declaration" for recursive structs
---        lst[key] = {
---            type = spec.type,
---            name = name,
---        }
---    end
-
-    local fields, err
-    if spec.fields then
-        fields, err = get_fields(lst, spec.fields)
-        if not fields then
-            return nil, err
-        end
-    end
 
     local typ = {
         type = spec.type,
         name = name,
-        fields = fields,
+        values = get_enum_items(spec.values),
     }
 
     if lst[key] then
@@ -215,6 +208,10 @@ local function get_enum(lst, spec)
         end
     end
     add_type(lst, key, typ)
+
+    for _, value in ipairs(typ.values) do
+        add_type(lst, value.name, typ)
+    end
 
     return typ, key
 end
@@ -474,15 +471,11 @@ local function register_typedef(lst, item)
 end
 
 local function register_structunion(lst, item)
-    local typ, key = get_structunion(lst, item.spec)
-    if not typ then
-        return nil, key
-    end
-    return true
+    return get_structunion(lst, item.spec)
 end
 
 local function register_enum(lst, item)
-    return true
+    return get_enum(lst, item.spec)
 end
 
 function ctypes.register_types(parsed)
