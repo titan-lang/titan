@@ -732,4 +732,14 @@ function cpp.parse_file(filename, fd, ctx)
     return ctx
 end
 
+function cpp.expand_macro(macro, define_set)
+    local ctx = setmetatable({
+        defines = define_set,
+    }, { __index = error, __newindex = error })
+    local tokens = { macro }
+    local linelist = { { nr = 1, line = macro } }
+    macro_expand(ctx, tokens, linelist, false)
+    return table.concat(tokens, " ")
+end
+
 return cpp
