@@ -479,6 +479,21 @@ end
 
 local macro_expand
 
+
+local function mark_noloop(noloop, token, n)
+    noloop[token] = math.max(noloop[token] or 0, n)
+end
+
+local function shift_noloop(noloop, n)
+    for token, v in pairs(noloop) do
+        noloop[token] = v + n
+    end
+end
+
+local function valid_noloop(noloop, token, n)
+    return noloop[token] == nil or noloop[token] < n
+end
+
 local function replace_args(ctx, tokens, args, linelist)
     local i = 1
     local hash_next = false
@@ -522,6 +537,7 @@ end
 
 macro_expand = function(ctx, tokens, linelist, expr_mode)
     local i = 1
+    local noloop = {}
     while true do
         ::continue::
         debug(i, tokens)
@@ -539,7 +555,7 @@ macro_expand = function(ctx, tokens, linelist, expr_mode)
             end
         end
         local define = ctx.defines[token]
-        if define and not (define[1] == token and define[2] == nil) then -- not `#define bla bla`
+        if define and valid_noloop(noloop, token, i) then
             debug(token, define)
             local repl = define.repl
             if define.args then
@@ -553,11 +569,14 @@ macro_expand = function(ctx, tokens, linelist, expr_mode)
                     local expansion = array_copy(repl)
                     replace_args(ctx, expansion, named_args, linelist)
                     local nexpansion = #expansion
+                    local n = j - i + 1
                     if nexpansion == 0 then
-                        table_remove(tokens, i, (j - i + 1))
+                        table_remove(tokens, i, n)
                     else
-                        table_replace_n_with(tokens, i, (j - i + 1), expansion)
+                        table_replace_n_with(tokens, i, n, expansion)
                     end
+                    shift_noloop(noloop, nexpansion - n)
+                    --mark_noloop(noloop, token, i + nexpansion - 1)
                 else
                     i = i + 1
                 end
@@ -565,10 +584,14 @@ macro_expand = function(ctx, tokens, linelist, expr_mode)
                 local ndefine = #define
                 if ndefine == 0 then
                     table.remove(tokens, i)
+                    shift_noloop(noloop, -1)
                 elseif ndefine == 1 then
                     tokens[i] = define[1]
+                    mark_noloop(noloop, token, i)
+                    noloop[token] = math.max(noloop[token] or 0, i)
                 else
                     table_replace_n_with(tokens, i, 1, define)
+                    mark_noloop(noloop, token, i + ndefine - 1)
                 end
             end
         else
