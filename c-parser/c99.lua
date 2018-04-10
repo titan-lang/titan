@@ -138,8 +138,8 @@ hexConstant <- ("0x" / "0X") hexDigit+
 digit <- [0-9]
 hexDigit <- [0-9a-fA-F]
 
-integerSuffix <- unsignedSuffix longSuffix?
-               / unsignedSuffix longLongSuffix
+integerSuffix <- unsignedSuffix longLongSuffix
+               / unsignedSuffix longSuffix?
                / longLongSuffix unsignedSuffix?
                / longSuffix unsignedSuffix?
 
@@ -281,7 +281,8 @@ specifierQualifier <- typeSpecifier
 
 structDeclaratorList <- structDeclarator ("," _ structDeclarator)*
 
-structDeclarator <- declarator (":" _ constantExpression)?
+structDeclarator <- declarator? ":" _ constantExpression
+                  / declarator
 
 enumSpecifier <- {| {:type: enum :} ({:id: IDENTIFIER :})? "{" _ {:values: {| enumeratorList |} :} ("," _)? "}" _ |}
                / {| {:type: enum :}  {:id: IDENTIFIER :}                                                          |}
@@ -406,8 +407,8 @@ constant <- ( FLOATING_CONSTANT
             / enumerationConstant
             )
 
-primaryExpression <- IDENTIFIER
-                   / constant
+primaryExpression <- constant
+                   / IDENTIFIER
                    / STRING_LITERAL+
                    / "(" _ expression ")" _
 
@@ -504,18 +505,18 @@ defineArgs <- { "..." }
 
 replacementList <- {| (preprocessingToken _)* |}
 
-preprocessingToken <- IDENTIFIER
-                    / preprocessingNumber
+preprocessingToken <- preprocessingNumber
                     / CHARACTER_CONSTANT
                     / STRING_LITERAL
                     / punctuator
+                    / IDENTIFIER
 
 headerName <- {| {:mode: "<" -> "system" :} { (![%nl>] .)+ } ">" |}
             / {| {:mode: '"' -> "quote" :} { (![%nl"] .)+ } '"' |}
 
 preprocessingNumber <- { ("."? digit) ( digit
-                                      / identifierNondigit
                                       / [eEpP] [-+]
+                                      / identifierNondigit
                                       / "."
                                       )* }
 
