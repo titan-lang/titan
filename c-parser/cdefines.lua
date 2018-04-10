@@ -116,20 +116,15 @@ local function get_type_of_exp(exp, lst)
     end
 end
 
-function cdefines.register_define(lst, name, def)
-    if #def == 0 then
-        return nil
-    end
-
-    local text = table.concat(def, " ") .. " "
-    local exp = c99.match_language_expression_grammar(text)
+function cdefines.register_define(lst, name, text, define_set)
+    local exp, err, line, col = c99.match_language_expression_grammar(text .. " ")
     if not exp then
         -- failed parsing expression
+        -- print(("failed parsing: %d:%d: %s\n"):format(line, col, text))
         return
     end
     exp = cpp.remove_wrapping_subtables(exp)
-
-    local typ = get_type_of_exp(exp, lst, name)
+    local typ = get_type_of_exp(exp, lst, name, define_set)
     if typ then
         add_type(lst, name, { type = typ })
     end
@@ -137,7 +132,12 @@ end
 
 function cdefines.register_defines(lst, define_set)
     for name, def in pairs(define_set) do
-        cdefines.register_define(lst, name, def)
+        if #def == 0 then
+            goto continue
+        end
+        local text = cpp.expand_macro(name, define_set)
+        cdefines.register_define(lst, name, text, define_set)
+        ::continue::
     end
 end
 
