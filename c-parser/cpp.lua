@@ -6,6 +6,7 @@ local c99 = require("c-parser.c99")
 local SEP = package.config:sub(1,1)
 
 --[[
+local inspect = require("inspect")
 local function debug(...)
     local args = { ... }
     for i, arg in ipairs(args) do
@@ -15,8 +16,23 @@ local function debug(...)
     end
     print(table.unpack(args))
 end
-]]
+
+local function is_sequence(xs)
+   if type(xs) ~= "table" then
+      return false
+   end
+   local l = #xs
+   for k, _ in pairs(xs) do
+      if type(k) ~= "number" or k < 1 or k > l or math.floor(k) ~= k then
+         return false
+      end
+   end
+   return true
+end
+--]]
+---[[
 local function debug() end
+--]]
 
 local gcc_default_defines
 do
@@ -445,22 +461,10 @@ local function table_remove(list, pos, n)
     table.move(list, pos + n, #list + n, pos)
 end
 
-local function is_sequence(list)
-    local i = 0
-    for _,_ in ipairs(list) do
-        i = i + 1
-    end
-    local p = 0
-    for _,_ in pairs(list) do
-        p = p + 1
-    end
-    return i == p
-end
-
 local function table_replace_n_with(list, at, n, values)
     local old = #list
     debug("TRNW?", list, "AT", at, "N", n, "VALUES", values)
-    assert(is_sequence(list))
+    --assert(is_sequence(list))
     local nvalues = #values
     local nils = n >= nvalues and (n - nvalues + 1) or 0
     if n ~= nvalues then
@@ -468,7 +472,7 @@ local function table_replace_n_with(list, at, n, values)
     end
     debug("....", list)
     table.move(values, 1, nvalues, at, list)
-    assert(is_sequence(list))
+    --assert(is_sequence(list))
     debug("TRNW!", list)
     assert(#list == old - n + #values)
 end
@@ -649,13 +653,11 @@ function cpp.parse_file(filename, fd, ctx)
 
     local ifmode = ctx.ifmode
     for i, lineitem in ipairs(linelist) do
-        -- local linenr = lineitem.nr
         local line = lineitem.line
         local tk = lineitem.tk
         linelist.cur = i
 
         debug(filename, ifmode[#ifmode], #ifmode, line)
-
         if #ifmode == 1 and (tk.directive == "elif" or tk.directive == "else" or tk.directive == "endif") then
             return nil, "unexpected directive " .. tk.directive
         end
