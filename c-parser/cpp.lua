@@ -5,6 +5,27 @@ local c99 = require("c-parser.c99")
 
 local SEP = package.config:sub(1,1)
 
+local shl, shr
+if jit then
+    shl = function(a, b)
+        return bit.lshift(a, b)
+    end
+    shr = function(a, b)
+        return bit.rshift(a, b)
+    end
+else
+    shl, shr = load([[
+        local function shl(a, b)
+            return a << b
+        end
+        local function shr(a, b)
+            return a >> b
+        end
+        return shl, shr
+    ]])()
+end
+
+local function debug() end
 --[[
 local inspect = require("inspect")
 local function debug(...)
@@ -332,68 +353,70 @@ local function parse_expression(tokens)
     return exp
 end
 
-local eval_exp
-
-local function eval_val(ctx, val)
-    if type(val) == "table" then
-        if     val.op == "+" then return eval_val(ctx, val[1]) + eval_val(ctx, val[2])
-        elseif val.op == "-" then return eval_val(ctx, val[1]) - eval_val(ctx, val[2])
-        elseif val.op == "*" then return eval_val(ctx, val[1]) * eval_val(ctx, val[2])
-        elseif val.op == "/" then return eval_val(ctx, val[1]) / eval_val(ctx, val[2])
-        elseif val.op == ">>" then return eval_val(ctx, val[1]) >> eval_val(ctx, val[2]) -- FIXME C semantics
-        elseif val.op == "<<" then return eval_val(ctx, val[1]) << eval_val(ctx, val[2]) -- FIXME C semantics
-        elseif val.op == "?" then
-            if eval_exp(ctx, val[1]) then
-                return eval_val(ctx, val[2])
-            else
-                return eval_val(ctx, val[3])
-            end
-        else
-            error("unimplemented operator " .. tostring(val.op))
-        end
-    else
-        local defined = ctx.defines[val]
-        if singleton(defined) and defined[1] ~= val then
-            return eval_val(ctx, defined[1])
-        end
-        return tonumber(val) or 0 -- TODO long numbers etc
-    end
-end
-
-eval_exp = function(ctx, exp)
+local function eval_exp(ctx, exp)
     debug(exp)
-    if exp.op == "&&" then
+    if type(exp) == "string" then
+        local defined = ctx.defines[exp]
+        if singleton(defined) and defined[1] ~= exp then
+            return eval_exp(ctx, defined[1])
+        end
+        exp = exp:gsub("U*L*$", "")
+        if exp:sub(1,2) == "0[xX]" then
+            return tonumber(exp, 16) or 1
+        elseif exp:sub(1,1) == "0" then
+            return tonumber(exp, 8) or 1
+        else
+            return tonumber(exp) or 1
+        end
+    end
+
+    assert(type(exp) == "table", "unexpected type: " .. type(exp))
+
+    if exp.op == "+"  then
+        if exp[2] then
+            return eval_exp(ctx, exp[1]) + eval_exp(ctx, exp[2])
+        else
+            return eval_exp(ctx, exp.exp)
+        end
+    elseif exp.op == "-"  then
+        if exp[2] then
+            return eval_exp(ctx, exp[1]) - eval_exp(ctx, exp[2])
+        else
+            return -(eval_exp(ctx, exp.exp))
+        end
+    elseif exp.op == "*"  then return eval_exp(ctx, exp[1]) * eval_exp(ctx, exp[2])
+    elseif exp.op == "/"  then return eval_exp(ctx, exp[1]) / eval_exp(ctx, exp[2])
+    elseif exp.op == ">>" then return shr(eval_exp(ctx, exp[1]), eval_exp(ctx, exp[2])) -- FIXME C semantics
+    elseif exp.op == "<<" then return shl(eval_exp(ctx, exp[1]), eval_exp(ctx, exp[2])) -- FIXME C semantics
+    elseif exp.op == "==" then return (eval_exp(ctx, exp[1]) == eval_exp(ctx, exp[2])) and 1 or 0
+    elseif exp.op == "!=" then return (eval_exp(ctx, exp[1]) ~= eval_exp(ctx, exp[2])) and 1 or 0
+    elseif exp.op == ">=" then return (eval_exp(ctx, exp[1]) >= eval_exp(ctx, exp[2])) and 1 or 0
+    elseif exp.op == "<=" then return (eval_exp(ctx, exp[1]) <= eval_exp(ctx, exp[2])) and 1 or 0
+    elseif exp.op == ">"  then return (eval_exp(ctx, exp[1]) > eval_exp(ctx, exp[2])) and 1 or 0
+    elseif exp.op == "<"  then return (eval_exp(ctx, exp[1]) < eval_exp(ctx, exp[2])) and 1 or 0
+    elseif exp.op == "!"  then return (eval_exp(ctx, exp.exp) == 1) and 0 or 1
+    elseif exp.op == "&&" then
         for _, e in ipairs(exp) do
-            if not eval_exp(ctx, e) then
-                return false
+            if eval_exp(ctx, e) == 0 then
+                return 0
             end
         end
-        return true
+        return 1
     elseif exp.op == "||" then
         for _, e in ipairs(exp) do
-            if eval_exp(ctx, e) then
-                return true
+            if eval_exp(ctx, e) ~= 0 then
+                return 1
             end
         end
-        return false
-    elseif exp.op == "!" then
-        return not eval_exp(ctx, exp.exp)
-    elseif exp.op == "==" then
-        return eval_val(ctx, exp[1]) == eval_val(ctx, exp[2])
-    elseif exp.op == "!=" then
-        return eval_val(ctx, exp[1]) ~= eval_val(ctx, exp[2])
-    elseif exp.op == ">=" then
-        return eval_val(ctx, exp[1]) >= eval_val(ctx, exp[2])
-    elseif exp.op == "<=" then
-        return eval_val(ctx, exp[1]) <= eval_val(ctx, exp[2])
-    elseif exp.op == ">" then
-        return eval_val(ctx, exp[1]) > eval_val(ctx, exp[2])
-    elseif exp.op == "<" then
-        return eval_val(ctx, exp[1]) < eval_val(ctx, exp[2])
+        return 0
+    elseif exp.op == "?" then
+        if eval_exp(ctx, exp[1]) ~= 0 then
+            return eval_exp(ctx, exp[2])
+        else
+            return eval_exp(ctx, exp[3])
+        end
     elseif exp.op == "defined" then
-        return ctx.defines[exp.exp] ~= nil
-    elseif type(exp) == "string" then
-        return eval_val(ctx, exp) ~= 0
+        return (ctx.defines[exp.exp] ~= nil) and 1 or 0
     else
         error("unimplemented operator " .. tostring(exp.op))
     end
@@ -607,7 +630,7 @@ end
 local function run_expression(ctx, tks, linelist)
     macro_expand(ctx, tks, linelist, true)
     local exp = parse_expression(tks)
-    return eval_exp(ctx, exp)
+    return eval_exp(ctx, exp) ~= 0
 end
 
 function cpp.parse_file(filename, fd, ctx)
@@ -686,6 +709,8 @@ function cpp.parse_file(filename, fd, ctx)
                 ifmode[#ifmode] = not ifmode[#ifmode]
             elseif tk.directive == "endif" then
                 table.remove(ifmode, #ifmode)
+            elseif tk.directive == "error" or tk.directive == "pragma" then
+                -- ignore
             elseif tk.directive == "include" or tk.directive == "include_next" then
                 local name = tk.exp[1]
                 local mode = tk.exp.mode
@@ -711,7 +736,7 @@ function cpp.parse_file(filename, fd, ctx)
             elseif tk.directive == "else" then
                 ifmode[#ifmode] = not ifmode[#ifmode]
             elseif tk.directive == "elif" then
-                ifmode[#ifmode] = run_expression(ctx, tk.exp)
+                ifmode[#ifmode] = run_expression(ctx, tk.exp, linelist)
             elseif tk.directive == "endif" then
                 table.remove(ifmode, #ifmode)
             end

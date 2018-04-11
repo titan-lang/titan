@@ -71,7 +71,7 @@ end
 local function get_name(name_src)
     local ret_pointer = {}
     if name_src == nil then
-        return nil, "could not find a name: " .. inspect(name_src)
+        return false, "could not find a name: " .. inspect(name_src), nil
     end
     local name
     if type(name_src) == "string" then
@@ -81,6 +81,7 @@ local function get_name(name_src)
             name = name_src
         end
     else
+        name_src = name_src.declarator or name_src
         if type(name_src[1]) == "table" then
             extract_modifiers(ret_pointer, name_src[1])
         else
@@ -113,7 +114,7 @@ local function add_to_fields(lst, field_src, fields)
         local ok
         ok, name, ret_pointer = get_name(field_src.ids)
         if not ok then
-            return nil, name
+            return false, name
         end
     else
         name = nil
@@ -122,7 +123,7 @@ local function add_to_fields(lst, field_src, fields)
 
     local typ, err = get_type(lst, field_src, ret_pointer)
     if not typ then
-        return nil, err
+        return false, err
     end
 
     local field = {
@@ -141,49 +142,13 @@ get_fields = function(lst, fields_src)
     for _, field_src in ipairs(fields_src) do
         local ok, err = add_to_fields(lst, field_src, fields)
         if not ok then
-            return nil, err
+            return false, err
         end
     end
     return fields
 end
 
-local function get_structunion(lst, spec)
-    local name = spec.id
-    local key = spec.type .. "@"..(name or tostring(spec))
-
-    if not lst[key] then
-        -- "Forward declaration" for recursive structs
-        lst[key] = {
-            type = spec.type,
-            name = name,
-        }
-    end
-
-    local fields, err
-    if spec.fields then
-        fields, err = get_fields(lst, spec.fields)
-        if not fields then
-            return nil, err
-        end
-    end
-
-    local typ = {
-        type = spec.type,
-        name = name,
-        fields = fields,
-    }
-
-    if lst[key] then
-        if lst[key].fields then
-            return nil, "redeclaration for " .. typ.name
-        end
-    end
-    add_type(lst, key, typ)
-
-    return typ, key
-end
-
-local function get_enum_items(values)
+local function get_enum_items(_, values)
     local items = {}
     for _, v in ipairs(values) do
         -- TODO store enum actual values
@@ -192,27 +157,53 @@ local function get_enum_items(values)
     return items
 end
 
-local function get_enum(lst, spec)
-    local name = spec.id
-    local key = spec.type .. "@"..(name or tostring(spec))
+local function get_composite_type(lst, specid, spectype, parts, partsfield, get_parts)
+    local name = specid
+    local key = spectype .. "@"..(name or tostring(parts))
+
+    if not lst[key] then
+        -- Forward declaration
+        lst[key] = {
+            type = spectype,
+            name = name,
+        }
+    end
+
+    if parts then
+        local err
+        parts, err = get_parts(lst, parts)
+        if not parts then
+            return false, err
+        end
+    end
 
     local typ = {
-        type = spec.type,
+        type = spectype,
         name = name,
-        values = get_enum_items(spec.values),
+        [partsfield] = parts,
     }
 
     if lst[key] then
-        if lst[key].fields then
-            return nil, "redeclaration for " .. typ.name
+        if typ[partsfield] and lst[key][partsfield] then
+            return false, "redeclaration for " .. typ.name
         end
     end
     add_type(lst, key, typ)
 
-    for _, value in ipairs(typ.values) do
-        add_type(lst, value.name, typ)
-    end
+    return typ, key
+end
 
+local function get_structunion(lst, spec)
+    return get_composite_type(lst, spec.id, spec.type, spec.fields, "fields", get_fields)
+end
+
+local function get_enum(lst, spec)
+    local typ, key = get_composite_type(lst, spec.id, spec.type, spec.values, "values", get_enum_items)
+    if typ.values then
+        for _, value in ipairs(typ.values) do
+            add_type(lst, value.name, typ)
+        end
+    end
     return typ, key
 end
 
@@ -385,20 +376,35 @@ local function get_params(lst, params_src)
     return params, vararg
 end
 
-local function register_extern_decl(lst, item)
-    local ok, name, ret_pointer = get_name(item.ids.decl)
-    if not ok then
-        return nil, name
+local register_many = function(register_item_fn, lst, ids, spec)
+    if #ids > 0 then
+        for _, id in ipairs(ids) do
+            local ok, err = register_item_fn(lst, id, spec)
+            if not ok then
+                return false, err
+            end
+        end
+        return true, nil
+    else
+        return register_item_fn(lst, ids, spec)
     end
-    local ret_type, err = get_type(lst, item.spec, ret_pointer)
+end
+
+local register_extern_decl_item = function(lst, id, spec)
+    local ok, name, ret_pointer = get_name(id.decl)
+    if not ok then
+        return false, name
+    end
+    assert(name)
+    local ret_type, err = get_type(lst, spec, ret_pointer)
     if not ret_type then
-        return nil, err
+        return false, err
     end
     local typ
-    if item.ids.decl.params then
-        local params, vararg = get_params(lst, item.ids.decl.params)
+    if id.decl.params then
+        local params, vararg = get_params(lst, id.decl.params)
         if not params then
-            return nil, vararg
+            return false, vararg
         end
         typ = {
             type = "function",
@@ -418,41 +424,42 @@ local function register_extern_decl(lst, item)
 
     if lst[name] then
         if not equal_declarations(lst[name], typ) then
-            return nil, "inconsistent declaration for " .. name .. " - " .. inspect(lst[name]) .. " VERSUS " .. inspect(typ)
+            return false, "inconsistent declaration for " .. name .. " - " .. inspect(lst[name]) .. " VERSUS " .. inspect(typ)
         end
     end
     add_type(lst, name, typ)
 
-    return true
+    return true, nil
+end
+
+local register_extern_decls = function(lst, ids, spec)
+    return register_many(register_extern_decl_item, lst, ids, spec)
 end
 
 -- Convert an table produced by an `extern inline` declaration
 -- into one compatible with `register_extern_decl`.
 local function register_extern_function(lst, item)
-    local decl = {
-        spec = item.spec,
-        ids = {
-            decl = {
-                name = item.func.name,
-                params = item.func.params,
-            }
+    local id = {
+        decl = {
+            name = item.func.name,
+            params = item.func.params,
         }
     }
-    return register_extern_decl(lst, decl)
+    return register_extern_decl_item(lst, id, item.spec)
 end
 
 local function register_static_function(lst, item)
     return true
 end
 
-local function register_typedef(lst, item)
-    local ok, name, ret_pointer = get_name(item.ids.decl.declarator or item.ids.decl)
+local register_typedef_item = function(lst, id, spec)
+    local ok, name, ret_pointer = get_name(id.decl)
     if not ok then
-        return nil, name
+        return false, name
     end
-    local def, err = get_type(lst, item.spec, ret_pointer)
+    local def, err = get_type(lst, spec, ret_pointer)
     if not def then
-        return nil, err
+        return false, err
     end
     local typ = {
         type = "typedef",
@@ -462,12 +469,16 @@ local function register_typedef(lst, item)
 
     if lst[name] then
         if not equal_declarations(lst[name], typ) then
-            return nil, "inconsistent declaration for " .. name .. " - " .. inspect(lst[name]) .. " VERSUS " .. inspect(typ)
+            return false, "inconsistent declaration for " .. name .. " - " .. inspect(lst[name]) .. " VERSUS " .. inspect(typ)
         end
     end
     add_type(lst, name, typ)
 
-    return true
+    return true, nil
+end
+
+local register_typedefs = function(lst, item)
+    return register_many(register_typedef_item, lst, item.ids, item.spec)
 end
 
 local function register_structunion(lst, item)
@@ -489,7 +500,7 @@ function ctypes.register_types(parsed)
         end
         local spec_set = util.to_set(item.spec)
         if spec_set.extern and item.ids then
-            local ok, err = register_extern_decl(lst, item, spec_set)
+            local ok, err = register_extern_decls(lst, item.ids, item.spec)
             if not ok then
                 return nil, err or "failed extern"
             end
@@ -504,7 +515,7 @@ function ctypes.register_types(parsed)
                 return nil, err or "failed static function"
             end
         elseif spec_set.typedef then
-            local ok, err = register_typedef(lst, item)
+            local ok, err = register_typedefs(lst, item)
             if not ok then
                 return nil, err or "failed typedef"
             end
@@ -520,7 +531,7 @@ function ctypes.register_types(parsed)
             end
         elseif item.ids.decl.params then
             -- a function declared without extern
-            local ok, err = register_extern_decl(lst, item, spec_set)
+            local ok, err = register_extern_decls(lst, item.ids, item.spec)
             if not ok then
                 return nil, err or "failed extern"
             end
