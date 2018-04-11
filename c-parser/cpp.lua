@@ -704,7 +704,7 @@ function cpp.parse_file(filename, fd, ctx)
             elseif tk.directive == "if" then
                 table.insert(ifmode, run_expression(ctx, tk.exp, linelist))
             elseif tk.directive == "elif" then
-                ifmode[#ifmode] = run_expression(ctx, tk.exp, linelist)
+                ifmode[#ifmode] = "skip"
             elseif tk.directive == "else" then
                 ifmode[#ifmode] = not ifmode[#ifmode]
             elseif tk.directive == "endif" then
