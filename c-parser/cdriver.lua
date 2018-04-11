@@ -11,7 +11,7 @@ function cdriver.process_file(filename)
         return nil, "failed preprocessing '"..filename.."': " .. err
     end
 
-    local srccode = table.concat(ctx.output, "\n").."$EOF$"
+    local srccode = table.concat(ctx.output, "\n").." $EOF$"
 
     local res, err, line, col = c99.match_language_grammar(srccode)
     if not res then
