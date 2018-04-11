@@ -209,7 +209,7 @@ local language_rules = [[--lpeg.re
 --------------------------------------------------------------------------------
 -- External Definitions
 
-translationUnit <- %s* {| externalDeclaration+ |} "$EOF$"
+translationUnit <- %s* {| externalDeclaration* |} "$EOF$"
 
 externalDeclaration <- functionDefinition
                      / declaration
