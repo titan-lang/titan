@@ -317,8 +317,8 @@ parameterDeclaration <- {| {:param: {| {:type: {| declarationSpecifier+ |} :} {:
 
 typeName <- specifierQualifier+ abstractDeclarator?
 
-abstractDeclarator <- pointer
-                    / pointer? directAbstractDeclarator
+abstractDeclarator <- pointer? directAbstractDeclarator
+                    / pointer
 
 directAbstractDeclarator <- ("(" _ abstractDeclarator ")" _) directAbstractDeclarator2*
                           / directAbstractDeclarator2+
