@@ -78,8 +78,8 @@ local function get_type_of_exp(exp, lst)
 
     if type(exp[1]) == "string" and exp[2] and exp[2].args then
         local fn = lst[exp[1]]
-        if not fn then
-            return nil -- unknown function
+        if not fn or not fn.ret then
+            return nil -- unknown function, or not a function
         end
         local r = fn.ret.type
         return table.move(r, 1, #r, 1, {}) -- shallow_copy(r)
