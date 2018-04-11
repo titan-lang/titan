@@ -88,6 +88,7 @@ do
         ctx.defines["__builtin_va_list"] = { "char", "*" }
         ctx.defines["__extension__"] = {}
         ctx.defines["__attribute__"] = { args = { "arg" }, repl = {} }
+        ctx.defines["__restrict__"] = { "restrict" }
         ctx.defines["__restrict"] = { "restrict" }
         ctx.defines["__inline__"] = { "inline" }
         ctx.defines["__inline"] = { "inline" }
