@@ -1,4 +1,9 @@
 
+-- Compile with:
+--    titanc examples.sdl_demo -lSDL2
+-- Run with:
+--    lua/src/lua -e 'require("examples.sdl_demo").main()'
+
 local stdio = foreign import "stdio.h"
 local SDL = foreign import "SDL2/SDL.h"
 local stdlib = foreign import "stdlib.h"
@@ -33,7 +38,7 @@ function main()
         quit(true, "SDL_CreateRenderer error")
     end
 
-    local bmp = SDL.SDL_LoadBMP_RW(SDL.SDL_RWFromFile("hello.bmp", "rb"), 1)
+    local bmp = SDL.SDL_LoadBMP_RW(SDL.SDL_RWFromFile("examples/hello.bmp", "rb"), 1)
     -- local bmp = SDL.SDL_LoadBMP("hello.bmp")
     if not bmp then
         SDL.SDL_DestroyRenderer(ren)
