@@ -257,7 +257,7 @@ typeSpecifier <- typedefName
                / { "signed"   } _
                / { "unsigned" } _
                / { "_Bool"    } _
-               / { "Complex"  } _
+               / { "_Complex" } _
                / structOrUnionSpecifier
                / enumSpecifier
 

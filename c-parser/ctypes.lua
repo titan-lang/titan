@@ -268,6 +268,7 @@ local base_types = {
     ["void"] = true,
     ["volatile"] = true,
     ["_Bool"] = true,
+    ["_Complex"] = true,
     ["*"] = true,
 }
 
