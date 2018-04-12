@@ -362,12 +362,12 @@ local function eval_exp(ctx, exp)
             return eval_exp(ctx, defined[1])
         end
         exp = exp:gsub("U*L*$", "")
-        if exp:sub(1,2) == "0[xX]" then
-            return tonumber(exp, 16) or 1
+        if exp:match("^0[xX]") then
+            return tonumber(exp) or 0
         elseif exp:sub(1,1) == "0" then
-            return tonumber(exp, 8) or 1
+            return tonumber(exp, 8) or 0
         else
-            return tonumber(exp) or 1
+            return tonumber(exp) or 0
         end
     end
 

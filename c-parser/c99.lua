@@ -329,7 +329,7 @@ directAbstractDeclarator2 <- "[" _ assignmentExpression? "]" _
 typedefName <- IDENTIFIER => is_typedef
 
 initializer <- assignmentExpression
-             / "{" _ initializerList ("," _)? "}" _
+             / {| "{" _ initializerList ("," _)? "}" |} _
 
 initializerList <- initializerList2 ("," _ initializerList2)*
 initializerList2 <- designation? initializer

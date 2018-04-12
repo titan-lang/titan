@@ -67,13 +67,13 @@ local function extract_modifiers(ret_pointer, items)
     end
 end
 
--- @return ((true, string, array)|(nil, string))
 local function get_name(name_src)
     local ret_pointer = {}
     if name_src == nil then
         return false, "could not find a name: " .. inspect(name_src), nil
     end
     local name
+    local indices = {}
     if type(name_src) == "string" then
         if is_modifier(name_src) then
             table.insert(ret_pointer, name_src)
@@ -87,58 +87,74 @@ local function get_name(name_src)
         else
             extract_modifiers(ret_pointer, name_src)
         end
+        for _, part in ipairs(name_src) do
+            if part.idx then
+                table.insert(indices, part.idx)
+            end
+        end
         name = name_src.name
     end
-    return true, name, ret_pointer
+    return true, name, ret_pointer, next(indices) and indices
 end
 
 local get_type
 local get_fields
 
+local convert_value = function (lst, src)
+    local name, ret_pointer, idxs
+    if type(src) == "string" then
+        src = { src }
+        name = nil
+        ret_pointer = {}
+        idxs = nil
+    elseif type(src.id) == "table" or type(src.ids) == "table" then
+        -- FIXME multiple ids, e.g.: int *x, y, *z;
+        local ok
+        ok, name, ret_pointer, idxs = get_name(src.id or src.ids)
+        if not ok then
+            return nil, name
+        end
+    else
+        name = nil
+        ret_pointer = {}
+        idxs = nil
+    end
+
+    local typ, err = get_type(lst, src, ret_pointer)
+    if not typ then
+        return nil, err
+    end
+
+    return {
+        name = name,
+        type = typ,
+        idxs = idxs,
+    }, nil
+end
+
 -- Interpret field data from `field_src` and add it to `fields`.
 local function add_to_fields(lst, field_src, fields)
-    local name, ret_pointer
-    if type(field_src) == "string" then
-        name = nil
-        field_src = { field_src }
-        ret_pointer = {}
-    elseif type(field_src) == "table" and not field_src.ids then
+
+    if type(field_src) == "table" and not field_src.ids then
         assert(field_src.type.type == "union")
         local subfields = get_fields(lst, field_src.type.fields)
         for _, subfield in ipairs(subfields) do
             table.insert(fields, subfield)
         end
         return true
-    elseif type(field_src) == "table" and field_src.ids.name then
-        -- FIXME multiple ids, e.g.: int *x, y, *z;
-        local ok
-        ok, name, ret_pointer = get_name(field_src.ids)
-        if not ok then
-            return false, name
-        end
-    else
-        name = nil
-        ret_pointer = {}
     end
 
-    local typ, err = get_type(lst, field_src, ret_pointer)
-    if not typ then
-        return false, err
+    local field, err = convert_value(lst, field_src)
+    if not field then
+        return nil, err
     end
 
-    local field = {
-        name = name,
-        type = typ
-    }
     table.insert(fields, field)
     return true
 end
 
 get_fields = function(lst, fields_src)
     local fields = {}
-    if not fields_src[1] then
-        fields_src = { fields_src }
-    end
     for _, field_src in ipairs(fields_src) do
         local ok, err = add_to_fields(lst, field_src, fields)
         if not ok then
@@ -157,9 +173,9 @@ local function get_enum_items(_, values)
     return items
 end
 
-local function get_composite_type(lst, specid, spectype, parts, partsfield, get_parts)
+local get_composite_type = function(lst, specid, spectype, parts, partsfield, get_parts)
     local name = specid
-    local key = spectype .. "@"..(name or tostring(parts))
+    local key = spectype .. "@" .. (name or tostring(parts))
 
     if not lst[key] then
         -- Forward declaration
@@ -173,7 +189,7 @@ local function get_composite_type(lst, specid, spectype, parts, partsfield, get_
         local err
         parts, err = get_parts(lst, parts)
         if not parts then
-            return false, err
+            return nil, err
         end
     end
 
@@ -184,8 +200,8 @@ local function get_composite_type(lst, specid, spectype, parts, partsfield, get_
     }
 
     if lst[key] then
-        if typ[partsfield] and lst[key][partsfield] then
-            return false, "redeclaration for " .. typ.name
+        if typ[partsfield] and lst[key][partsfield] and not equal_declarations(typ, lst[key]) then
+            return nil, "redeclaration for " .. key
         end
     end
     add_type(lst, key, typ)
@@ -194,10 +210,16 @@ local function get_composite_type(lst, specid, spectype, parts, partsfield, get_
 end
 
 local function get_structunion(lst, spec)
+    if spec.fields and not spec.fields[1] then
+        spec.fields = { spec.fields }
+    end
     return get_composite_type(lst, spec.id, spec.type, spec.fields, "fields", get_fields)
 end
 
 local function get_enum(lst, spec)
+    if spec.values and not spec.values[1] then
+        spec.values = { spec.values }
+    end
     local typ, key = get_composite_type(lst, spec.id, spec.type, spec.values, "values", get_enum_items)
     if typ.values then
         for _, value in ipairs(typ.values) do
@@ -272,8 +294,17 @@ local base_types = {
     ["*"] = true,
 }
 
+local qualifiers = {
+    ["extern"] = true,
+    ["static"] = true,
+    ["typedef"] = true,
+    ["restrict"] = true,
+    ["inline"] = true,
+    ["register"] = true,
+}
+
 get_type = function(lst, spec, ret_pointer)
-    local typ = {}
+    local tarr = {}
     if type(spec.type) == "string" then
         spec.type = { spec.type }
     end
@@ -281,30 +312,24 @@ get_type = function(lst, spec, ret_pointer)
         spec.type = { spec.type }
     end
     for _, part in ipairs(spec.type or spec) do
-        if part == "extern" then
-            -- skip
-        elseif part == "typedef" then
-            -- skip
-        elseif part == "restrict" then
-            -- skip
-        elseif part == "inline" then
+        if qualifiers[part] then
             -- skip
         elseif base_types[part] then
-            table.insert(typ, part)
+            table.insert(tarr, part)
         elseif lst[part] and lst[part].type == "typedef" then
-            table.insert(typ, part)
+            table.insert(tarr, part)
         elseif type(part) == "table" and part.type == "struct" or part.type == "union" then
             local su_typ, err = refer(lst, part, get_structunion)
             if not su_typ then
                 return nil, err or "failed to refer struct"
             end
-            table.insert(typ, su_typ)
+            table.insert(tarr, su_typ)
         elseif type(part) == "table" and part.type == "enum" then
             local en_typ, err = refer(lst, part, get_enum)
             if not en_typ then
                 return nil, err or "failed to refer enum"
             end
-            table.insert(typ, en_typ)
+            table.insert(tarr, en_typ)
         else
             return nil, "FIXME unknown type " .. inspect(spec)
         end
@@ -312,42 +337,13 @@ get_type = function(lst, spec, ret_pointer)
     if #ret_pointer > 0 then
         for _, item in ipairs(ret_pointer) do
             if type(item) == "table" and item.idx then
-                table.insert(typ, { idx = calculate(item.idx) })
+                table.insert(tarr, { idx = calculate(item.idx) })
             else
-                table.insert(typ, item)
+                table.insert(tarr, item)
             end
         end
     end
-    return typ
-end
-
-local function get_param(lst, param_src)
-    local name, ret_pointer
-
-    if type(param_src) == "string" then
-        name = nil
-        param_src = { param_src }
-        ret_pointer = {}
-    elseif type(param_src.id) == "table" then
-        local ok
-        ok, name, ret_pointer = get_name(param_src.id)
-        if not ok then
-            return nil, name
-        end
-    else
-        name = nil
-        ret_pointer = {}
-    end
-
-    local typ, err = get_type(lst, param_src, ret_pointer)
-    if not typ then
-        return nil, err
-    end
-
-    return {
-        name = name,
-        type = typ
-    }
+    return tarr, nil
 end
 
 local function is_void(param)
@@ -365,7 +361,7 @@ local function get_params(lst, params_src)
         if param_src == "..." then
             vararg = true
         else
-            local param, err = get_param(lst, param_src.param)
+            local param, err = convert_value(lst, param_src.param)
             if not param then
                 return nil, err
             end
@@ -391,8 +387,8 @@ local register_many = function(register_item_fn, lst, ids, spec)
     end
 end
 
-local register_extern_decl_item = function(lst, id, spec)
-    local ok, name, ret_pointer = get_name(id.decl)
+local register_decl_item = function(lst, id, spec)
+    local ok, name, ret_pointer, idxs = get_name(id.decl)
     if not ok then
         return false, name
     end
@@ -410,6 +406,7 @@ local register_extern_decl_item = function(lst, id, spec)
         typ = {
             type = "function",
             name = name,
+            idxs = idxs,
             ret = {
                 type = ret_type,
             },
@@ -420,6 +417,7 @@ local register_extern_decl_item = function(lst, id, spec)
         typ = {
             type = ret_type,
             name = name,
+            idxs = idxs,
         }
     end
 
@@ -433,20 +431,20 @@ local register_extern_decl_item = function(lst, id, spec)
     return true, nil
 end
 
-local register_extern_decls = function(lst, ids, spec)
-    return register_many(register_extern_decl_item, lst, ids, spec)
+local register_decls = function(lst, ids, spec)
+    return register_many(register_decl_item, lst, ids, spec)
 end
 
 -- Convert an table produced by an `extern inline` declaration
--- into one compatible with `register_extern_decl`.
-local function register_extern_function(lst, item)
+-- into one compatible with `register_decl`.
+local function register_function(lst, item)
     local id = {
         decl = {
             name = item.func.name,
             params = item.func.params,
         }
     }
-    return register_extern_decl_item(lst, id, item.spec)
+    return register_decl_item(lst, id, item.spec)
 end
 
 local function register_static_function(lst, item)
@@ -456,11 +454,11 @@ end
 local register_typedef_item = function(lst, id, spec)
     local ok, name, ret_pointer = get_name(id.decl)
     if not ok then
-        return false, name
+        return false, name or "failed"
     end
     local def, err = get_type(lst, spec, ret_pointer)
     if not def then
-        return false, err
+        return false, err or "failed"
     end
     local typ = {
         type = "typedef",
@@ -501,12 +499,12 @@ function ctypes.register_types(parsed)
         end
         local spec_set = util.to_set(item.spec)
         if spec_set.extern and item.ids then
-            local ok, err = register_extern_decls(lst, item.ids, item.spec)
+            local ok, err = register_decls(lst, item.ids, item.spec)
             if not ok then
                 return nil, err or "failed extern"
             end
         elseif spec_set.extern and item.func then
-            local ok, err = register_extern_function(lst, item)
+            local ok, err = register_function(lst, item)
             if not ok then
                 return nil, err or "failed extern"
             end
@@ -530,11 +528,10 @@ function ctypes.register_types(parsed)
             if not ok then
                 return nil, err or "failed enum"
             end
-        elseif item.ids.decl.params then
-            -- a function declared without extern
-            local ok, err = register_extern_decls(lst, item.ids, item.spec)
+        elseif item.ids.decl then
+            local ok, err = register_decls(lst, item.ids, item.spec)
             if not ok then
-                return nil, err or "failed extern"
+                return nil, err or "failed declaration"
             end
         else
             return nil, "FIXME Uncategorized declaration: " .. inspect(item)
