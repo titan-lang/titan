@@ -93,11 +93,12 @@ they are in the roadmap:
 
 * records (structs)
 * first-class functions (still only in the top-level)
+* FFI with C (C pointers, call C functions)
 
 ## Next
 
 * maps
-* basic FFI with C (C arrays, C structs, C pointers, call C functions that take numbers and pointers as arguments)
+* FFI with C, continued (C arrays, C structs)
 * standard library that is a subset of Lua's standard library, built using the C FFI
 * tagged variants (unions of structs with some syntax for switch/case on the tag)
 * multiple assignment/multiple returns

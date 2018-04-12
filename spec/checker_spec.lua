@@ -872,6 +872,51 @@ describe("Titan type checker", function()
         end)
     end
 
+    for _, op in ipairs({"==", "~="}) do
+        it("can compare pointers using " .. op, function()
+            local code = [[
+                local stdio = foreign import "stdio.h"
+                function fn(): boolean
+                    local f1 = stdio.fopen("a.txt", "w")
+                    local f2 = stdio.fopen("a.txt", "w")
+                    return f1 ]] .. op .. [[ f2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.truthy(ok)
+        end)
+    end
+
+    for _, op in ipairs({"==", "~="}) do
+        it("can compare pointers to nil using " .. op, function()
+            local code = [[
+                local stdio = foreign import "stdio.h"
+                function fn(): boolean
+                    local f1 = stdio.fopen("a.txt", "w")
+                    return f1 ]] .. op .. [[ nil
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.truthy(ok)
+        end)
+    end
+
+    for _, op in ipairs({"<", ">", "<=", ">="}) do
+        it("cannot compare pointers using " .. op, function()
+            local code = [[
+                local stdio = foreign import "stdio.h"
+                function fn(): boolean
+                    local f1 = stdio.fopen("a.txt", "w")
+                    local f2 = stdio.fopen("a.txt", "w")
+                    return f1 ]] .. op .. [[ f2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.falsy(ok)
+            assert.match("trying to use relational expression", err)
+        end)
+    end
+
     for _, op in ipairs({"==", "~=", "<", ">", "<=", ">="}) do
         it("can compare floats using " .. op, function()
             local code = [[
@@ -1247,6 +1292,17 @@ describe("Titan type checker", function()
         assert.match("module 'bar.baz' not found", err)
     end)
 
+    it("fails to load foreign modules that do not exist", function ()
+        local code = [[
+            local foo = foreign import "does_not_exist.h"
+            local bar = foreign import "not_a_header_file"
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("failed preprocessing 'does_not_exist.h'", err)
+        assert.match("failed preprocessing 'not_a_header_file'", err)
+    end)
+
     it("correctly imports modules that do exist", function ()
         local modules = {
             foo = [[
@@ -1268,6 +1324,87 @@ describe("Titan type checker", function()
                 foo = { _tag = "Type.Function" }
             }
         })
+    end)
+
+    it("correctly imports foreign modules that do exist", function ()
+        local code = [[
+            local stdio = foreign import "stdio.h"
+        ]]
+        local ok, err, ast = run_checker(code)
+        assert.truthy(ok)
+        assert_ast(ast[1], {
+            _tag = "Ast.TopLevelForeignImport",
+            localname = "stdio",
+            _type = {
+                _tag = "Type.ForeignModule",
+                members = {
+                    printf = {
+                        _tag = "Type.Function"
+                    }
+                }
+            }
+        })
+    end)
+
+    it("cannot convert different pointers without a cast", function()
+        local code = [[
+            local stdio = foreign import "stdio.h"
+            local dirent = foreign import "dirent.h"
+            function f()
+                local dd = dirent.opendir(".")
+                local n = stdio.fwrite("alo", 3, 1, dd)
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected pointer to FILE but found pointer to DIR", err)
+    end)
+
+    it("cannot convert void pointer to string without a cast", function()
+        local code = [[
+            local stdlib = foreign import "stdlib.h"
+            local string_h = foreign import "string.h"
+            function f()
+                local mem = stdlib.realloc(nil, 100)
+                local s = string_h.strcpy(mem, "Hello")
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected string but found void pointer", err)
+    end)
+
+    it("can convert void pointer to string with a cast", function()
+        local code = [[
+            local stdlib = foreign import "stdlib.h"
+            local string_h = foreign import "string.h"
+            function f()
+                local mem = stdlib.realloc(nil, 100)
+                local s = string_h.strcpy(mem as string, "Hello")
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok)
+    end)
+
+    it("can check foreign module variables", function()
+        local code = [[
+            local errno = foreign import "errno.h"
+            function fun(name: string): integer
+                return errno.errno
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok)
+        code = [[
+            local errno = foreign import "errno.h"
+            function fun(name: string): string
+                return errno.errno
+            end
+        ]]
+         ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("expected string but found integer", err)
     end)
 
     it("fails on circular module references", function ()

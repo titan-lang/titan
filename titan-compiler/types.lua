@@ -14,6 +14,7 @@ local types = typedecl("Type", {
         InitList    = {"elems"},
         Record      = {"name", "fields"},
         Type        = {"type"},
+        ForeignModule = {"name", "members"},
     }
 })
 
@@ -48,15 +49,47 @@ function types.Module(modname, members)
         members = members }
 end
 
+--- Check if two pointer types are different and can be coerced.
+local function can_coerce_pointer(source, target)
+    if types.equals(source, target) then
+        return false
+    elseif target.type._tag == "Type.Nil" then
+        -- all pointers are convertible to void*
+        if source._tag == "Type.String" then
+            return true
+        elseif source.tag == "Type.Nil" then
+            return true
+        elseif source._tag == "Type.Pointer" then
+            return true
+        end
+    end
+    return false
+end
+
+local function is_void_pointer(typ)
+    return typ._tag == "Type.Pointer" and typ.type._tag == "Type.Nil"
+end
+
+function types.explicitly_coerceable(source, target)
+    return is_void_pointer(source) and target._tag == "Type.String"
+end
+
 function types.coerceable(source, target)
-    return (source._tag == "Type.Integer" and
+    return (target._tag == "Type.Pointer" and
+            can_coerce_pointer(source, target)) or
+
+           (source._tag == "Type.Integer" and
             target._tag == "Type.Float") or
+
            (source._tag == "Type.Float" and
             target._tag == "Type.Integer") or
+
            (target._tag == "Type.Boolean" and
             source._tag ~= "Type.Boolean") or
+
            (target._tag == "Type.Value" and
             source._tag ~= "Type.Value") or
+
            (source._tag == "Type.Value" and
             target._tag ~= "Type.Value")
 end
@@ -64,6 +97,16 @@ end
 -- The type consistency relation, a-la gradual typing
 function types.compatible(t1, t2)
     if types.equals(t1, t2) then
+        return true
+    elseif t1._tag == "Type.Typedef" then
+        return types.compatible(t1._type, t2)
+    elseif t2._tag == "Type.Typedef" then
+        return types.compatible(t1, t2._type)
+    elseif t1._tag == "Type.Pointer" and t2._tag == "Type.Nil" then
+        return true -- nullable pointer
+    elseif t1._tag == "Type.Nil" and t2._tag == "Type.Pointer" then
+        return true -- nullable pointer
+    elseif types.explicitly_coerceable(t1, t2) then
         return true
     elseif t1._tag == "Type.Value" or t2._tag == "Type.Value" then
         return true
@@ -100,6 +143,10 @@ function types.equals(t1, t2)
     local tag1, tag2 = t1._tag, t2._tag
     if tag1 == "Type.Array" and tag2 == "Type.Array" then
         return types.equals(t1.elem, t2.elem)
+    elseif tag1 == "Type.Pointer" and tag2 == "Type.Pointer" then
+        return types.equals(t1.type, t2.type)
+    elseif tag1 == "Type.Typedef" and tag2 == "Type.Typedef" then
+        return t1.name == t2.name
     elseif tag1 == "Type.Function" and tag2 == "Type.Function" then
         if #t1.params ~= #t2.params then
             return false
@@ -138,8 +185,37 @@ function types.tostring(t)
     elseif tag == "Type.Float"       then return "float"
     elseif tag == "Type.Value"       then return "value"
     elseif tag == "Type.Invalid"     then return "invalid type"
+    elseif tag == "Type.Array" then
+        return "{ " .. types.tostring(t.elem) .. " }"
+    elseif tag == "Type.Pointer" then
+        if is_void_pointer(t) then
+            return "void pointer"
+        else
+            return "pointer to " .. types.tostring(t.type)
+        end
+    elseif tag == "Type.Typedef" then
+        return t.name
     elseif tag == "Type.Function" then
-        return "function" -- TODO implement
+        local out = {"function("}
+        local ptypes = {}
+        for _, param in ipairs(t.params) do
+            table.insert(ptypes, types.tostring(param))
+        end
+        table.insert(out, table.concat(ptypes, ", "))
+        table.insert(out, ")")
+        local rtypes = {}
+        for _, rettype in ipairs(t.rettypes) do
+            table.insert(rtypes, types.tostring(rettype))
+        end
+        if #rtypes == 1 then
+            table.insert(out, ":")
+            table.insert(out, rtypes[1])
+        elseif #rtypes > 1 then
+            table.insert(out, ":(")
+            table.insert(out, table.concat(rtypes), ", ")
+            table.insert(out, ")")
+        end
+        return table.concat(out)
     elseif tag == "Type.Array" then
         return "{ " .. types.tostring(t.elem) .. " }"
     elseif tag == "Type.InitList" then
@@ -149,7 +225,7 @@ function types.tostring(t)
     elseif tag == "Type.Type" then
         return "type" -- TODO remove
     else
-        error("impossible")
+        error("impossible: " .. tostring(tag))
     end
 end
 

@@ -102,15 +102,15 @@ function driver.shared()
     return shared
 end
 
-function driver.compile_module(modname, mod)
+function driver.compile_module(modname, mod, link)
     if mod.compiled then return true end
-    local ok, err = driver.compile(modname, mod.ast, mod.filename)
+    local ok, err = driver.compile(modname, mod.ast, mod.filename, link)
     if not ok then return nil, err end
     mod.compiled = true
     return true
 end
 
-function driver.compile(modname, ast, sourcef)
+function driver.compile(modname, ast, sourcef, link)
     sourcef = sourcef or modname:gsub("[.]", "/") .. ".titan"
     local code = coder.generate(modname, ast)
     code = pretty.reindent_c(code)
@@ -122,6 +122,12 @@ function driver.compile(modname, ast, sourcef)
     if not ok then return nil, err end
     local args = {driver.CC, driver.CFLAGS, driver.shared(), filename,
                   "-I", driver.LUA_SOURCE_PATH, "-o", soname}
+    if link then
+        local libs = util.split_string(link, ",")
+        for _, lib in ipairs(libs) do
+            table.insert(args, "-l" .. lib)
+        end
+    end
     local cmd = table.concat(args, " ")
     return os.execute(cmd)
 end

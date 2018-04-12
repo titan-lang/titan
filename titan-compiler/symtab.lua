@@ -3,7 +3,11 @@ local symtab = {}
 symtab.__index = symtab
 
 function symtab.new()
-    return setmetatable({ blocks = { {} } }, symtab)
+    local self = {
+        blocks = { {} },
+        foreign_types = {},
+    }
+    return setmetatable(self, symtab)
 end
 
 function symtab:open_block()
@@ -36,6 +40,14 @@ function symtab:find_symbol(name)
         end
     end
     return decl
+end
+
+function symtab:add_foreign_type(name, decl)
+    self.foreign_types[name] = decl
+end
+
+function symtab:find_foreign_type(name)
+    return self.foreign_types[name]
 end
 
 function symtab:dump()

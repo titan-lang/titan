@@ -26,6 +26,7 @@ build = {
       ["titan-compiler.ast"] = "titan-compiler/ast.lua",
       ["titan-compiler.checker"] = "titan-compiler/checker.lua",
       ["titan-compiler.coder"] = "titan-compiler/coder.lua",
+      ["titan-compiler.foreigntypes"] = "titan-compiler/foreigntypes.lua",
       ["titan-compiler.lexer"] = "titan-compiler/lexer.lua",
       ["titan-compiler.parser"] = "titan-compiler/parser.lua",
       ["titan-compiler.pretty"] = "titan-compiler/pretty.lua",
@@ -33,7 +34,11 @@ build = {
       ["titan-compiler.syntax_errors"] = "titan-compiler/syntax_errors.lua",
       ["titan-compiler.types"] = "titan-compiler/types.lua",
       ["titan-compiler.util"] = "titan-compiler/util.lua",
-   },
+      ["c-parser.c99"] = "c-parser/c99.lua",
+      ["c-parser.cdriver"] = "c-parser/cdriver.lua",
+      ["c-parser.cpp"] = "c-parser/cpp.lua",
+      ["c-parser.ctypes"] = "c-parser/ctypes.lua",
+  },
    install = {
       bin = {
          "titanc"

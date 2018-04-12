@@ -1,0 +1,69 @@
+
+-- Compile with:
+--    titanc examples.sdl_demo -lSDL2
+-- Run with:
+--    lua/src/lua -e 'require("examples.sdl_demo").main()'
+
+local stdio = foreign import "stdio.h"
+local SDL = foreign import "SDL2/SDL.h"
+local stdlib = foreign import "stdlib.h"
+
+local function quit(sdlquit: boolean, msg: string)
+    stdio.printf(msg .. ": %s\n", SDL.SDL_GetError())
+    if sdlquit then
+        SDL.SDL_Quit()
+    end
+    stdlib.exit(1)
+end
+
+function main()
+
+    if SDL.SDL_Init(SDL.SDL_INIT_VIDEO) ~= 0 then
+        quit(false, "SDL_init error")
+    end
+
+    local SDL_WINDOW_SHOWN = 0x04
+
+    local win = SDL.SDL_CreateWindow("Hello World!", 100, 100, 640, 480, SDL_WINDOW_SHOWN)
+    if not win then
+        quit(true, "SDL_CreateWindow error")
+    end
+
+    local SDL_RENDERER_ACCELERATED = 0x02
+    local SDL_RENDERER_PRESENTVSYNC = 0x04
+
+    local ren = SDL.SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC)
+    if not ren then
+        SDL.SDL_DestroyWindow(win)
+        quit(true, "SDL_CreateRenderer error")
+    end
+
+    local bmp = SDL.SDL_LoadBMP_RW(SDL.SDL_RWFromFile("examples/hello.bmp", "rb"), 1)
+    -- local bmp = SDL.SDL_LoadBMP("hello.bmp")
+    if not bmp then
+        SDL.SDL_DestroyRenderer(ren)
+        SDL.SDL_DestroyWindow(win)
+        quit(true, "SDL_LoadBMP error")
+    end
+
+    local tex = SDL.SDL_CreateTextureFromSurface(ren, bmp)
+    SDL.SDL_FreeSurface(bmp)
+    if not tex then
+        SDL.SDL_DestroyRenderer(ren)
+        SDL.SDL_DestroyWindow(win)
+        quit(true, "SDL_CreateTextureFromSurface error")
+    end
+
+    for i = 1, 3 do
+        SDL.SDL_RenderClear(ren)
+        SDL.SDL_RenderCopy(ren, tex, nil, nil)
+        SDL.SDL_RenderPresent(ren)
+        SDL.SDL_Delay(1000)
+    end
+
+    SDL.SDL_DestroyTexture(tex)
+    SDL.SDL_DestroyRenderer(ren)
+    SDL.SDL_DestroyWindow(win)
+    SDL.SDL_Quit()
+
+end

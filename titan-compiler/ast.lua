@@ -17,11 +17,12 @@ return typedecl("Ast", {
         TopLevelFunc    = {"loc", "islocal", "name", "params", "rettypes", "block"},
         TopLevelVar     = {"loc", "islocal", "decl", "value"},
         TopLevelRecord  = {"loc", "name", "fields"},
-        TopLevelImport  = {"loc", "localname", "modname"}
+        TopLevelImport  = {"loc", "localname", "modname"},
+        TopLevelForeignImport = {"loc", "localname", "headername"},
     },
 
     Decl = {
-        Decl            = {"loc", "name", "type"},
+        Decl = { "loc", "name", "type" },
     },
 
     Stat = {

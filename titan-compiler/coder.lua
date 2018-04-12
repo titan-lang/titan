@@ -3,7 +3,7 @@ local util  = require "titan-compiler.util"
 
 local coder = {}
 
-local codeexp, codestat
+local codeexp, codestat, codeforeignexp
 
 local render = util.render
 
@@ -210,6 +210,28 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
     return render(tmpl, { DST = dst, SRC = src })
 end
 
+local function foreignctype(typ --[[:table]])
+    if typ._tag == "Type.Pointer" then
+        if typ.type._tag == "Type.Nil" then
+            return "void*"
+        end
+        if typ.type._tag == "Type.Typedef" then
+            return typ.type.name .. "*"
+        end
+        return foreignctype(typ.type) .. "*"
+    elseif typ._tag == "Type.String" then
+        return "char*"
+    end
+    error("FIXME unknown foreign c type: "..types.tostring(typ))
+end
+
+local function foreigncast(exp, typ --[[:table]])
+    return render([[(($CASTTYPE)($CEXP))]], {
+        CASTTYPE = foreignctype(typ),
+        CEXP = exp,
+    })
+end
+
 local function ctype(typ --[[:table]])
     if typ._tag == "Type.Integer" then return "lua_Integer"
     elseif typ._tag == "Type.Float" then return "lua_Number"
@@ -219,6 +241,7 @@ local function ctype(typ --[[:table]])
     elseif typ._tag == "Type.Array" then return "Table*"
     elseif typ._tag == "Type.Value" then return "TValue"
     elseif typ._tag == "Type.Record" then return "TValue"
+    elseif typ._tag == "Type.Pointer" then return foreignctype(typ)
     else error("invalid type " .. types.tostring(typ))
     end
 end
@@ -296,6 +319,26 @@ local function newtmp(ctx --[[:table]], typ --[[:table]], isgc --[[:boolean]])
             INIT = initval(typ)
         }), tmpname
     end
+end
+
+local function newforeigntmp(ctx --[[:table]], typ --[[:table]])
+    local tmp = ctx.tmp
+    ctx.tmp = ctx.tmp + 1
+    local tmpname = "_tmp_" .. tmp
+    local ftype
+    if typ._tag == "Type.String" then
+        ftype = "char*"
+    elseif typ._tag == "Type.Pointer" then
+        ftype = foreignctype(typ)
+    else
+        error("don't know how to convert foreign type "..types.tostring(typ))
+    end
+    return render([[
+        $TYPE $TMPNAME;
+    ]], {
+        TYPE = ftype,
+        TMPNAME = tmpname,
+    }), tmpname
 end
 
 local function pushd(ctx)
@@ -624,13 +667,110 @@ local function codemultiassignment(ctx, node)
     return table.concat(stats, "\n")
 end
 
+local function makestring(ctx, cexp, target)
+    local cstr = render("luaS_new(L, $VALUE)", {
+        VALUE = cexp
+    })
+    if target then
+        return "", cstr
+    else
+        local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
+        return render([[
+            $CTMP
+            $TMPNAME = $CSTR;
+            setsvalue(L, $TMPSLOT, $TMPNAME);
+        ]], {
+            CTMP = ctmp,
+            TMPNAME = tmpname,
+            CSTR = cstr,
+            TMPSLOT = tmpslot,
+        }), tmpname
+    end
+end
+
+local function nativetoforeignexp(ctx, exp, cexp)
+    if exp._type._tag == "Type.Integer"
+    or exp._type._tag == "Type.Float"
+    or exp._type._tag == "Type.Boolean"
+    or exp._type._tag == "Type.Pointer" then
+        return "", cexp
+    end
+
+    if exp._type._tag == "Type.Nil" then
+        return "", "NULL"
+    end
+
+    if exp._type._tag == "Type.String" then
+        local texp, tmp = newforeigntmp(ctx, exp._type)
+        local cvtexp = render([[getstr($CEXP)]], { CEXP = cexp })
+        return render([[
+            $TEXP
+            $TMP = $CVTEXP;
+        ]], {
+            TEXP = texp,
+            TMP = tmp,
+            CVTEXP = cvtexp,
+        }), tmp
+    end
+
+    error("don't know how to handle type "..types.tostring(exp._type))
+end
+
+local function foreigntonativeexp(ctx, exp, cexp, target)
+    if exp._type._tag == "Type.Integer"
+    or exp._type._tag == "Type.Float"
+    or exp._type._tag == "Type.Boolean"
+    or exp._type._tag == "Type.Pointer" then
+        return "", cexp
+    end
+
+    if exp._type._tag == "Type.Nil" then
+        return "", "0"
+    end
+
+    if exp._type._tag == "Type.String" then
+        return makestring(ctx, cexp, target)
+    end
+
+    if exp._type._tag == "Type.Typedef" then
+        return foreigntonativeexp(ctx, exp._type, cexp, target)
+    end
+
+    error("don't know how to handle type "..types.tostring(exp._type))
+end
+
+local function codeforeigncall(ctx, node)
+    -- TODO catch name conflicts among imports
+    local cfuncname = node.exp.var.name
+    local caexps = {}
+    local castats = {}
+    for _, arg in ipairs(node.args.args) do
+        local cstat, cexp = codeforeignexp(ctx, arg)
+        table.insert(castats, cstat)
+        table.insert(caexps, cexp)
+    end
+    local cstats = table.concat(castats, "\n")
+    local ccall = render("$NAME($CAEXPS)", {
+        NAME = cfuncname,
+        CAEXPS = table.concat(caexps, ", "),
+    })
+    return cstats, ccall
+end
+
+local function codeforeignvar(ctx, node)
+    return "", node.name
+end
+
 local function codecall(ctx, node)
     local castats, caexps, tmpnames, retslots = {}, { "L" }, {}, {}
     local fname
     local fnode = node.exp.var
     if fnode._tag == "Ast.VarName" then
         fname = ctx.prefix .. fnode.name .. '_titan'
-    elseif node.exp.var._tag == "Ast.VarDot" then
+    elseif fnode._tag == "Ast.VarDot" then
+        if fnode.exp._type._tag == "Type.ForeignModule" then
+            return codeforeigncall(ctx, node)
+        end
         fname = fnode.exp._type.prefix .. fnode.name .. "_titan"
     end
     for _, arg in ipairs(node.args.args) do
@@ -779,8 +919,14 @@ function codestat(ctx, node)
             return codemultiassignment(ctx, node)
         end
     elseif tag == "Ast.StatCall" then
-      local cstats, cexp = codecall(ctx, node.callexp)
-      return cstats .. "\n    " .. cexp .. ";"
+        if node.callexp.exp.var._tag == "Ast.VarDot"
+           and node.callexp.exp.var.exp._type._tag == "Type.ForeignModule" then
+            local fstats, fexp = codeforeigncall(ctx, node.callexp)
+            return fstats .. fexp .. ";"
+        else
+            local cstats, cexp = codecall(ctx, node.callexp)
+            return cstats .. "\n    " .. cexp .. ";"
+        end
     elseif tag == "Ast.StatReturn" then
         return codereturn(ctx, node)
     else
@@ -813,24 +959,7 @@ local function codevalue(ctx, node, target)
     elseif tag == "Ast.ExpFloat" then
         return "", c_float_literal(node.value)
     elseif tag == "Ast.ExpString" then
-        local cstr = render("luaS_new(L, $VALUE)", {
-            VALUE = c_string_literal(node.value)
-        })
-        if target then
-            return "", cstr
-        else
-            local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
-            return render([[
-                $CTMP
-                $TMPNAME = $CSTR;
-                setsvalue(L, $TMPSLOT, $TMPNAME);
-            ]], {
-                CTMP = ctmp,
-                TMPNAME = tmpname,
-                CSTR = cstr,
-                TMPSLOT = tmpslot,
-            }), tmpname
-        end
+        return makestring(ctx, c_string_literal(node.value), target)
     else
         error("invalid tag for a literal value: " .. tag)
     end
@@ -1068,11 +1197,15 @@ end
 -- Generate code for expression 'node'
 -- 'iscondition' is 'true' if expression is used not for value but for
 --    controlling conditinal execution
--- 'target' is not nil if expression is rvalue for a 'Var_Name' lvalue,
+-- 'target' is not nil if expression is rvalue for a 'Ast.VarName' lvalue,
 --    in this case it will be the '_decl' of the lvalue
 function codeexp(ctx, node, iscondition, target)
     local tag = node._tag
-    if tag == "Ast.VarName" or (tag == "Ast.VarDot" and node._decl) then
+    if tag == "Ast.VarDot" and node.exp._type._tag == "Type.ForeignModule" then
+        local fstats, fexp = codeforeignvar(ctx, node)
+        local cstats, cexp = foreigntonativeexp(ctx, node, fexp, target)
+        return fstats .. cstats, cexp
+    elseif tag == "Ast.VarName" or (tag == "Ast.VarDot" and node._decl) then
         return codevar(ctx, node)
     elseif tag == "Ast.VarBracket" then
         return codeindex(ctx, node, iscondition)
@@ -1081,15 +1214,21 @@ function codeexp(ctx, node, iscondition, target)
                 tag == "Ast.ExpInteger" or
                 tag == "Ast.ExpFloat" or
                 tag == "Ast.ExpString" then
-            return codevalue(ctx, node, target)
+        return codevalue(ctx, node, target)
     elseif tag == "Ast.ExpInitList" then
-            return codetable(ctx, node, target)
+        return codetable(ctx, node, target)
     elseif tag == "Ast.ExpVar" then
         return codeexp(ctx, node.var, iscondition)
     elseif tag == "Ast.ExpUnop" then
         return codeunaryop(ctx, node, iscondition)
     elseif tag == "Ast.ExpBinop" then
         return codebinaryop(ctx, node, iscondition)
+    elseif tag == "Ast.ExpCall"
+           and node.exp.var._tag == "Ast.VarDot"
+           and node.exp.var.exp._type._tag == "Type.ForeignModule" then
+        local fstats, fexp = codeforeigncall(ctx, node)
+        local cstats, cexp = foreigntonativeexp(ctx, node, fexp, target)
+        return fstats .. cstats, cexp
     elseif tag == "Ast.ExpCall" then
         return codecall(ctx, node, target)
     elseif tag == "Ast.ExpExtra" then
@@ -1174,7 +1313,7 @@ function codeexp(ctx, node, iscondition, target)
         elseif node.exp._type._tag == "Type.Float" then
             cvt = render("_float2str(L, $EXP)", { EXP = cexp })
         else
-            error("invalid node type for coercion to string " .. types.tostring(node.exp._type))
+            error("invalid node type for coercion to string: " .. types.tostring(node.exp._type))
         end
         if target then
             return cstats, cvt
@@ -1192,6 +1331,10 @@ function codeexp(ctx, node, iscondition, target)
             })
             return code, tmpname
         end
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Pointer" then
+        local cstats, cexp = codeexp(ctx, node.exp)
+        local fstats, fexp = nativetoforeignexp(ctx, node.exp, cexp)
+        return cstats .. fstats, foreigncast(fexp, node._type)
     elseif tag == "Ast.ExpConcat" then
         local strs, copies = {}, {}
         local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
@@ -1247,6 +1390,26 @@ function codeexp(ctx, node, iscondition, target)
         return codeexp(ctx, node.exp, iscondition, target)
     else
         error("invalid node tag " .. tag)
+    end
+end
+
+function codeforeignexp(ctx, node)
+    local tag = node._tag
+    if tag == "Ast.ExpCall"
+           and node.exp.var._tag == "Ast.VarDot"
+           and node.exp.var.exp._type._tag == "Type.ForeignModule" then
+        return codeforeigncall(ctx, node)
+    elseif tag == "Ast.VarDot" and node.exp._type._tag == "Type.ForeignModule" then
+        return codeforeignvar(ctx, node)
+    elseif tag == "Ast.ExpString" then
+        return "", c_string_literal(node.value)
+    elseif tag == "Ast.ExpCast" and node.target._tag == "Type.String" then
+        local cstats, cexp = codeforeignexp(ctx, node.exp)
+        return cstats, foreigncast(cexp, node._type)
+    else
+        local cstat, cexp = codeexp(ctx, node)
+        local fstat, fexp = nativetoforeignexp(ctx, node, cexp)
+        return cstat .. fstat, fexp
     end
 end
 
@@ -1447,6 +1610,7 @@ local preamble = [[
 #define TITAN_UNLIKELY(x) (x)
 #endif
 
+$FOREIGNIMPORTS
 $LIBOPEN
 
 #define MAXNUMBER2STR 50
@@ -1642,6 +1806,7 @@ function coder.generate(modname, ast)
     local varslots = {}
     local gvars = {}
     local includes = {}
+    local foreignimports = {}
     local initmods = {}
 
     local deps = {}
@@ -1676,13 +1841,29 @@ function coder.generate(modname, ast)
                         ]], { SLOT = member._slot, HANDLE = mprefix .. "handle" }))
                     end
                 end
+            elseif tag == "Ast.TopLevelForeignImport" then
+                local include
+                if node.headername:match("^/") then
+                    include = [[#include "$HEADERNAME"]]
+                else
+                    include = [[#include <$HEADERNAME>]]
+                end
+                table.insert(foreignimports, render(include, {
+                    HEADERNAME = node.headername
+                }))
             else
                 -- ignore functions and variables in this pass
             end
         end
     end
 
-    local code = { render(preamble, { INCLUDES = table.concat(includes, "\n"), LIBOPEN = #includes > 0 and libopen or "" }) }
+    local code = {
+        render(preamble, {
+            INCLUDES = table.concat(includes, "\n"),
+            FOREIGNIMPORTS = table.concat(foreignimports, "\n"),
+            LIBOPEN = #includes > 0 and libopen or ""
+        })
+    }
 
     -- has this module already been initialized?
     table.insert(code, "static int _initialized = 0;")

@@ -156,16 +156,34 @@ are not compatible:
 The only operations that you can do on things with type `value` are to cast them
 to some other type and to pass them along.
 
+### Foreign types
+
+The Titan FFI supports a number of foreign types:
+
+* foreign functions
+* foreign pointers
+
+#### Foreign functions
+
+A foreign function is a C function exposed to Titan. Foreign functions can
+take as arguments basic types and foreign pointers.
+
+#### Foreign pointers
+
+A foreign pointer is a C pointer exposed to Titan. Foreign pointers can
+be stored in variables and passed as arguments to foreign functions.
+
 ## Modules
 
-A Titan source file (with a `.titan` extension) is a *Titan module*. A Titan module
-is made-up of *import statements*, *module variable declarations*, and *module function
-declarations*. These can appear in any order, but the Titan compiler reorders
-them so all import statements come first (in the order they appear), followed by
-variable declarations (again in the order they appear), and finally by function
-declarations, so an imported module can be used anywhere in a module,
-a module variable can be used in any function as well as variable declarations
-that follow it, and module functions can be used in any other function.
+A Titan source file (with a `.titan` extension) is a *Titan module*. A Titan
+module is made-up of *import statements*, *foreign import statements*, *module
+variable declarations*, and *module function declarations*. These can appear
+in any order, but the Titan compiler reorders them so all import statements
+come first (in the order they appear), followed by variable declarations
+(again in the order they appear), and finally by function declarations, so an
+imported module can be used anywhere in a module, a module variable can be
+used in any function as well as variable declarations that follow it, and
+module functions can be used in any other function.
 
 ### `import` statements
 
@@ -209,6 +227,35 @@ module variables and functions.
 In the above example, the module `foo.titan` imports `bar.titan` and
 gives it the local name `m`. Module `foo` can access the exported variable `x`, as well
 as call the exported function `bar`.
+
+### `foreign import` statements
+
+A `foreign import` statement loads a C header file, and imports all its
+function and type definitions. Its syntax is:
+
+    local <localname> = foreign import "<headername>"
+
+The string containing the `<headername>` argument may be a relative or
+absolute pathname to a C header file. When a relative pathname is given,
+the Titan compiler will search in standard C header paths.
+
+Due to the flat namespace of C functions and types, all types and functions
+imported via foreign imports share a single namespace in Titan as well.
+
+This means that two separate imports cannot load two distinct functions or
+variables with the same name. Separate imports can, however, load the same
+function or type. This is actually a common occurrence, due to the fact that a
+`foreign import` recursively scans references in C header files, meaning that
+many headers will import the same system headers.
+
+For example, if one loads two header files like this
+
+    local foo = foreign import "foo.h"
+    local bar = foreign import "bar.h"
+
+and both `foo.h` and `bar.h` happen to include (directly or indirectly) the
+system header `stdio.h`, this means that both `foo.printf` and `bar.printf`
+will be in scope.
 
 ### Module variables
 
@@ -267,7 +314,7 @@ fail if the value does not have the target type, or cannot be converted to it.
 
 Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, {A} means 0 or more As, and \[A\] means an optional A.
 
-    program ::= {tlfunc | tlvar | tlrecord | tlimport}
+    program ::= {tlfunc | tlvar | tlrecord | tlimport | tlforeignimport}
 
     tlfunc ::= [local] function Name '(' [parlist] ')'  ':' type block end
 
@@ -276,6 +323,8 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
     tlrecord ::= record Name recordfields end
 
     tlimport ::= local Name '=' import LiteralString
+
+    tlforeignimport ::= local Name '=' foreign import LiteralString
 
     parlist ::= Name ':' type {',' Name ':' type}
 

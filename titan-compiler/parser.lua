@@ -7,7 +7,6 @@ local ast = require "titan-compiler.ast"
 local lexer = require "titan-compiler.lexer"
 local location = require "titan-compiler.location"
 local syntax_errors = require "titan-compiler.syntax_errors"
-local util = require "titan-compiler.util"
 
 -- File name of the file that is currently being parsed.
 -- Since this is a global the parser is not reentrant but we couldn't think of
@@ -211,14 +210,16 @@ local grammar = re.compile([[
                         {| ( toplevelfunc
                            / toplevelvar
                            / toplevelrecord
-                           / import )* |} !.
+                           / import
+                           / foreign )* |} !.
 
     toplevelfunc    <- (P  localopt FUNCTION NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
                            rettypeopt block END^EndFunc)         -> TopLevelFunc
 
-    toplevelvar     <- (P  localopt decl ASSIGN^AssignVar
-                           !IMPORT exp^ExpVarDec)                -> TopLevelVar
+    toplevelvar     <- (P localopt decl ASSIGN^AssignVar
+                           !(IMPORT / FOREIGN)
+                           exp^ExpVarDec)                        -> TopLevelVar
 
     toplevelrecord  <- (P  RECORD NAME^NameRecord recordfields^FieldRecord
                            END^EndRecord)                        -> TopLevelRecord
@@ -226,9 +227,14 @@ local grammar = re.compile([[
     localopt        <- (LOCAL)?                                  -> boolopt
 
     import          <- (P  LOCAL NAME^NameImport ASSIGN^AssignImport
-                           IMPORT^ImportImport
+                          !FOREIGN IMPORT^ImportImport
                           (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
                           STRINGLIT^StringImport))               -> TopLevelImport
+
+    foreign         <- (P  LOCAL NAME^NameImport ASSIGN^AssignImport
+                           FOREIGN IMPORT^ImportImport
+                          (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
+                           STRINGLIT^StringImport))              -> TopLevelForeignImport
 
     rettypeopt      <- (P  (COLON rettype^TypeFunc)?)            -> rettypeopt
 
@@ -420,6 +426,7 @@ local grammar = re.compile([[
     WHILE           <- %WHILE SKIP*
     IMPORT          <- %IMPORT SKIP*
     AS              <- %AS SKIP*
+    FOREIGN         <- %FOREIGN SKIP*
 
     BOOLEAN         <- %BOOLEAN SKIP*
     INTEGER         <- %INTEGER SKIP*
