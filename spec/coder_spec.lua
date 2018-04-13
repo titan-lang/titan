@@ -1034,6 +1034,9 @@ describe("Titan code generator", function()
                 local errno = foreign import "errno.h"
                 function fun(name: string): integer
                     local f = stdio.fopen(name, "r")
+                    if f ~= nil then
+                        stdio.fclose(f)
+                    end
                     return errno.errno
                 end
             ]]
