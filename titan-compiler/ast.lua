@@ -8,12 +8,14 @@ return typedecl("Ast", {
         TypeFloat       = {"loc"},
         TypeString      = {"loc"},
         TypeValue       = {"loc"},
+        TypeQualName    = {"loc", "module", "name"},
         TypeName        = {"loc", "name"},
         TypeArray       = {"loc", "subtype"},
         TypeFunction    = {"loc", "argtypes", "rettypes"},
     },
 
     TopLevel = {
+        TopLevelMethod  = {"loc", "class", "name", "params", "rettypes", "block"},
         TopLevelFunc    = {"loc", "islocal", "name", "params", "rettypes", "block"},
         TopLevelVar     = {"loc", "islocal", "decl", "value"},
         TopLevelRecord  = {"loc", "name", "fields"},

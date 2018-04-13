@@ -193,6 +193,46 @@ describe("Titan parser", function()
         })
     end)
 
+    it("can parse toplevel method declarations", function()
+        assert_program_ast([[
+            function Record:fA(): nil
+            end
+        ]], {
+            { _tag = "Ast.TopLevelMethod",
+                class = "Record",
+                name = "fA",
+                params = {},
+                block = { _tag = "Ast.StatBlock", stats = {} } },
+        })
+
+        assert_program_ast([[
+            function Record:fB(x:int): nil
+            end
+        ]], {
+            { _tag = "Ast.TopLevelMethod",
+                class = "Record",
+                name = "fB",
+                params = {
+                    { _tag = "Ast.Decl", name = "x" },
+                },
+                block = { _tag = "Ast.StatBlock", stats = {} } },
+        })
+
+        assert_program_ast([[
+            function Record:fC(x:int, y:int): nil
+            end
+        ]], {
+            { _tag = "Ast.TopLevelMethod",
+                class = "Record",
+                name = "fC",
+                params = {
+                    { _tag = "Ast.Decl", name = "x" },
+                    { _tag = "Ast.Decl", name = "y" },
+                },
+                block = { _tag = "Ast.StatBlock", stats = {} } },
+        })
+    end)
+
     it("allows ommiting the optional return type annotation", function ()
         assert_program_ast([[
             function foo()
@@ -208,6 +248,10 @@ describe("Titan parser", function()
     it("can parse primitive types", function()
         assert_type_ast("nil", { _tag = "Ast.TypeNil" } )
         assert_type_ast("int", { _tag = "Ast.TypeName", name = "int" } )
+    end)
+
+    it("can parse qualified types", function()
+        assert_type_ast("foo.bar", { _tag = "Ast.TypeQualName", module = "foo", name = "bar" } )
     end)
 
     it("can parse array types", function()
@@ -737,6 +781,11 @@ describe("Titan parser", function()
         assert_program_ast([[
             record Point x: float; y: float; end
         ]], ast)
+
+        assert_program_ast([[
+            record A
+            end
+        ]], {{ fields = { } }})
     end)
 
     it("can parse record constructors", function()
@@ -830,6 +879,11 @@ describe("Titan parser", function()
         ]], "NameFunc")
 
         assert_program_syntax_error([[
+            function Record:() : int
+            end
+        ]], "NameMethod")
+
+        assert_program_syntax_error([[
             function foo : int
             end
         ]], "LParPList")
@@ -874,11 +928,6 @@ describe("Titan parser", function()
         ]], "EndRecord")
 
         assert_program_syntax_error([[
-            record A
-            end
-        ]], "FieldRecord")
-
-        assert_program_syntax_error([[
             local = import "bola"
         ]], "NameImport")
 
@@ -915,6 +964,7 @@ describe("Titan parser", function()
 
         assert_type_syntax_error([[ (a, b) -> = nil ]], "TypeReturnTypes")
 
+        assert_type_syntax_error([[ foo. ]], "QualName")
 
         assert_program_syntax_error([[
             record A
