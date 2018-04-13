@@ -239,6 +239,25 @@ end
 --
 --
 
+typedecl.declare(coder, "coder", "Lvalue", {
+    CVar      = {"varname"},
+    SafeSlot  = {"slot_address", "parent_pointer"},
+    ArraySlot = {"slot_address", "parent_pointer"},
+})
+
+typedecl.declare(coder, "coder", "RW", {
+    Read      = {},
+    Write     = {},
+})
+local READ = coder.RW.Read()
+local WRITE = coder.RW.Write()
+
+
+
+--
+--
+--
+
 local function function_name(funcname, kind)
     return string.format("function_%s_%s", funcname, kind)
 end
@@ -996,7 +1015,7 @@ generate_stat = function(stat, ctx)
 
     elseif tag == ast.Stat.Assign then
         ctx:begin_scope()
-        local var_cstats, var_lvalue = generate_var(stat.var, ctx)
+        local var_cstats, var_lvalue = generate_var(stat.var, ctx, WRITE)
         local exp_cstats, exp_cvalue = generate_exp(stat.exp, ctx)
         local assign_stat
         if     var_lvalue._tag == coder.Lvalue.CVar then
@@ -1008,21 +1027,10 @@ generate_stat = function(stat, ctx)
                 var_lvalue.parent_pointer)
 
         elseif var_lvalue._tag == coder.Lvalue.ArraySlot then
-            local assign_slot = set_heap_slot(
+            assign_stat = set_heap_slot(
                 stat.exp._type, var_lvalue.slot_address, exp_cvalue,
                 var_lvalue.parent_pointer)
-            assign_stat = util.render([[
-                if (TITAN_UNLIKELY(!${CHECK_TAG})) {
-                    titan_runtime_array_type_error(L, ${LINE}, ${EXPECTED_TAG}, ${SLOT});
-                }
-                ${ASSIGN_SLOT}
-            ]], {
-                SLOT = var_lvalue.slot_address,
-                CHECK_TAG = check_tag(stat.exp._type, var_lvalue.slot_address),
-                LINE = c_integer(stat.loc.line),
-                EXPECTED_TAG = titan_type_tag(stat.exp._type),
-                ASSIGN_SLOT = assign_slot,
-            })
+
         else
             error("impossible")
         end
@@ -1095,18 +1103,14 @@ generate_stat = function(stat, ctx)
     end
 end
 
-typedecl.declare(coder, "coder", "Lvalue", {
-    CVar      = {"varname"},
-    SafeSlot  = {"slot_address", "parent_pointer"},
-    ArraySlot = {"slot_address", "parent_pointer"},
-})
-
 -- @param var: (ast.Var)
+-- @param cts: (Context)
+-- @param rw:  (ReadWrite)
 -- @returns (string, coder.Lvalue) C Statements, and a lvalue
 --
 -- The lvalue should not not contain side-effects. Anything that could care
 -- about evaluation order should be returned as part of the first argument.
-generate_var = function(var, ctx)
+generate_var = function(var, ctx, rw)
     local tag = var._tag
     if     tag == ast.Var.Name then
         local decl = var._decl
@@ -1133,12 +1137,20 @@ generate_var = function(var, ctx)
         local slot = ctx:new_cvar("TValue *", "slot")
         local t_cstats, t_cvalue = generate_exp(var.exp1, ctx)
         local k_cstats, k_cvalue = generate_exp(var.exp2, ctx)
+        local oob
+        if     rw._tag == coder.RW.Read then
+            oob = "titan_runtime_array_out_of_bounds_read"
+        elseif rw._tag == coder.RW.Write then
+            oob = "titan_runtime_array_out_of_bounds_write"
+        else
+            error("impossible")
+        end
         local stats = util.render([[
             ${T_CSTATS}
             ${K_CSTATS}
             ${UI_DECL} = ((lua_Unsigned)${K_CVALUE}) - 1;
             if (TITAN_UNLIKELY(${UI_NAME} >= ${T_CVALUE}->sizearray)) {
-                titan_runtime_array_bounds_error(L, ${LINE});
+                ${OOB}(L, ${T_CVALUE}, ${UI_NAME}, ${LINE}, ${COL});
             }
             ${SLOT_DECL} = &${T_CVALUE}->array[${UI_NAME}];
         ]], {
@@ -1149,7 +1161,9 @@ generate_var = function(var, ctx)
             UI_NAME = ui.name,
             UI_DECL = c_declaration(ui),
             SLOT_DECL = c_declaration(slot),
+            OOB = oob,
             LINE = c_integer(var.loc.line),
+            COL = c_integer(var.loc.col),
         })
         return stats, coder.Lvalue.ArraySlot(slot.name, t_cvalue)
 
@@ -1449,7 +1463,7 @@ generate_exp = function(exp, ctx)
         error("not implemented")
 
     elseif tag == ast.Exp.Var then
-        local exp_cstats, lvalue = generate_var(exp.var, ctx)
+        local exp_cstats, lvalue = generate_var(exp.var, ctx, READ)
 
         if     lvalue._tag == coder.Lvalue.CVar then
             return exp_cstats, lvalue.varname
