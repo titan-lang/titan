@@ -1273,30 +1273,6 @@ describe("Titan type checker", function()
             "attempting to assign to toplevel constant function foo",
             errs, nil, true)
     end)
-
-    it("typechecks table.insert", function()
-        local prog, errs = run_checker([[
-            function f(xs: {integer})
-                table_insert(xs, 10)
-            end
-
-            function g(xs: {float})
-                table_insert(xs, 3.14)
-            end
-        ]])
-        assert.truthy(prog, errs)
-    end)
-
-    it("typechecks table.insert (error)", function()
-        local prog, errs = run_checker([[
-            function f(xs: {integer})
-                table_insert(xs, "asd")
-            end
-        ]])
-        assert.falsy(prog)
-        assert.match("expected integer but found string", errs, nil, true)
-    end)
-
 end)
 
 describe("Titan typecheck of records", function()

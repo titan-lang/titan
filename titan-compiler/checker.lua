@@ -419,17 +419,7 @@ local function check_exp_callfunc_builtin(exp, errors)
     local fexp = exp.exp
     local args = exp.args
     local builtin_name = fexp._type.builtin_decl.name
-    if builtin_name == "table.insert" then
-        check_arity("table.insert arguments", 2, #args, errors, exp.loc)
-        check_exp(args[1], errors, nil)
-        check_is_array("table.insert first argument",
-            args[1]._type, errors, args[1].loc)
-        local elem_type = args[1]._type.elem
-        check_exp(args[2], errors, elem_type)
-        checkmatch("table.insert second argument",
-            elem_type, args[2]._type, errors, args[2].loc)
-        exp._type = types.T.Void()
-    elseif builtin_name == "table.remove" then
+    if builtin_name == "table.remove" then
         check_arity("table.insert arguments", 1, #args, errors, exp.loc)
         check_exp(args[1], errors, nil)
         check_is_array("table.insert first argument",

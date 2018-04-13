@@ -1175,49 +1175,6 @@ generate_var = function(var, ctx, rw)
     end
 end
 
-local function generate_exp_builtin_table_insert(exp, ctx)
-    local args = exp.args
-    assert(#args == 2)
-    local cstats_t, cvalue_t = generate_exp(args[1], ctx)
-    local cstats_v, cvalue_v = generate_exp(args[2], ctx)
-    local ui = ctx:new_cvar("lua_Unsigned", "ui")
-    local size = ctx:new_cvar("lua_Unsigned", "size")
-    local slot = ctx:new_cvar("TValue *", "slot")
-    local cond_gc = gc_cond_gc(ctx)
-    local cstats = util.render([[
-        ${CSTATS_T}
-        ${CSTATS_V}
-        ${UI_DECL} = luaH_getn(${CVALUE_T});
-        ${SIZE_DECL} = ${CVALUE_T}->sizearray;
-        if (TITAN_UNLIKELY(${SIZE} <= ${UI})) {
-            if (${SIZE} < 8) {
-                /* avoid infinite loop if sizearray == 0 */
-                ${SIZE} = 8;
-            }
-            while (${SIZE} <= ${UI}) {
-                ${SIZE} = ${SIZE}*2;
-            }
-            luaH_resizearray(L, ${CVALUE_T}, ${SIZE});
-        }
-        ${SLOT_DECL} = &${CVALUE_T}->array[${UI}];
-        ${SET_SLOT}
-        ${COND_GC}
-    ]], {
-        CSTATS_T = cstats_t,
-        CVALUE_T = cvalue_t,
-        CSTATS_V = cstats_v,
-        CVALUE_V = cvalue_v,
-        UI = ui.name,
-        UI_DECL = c_declaration(ui),
-        SIZE = size.name,
-        SIZE_DECL = c_declaration(size),
-        SLOT_DECL = c_declaration(slot),
-        SET_SLOT = set_heap_slot(args[2]._type, slot.name, cvalue_v, cvalue_t),
-        COND_GC = cond_gc,
-    })
-    return cstats, "VOID"
-end
-
 local function generate_exp_builtin_table_remove(exp, ctx)
     local args = exp.args
     assert(#args == 1)
@@ -1335,9 +1292,7 @@ generate_exp = function(exp, ctx)
 
         if fexp._type._tag == types.T.Builtin then
             local builtin_name = fexp._type.builtin_decl.name
-            if builtin_name == "table.insert" then
-                return generate_exp_builtin_table_insert(exp, ctx)
-            elseif builtin_name == "table.remove" then
+            if builtin_name == "table.remove" then
                 return generate_exp_builtin_table_remove(exp, ctx)
             else
                 error("impossible")
