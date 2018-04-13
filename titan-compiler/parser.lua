@@ -207,11 +207,16 @@ end
 local grammar = re.compile([[
 
     program         <-  SKIP*
-                        {| ( toplevelfunc
+                        {| ( method
+                           / toplevelfunc
                            / toplevelvar
                            / toplevelrecord
                            / import
                            / foreign )* |} !.
+
+    method          <- (P  FUNCTION NAME COLON NAME^NameMethod
+                           LPAREN^LParPList paramlist RPAREN^RParPList
+                           rettypeopt block END^EndFunc)         -> TopLevelMethod
 
     toplevelfunc    <- (P  localopt FUNCTION NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
@@ -253,6 +258,7 @@ local grammar = re.compile([[
                      / (P  FLOAT)                                -> TypeFloat
                      / (P  STRING)                               -> TypeString
                      / (P  VALUE)                                -> TypeValue
+                     / (P  NAME DOT NAME^QualName)               -> TypeQualName
                      / (P  NAME)                                 -> TypeName
                      / (P  LCURLY type^TypeType
                            RCURLY^RCurlyType)                    -> TypeArray
@@ -274,7 +280,7 @@ local grammar = re.compile([[
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / simpletype
 
-    recordfields    <- {| recordfield+ |}                        -- produces {Decl}
+    recordfields    <- {| recordfield* |}                        -- produces {Decl}
 
     recordfield     <- (P  NAME COLON^ColonRecordField
                            type^TypeRecordField SEMICOLON?)      -> Decl

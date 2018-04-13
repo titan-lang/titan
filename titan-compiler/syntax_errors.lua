@@ -28,7 +28,7 @@ local errors = {
     -- (tested in spec/parser_spec.lua)
     --
 
-    NameFunc = "Expected a function name after 'function'.",
+   NameFunc = "Expected a function name after 'function'.",
 
    LParPList = "Expected '(' for the parameter list.",
 
@@ -159,11 +159,15 @@ local errors = {
 
     ExpFieldList = "Expected an expression after ',' or ';'.",
 
-    ExpStat = "Expected a statement but found an expression that is not a function call",
+    ExpStat = "Expected a statement but found an expression that is not a function call.",
 
-    ExpAssign = "Expected a valid lvalue in the left side of assignment but found a regular expression",
+    ExpAssign = "Expected a valid lvalue in the left side of assignment but found a regular expression.",
 
-    CastMissingType = "Expected a type for the cast expression"
+    CastMissingType = "Expected a type for the cast expression.",
+
+    QualName = "Expected a qualified type name.",
+
+    NameMethod = "Expected a method name after the colon.",
 
 }
 
