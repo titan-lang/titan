@@ -11,12 +11,17 @@ local types = typedecl("Type", {
         Value       = {},
         Function    = {"params", "rettypes", "vararg"},
         Array       = {"elem"},
-        InitList    = {"elems"},
-        Record      = {"name", "fields"},
+        Record      = {"name", "fields", "functions", "methods"},
+        Nominal     = {"fqtn"},
         Type        = {"type"},
         ForeignModule = {"name", "members"},
     }
 })
+
+-- Registry for nominal types
+-- Keys are canonical FQTNs (fully qualified type names)
+-- Values are types
+types.registry = {}
 
 function types.is_basic(t)
     local tag = t._tag
@@ -34,7 +39,9 @@ function types.is_gc(t)
            tag == "Type.Value" or
            tag == "Type.Function" or
            tag == "Type.Array" or
-           tag == "Type.Record"
+           tag == "Type.Record" or
+           tag == "Type.Interface" or
+           (tag == "Type.Nominal" and types.registry[t] and types.is_gc(types.registry[t]))
 end
 
 -- XXX this should be inside typedecl call
@@ -169,6 +176,8 @@ function types.equals(t1, t2)
         end
 
         return true
+    elseif tag1 == "Type.Nominal" and tag2 == "Type.Nominal" then
+        return t1.fqtn == t2.fqtn
     elseif tag1 == tag2 then
         return true
     else
@@ -222,8 +231,8 @@ function types.tostring(t)
         return "initlist" -- TODO implement
     elseif tag == "Type.Record" then
         return t.name
-    elseif tag == "Type.Type" then
-        return "type" -- TODO remove
+    elseif tag == "Type.Nominal" then
+        return t.fqtn
     else
         error("impossible: " .. tostring(tag))
     end
@@ -241,6 +250,10 @@ function types.makemoduletype(modname, ast)
                 members[tlnode.name] = tlnode._type
             elseif tag == "Ast.TopLevelVar" then
                 members[tlnode.decl.name] = tlnode._type
+            elseif tag == "Ast.TopLevelRecord" then
+                members[tlnode.name] = tlnode._type
+            elseif tag == "Ast.TopLevelInterface" then
+                members[tlnode.name] = tlnode._type
             end
         end
     end
