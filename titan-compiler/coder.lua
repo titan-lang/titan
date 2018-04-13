@@ -1230,12 +1230,13 @@ local function generate_exp_builtin_table_remove(exp, ctx)
         ${UI_DECL} = luaH_getn(${CVALUE_T});
         if (TITAN_LIKELY(${UI} > 0)) {
             ${UI} = ${UI} - 1;
+            if (${UI} >= ${CVALUE_T}->sizearray) {
+                titan_runtime_array_out_of_bounds_read(L, ${CVALUE_T}, ${UI}, ${LINE},
+                ${COL}); }
             ${SLOT_DECL} = &${CVALUE_T}->array[${UI}];
             setempty(${SLOT});
             ${HALFSIZE_DECL} = ${CVALUE_T}->sizearray / 2;
-            if (${UI} < ${HALFSIZE}) {
-                luaH_resizearray(L, ${CVALUE_T}, ${HALFSIZE});
-            }
+            if (${UI} < ${HALFSIZE}) { luaH_resizearray(L, ${CVALUE_T}, ${HALFSIZE}); }
         }
     ]], {
         CSTATS_T = cstats_t,
@@ -1246,6 +1247,8 @@ local function generate_exp_builtin_table_remove(exp, ctx)
         HALFSIZE_DECL = c_declaration(halfsize),
         SLOT = slot.name,
         SLOT_DECL = c_declaration(slot),
+        LINE = exp.loc.line,
+        COL = exp.loc.col,
     })
     return cstats, "VOID"
 end
