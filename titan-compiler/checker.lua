@@ -27,6 +27,15 @@ function checker.typeerror(errors, loc, fmt, ...)
     table.insert(errors, errmsg)
 end
 
+-- Checks if a nominal type 'type' is valid
+local function checktype(type, loc, errors)
+    if type._tag == "Type.Nominal" and
+        not types.registry[type.fqtn] then
+        checker.typeerror(errors, loc,
+            "invalid type '%s' in type declaration", type.fqtn)
+    end
+end
+
 -- Checks if two types are the same, and logs an error message otherwise
 --   term: string describing what is being compared
 --   expected: type that is expected
@@ -71,19 +80,18 @@ typefromnode = util.make_visitor({
     end,
 
     ["Ast.TypeName"] = function(node, st, errors)
-        local name = node.name
-        local sym = st:find_symbol(name)
-        if sym then
-            if sym._type._tag == "Type.Type" then
-                return sym._type.type
-            else
-                checker.typeerror(errors, node.loc, "%s isn't a type", name)
-                return types.Invalid()
-            end
+        return types.Nominal(st.modname .. "." .. node.name)
+    end,
+
+    ["Ast.TypeQualName"] = function(node, st, errors)
+        local mod = st:find_symbol(node.module)
+        if mod then
+            local fqtn = mod._type.name .. "." .. node.name
+            return types.Nominal(fqtn)
         else
-            checker.typeerror(errors, node.loc, "type '%s' not found", name)
-            return types.Invalid()
+            checker.typeerror(errors, node.loc, "module '%s' referenced by type not found", node.module)
         end
+        return types.Invalid()
     end,
 
     ["Ast.TypeArray"] = function(node, st, errors)
@@ -138,6 +146,7 @@ end
 
 checkdecl = function(node, st, errors)
     node._type = node._type or typefromnode(node.type, st, errors)
+    checktype(node._type, node.loc, errors)
 end
 
 local function declare(node, st)
@@ -431,23 +440,33 @@ checkvar = util.make_visitor({
                     node._type = types.Function(params, {typ}, false)
                 else
                     checker.typeerror(errors, node.loc,
-                        "trying to access invalid record member '%s'", node.name)
+                        "trying to access invalid constructor '%s'", node.name)
                 end
             else
                 checker.typeerror(errors, node.loc,
                     "invalid access to type '%s'", types.tostring(type))
             end
-        elseif vartype._tag == "Type.Record" then
-            for _, field in ipairs(vartype.fields) do
-                if field.name == node.name then
-                    node._type = field.type
-                    break
-                end
-            end
-            if not node._type then
+        elseif vartype._tag == "Type.Nominal" then
+            local type = types.registry[vartype.fqtn]
+            if not type then
                 checker.typeerror(errors, node.loc,
-                    "field '%s' not found in record '%s'",
-                    node.name, vartype.name)
+                    "type '%s' not found", vartype.fqtn)
+            elseif type._tag ~= "Type.Record" then
+                checker.typeerror(errors, node.loc,
+                    "trying to access field '%s' of type '%s' that is not a record but '%s'",
+                    node.name, vartype.fqtn, type._tag)
+            else
+                for _, field in ipairs(type.fields) do
+                    if field.name == node.name then
+                        node._type = field.type
+                        break
+                    end
+                end
+                if not node._type then
+                    checker.typeerror(errors, node.loc,
+                        "field '%s' not found in record '%s'",
+                        node.name, vartype.fqtn)
+                end
             end
         else
             checker.typeerror(errors, node.loc,
@@ -872,9 +891,13 @@ local function checkfunc(node, st, errors)
     st:add_symbol("$function", node) -- for return type
     local ptypes = node._type.params
     local pnames = {}
+    for i, rettype in ipairs(node._type.rettypes) do
+        checktype(rettype, node.rettypes[i].loc, errors)
+    end
     for i, param in ipairs(node.params) do
         st:add_symbol(param.name, param)
         param._type = ptypes[i]
+        checktype(param._type, param.loc, errors)
         if pnames[param.name] then
             checker.typeerror(errors, node.loc,
                 "duplicate parameter '%s' in declaration of function '%s'",
@@ -896,9 +919,16 @@ end
 --   errors: list of compile-time errors
 local function checkbodies(ast, st, errors)
     for _, node in ipairs(ast) do
-        if not node._ignore and
-           node._tag == "Ast.TopLevelFunc" then
-            st:with_block(checkfunc, node, st, errors)
+        if not node._ignore then
+            if node._tag == "Ast.TopLevelFunc" then
+                st:with_block(checkfunc, node, st, errors)
+            elseif node._tag == "Ast.TopLevelRecord" then
+                local fields = node._type.type.fields
+                for i, field in ipairs(fields) do
+                    local ftype = field.type
+                    checktype(ftype, node.fields[i].loc, errors)
+                end
+            end
         end
     end
 end
@@ -1053,7 +1083,8 @@ local toplevel_visitor = util.make_visitor({
             local typ = typefromnode(field.type, st, errors)
             table.insert(fields, {type = typ, name = field.name})
         end
-        node._type = types.Type(types.Record(node.name, fields))
+        node._type = types.Type(types.Record(st.modname .. "." .. node.name, fields, {}, {}))
+        types.registry[st.modname .. "." .. node.name] = node._type.type
     end,
 })
 
@@ -1083,6 +1114,11 @@ end
 function checker.checkimport(modname, loader)
     local ok, type_or_error, errors = loader(modname)
     if not ok then return nil, type_or_error end
+    for name, type in pairs(type_or_error.members) do
+        if type._tag == "Type.Record" or type._tag == "Type.Interface" then
+            types.registry[modname .. "." .. name] = type
+        end
+    end
     return type_or_error, errors
 end
 
@@ -1101,7 +1137,7 @@ function checker.check(modname, ast, subject, filename, loader)
     loader = loader or function ()
         return nil, "you must pass a loader to import modules"
     end
-    local st = symtab.new()
+    local st = symtab.new(modname)
     local errors = {subject = subject, filename = filename}
     checktoplevel(ast, st, errors, loader)
     checkbodies(ast, st, errors)

@@ -76,7 +76,7 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("type 'foo' not found", err)
+        assert.match("invalid type 'test%.foo'", err)
     end)
 
     it("coerces to integer", function()
@@ -1788,18 +1788,28 @@ describe("Titan typecheck of records", function()
     end)
 
     it("detects type errors inside record declarations", function()
-        assert_type_error("type 'notfound' not found", [[
+        assert_type_error("invalid type 'test%.notfound'", [[
             record Point
                 x: notfound
             end
         ]])
     end)
 
-    it("doesn't typecheck recursive record declarations", function()
-        -- TODO: it should accept recursive types when we have optional types
-        assert_type_error("type 'List' not found", [[
+    it("typechecks recursive record declarations", function()
+        assert_type_check([[
             record List
                 l: List
+            end
+        ]])
+    end)
+
+    it("typechecks mutually recursive record declarations", function()
+        assert_type_check([[
+            record A
+                l: B
+            end
+            record B
+                l: A
             end
         ]])
     end)
@@ -1823,7 +1833,7 @@ describe("Titan typecheck of records", function()
     end)
 
     it("doesn't typecheck invalid dot operation in record", function()
-        assert_type_error("invalid record member 'nope'", [[
+        assert_type_error("invalid constructor 'nope'", [[
             record Point x: float; y:float end
 
             p = Point.nope(1, 2)
@@ -1859,7 +1869,7 @@ describe("Titan typecheck of records", function()
 
     it("doesn't typecheck read/write to non existent fields", function()
         local function assert_non_existent(code)
-            assert_type_error("field 'nope' not found in record 'Point'",
+            assert_type_error("field 'nope' not found in record 'test%.Point'",
                               wrap_record(code))
         end
         assert_non_existent([[ p.nope = 10 ]])
@@ -1867,9 +1877,9 @@ describe("Titan typecheck of records", function()
     end)
 
     it("doesn't typecheck read/write with invalid types", function()
-        assert_type_error("expected float but found Point",
+        assert_type_error("expected float but found test%.Point",
                           wrap_record[[ p.x = p ]])
-        assert_type_error("expected Point but found float",
+        assert_type_error("expected test.%Point but found float",
                           wrap_record[[ local p: Point = p.x ]])
     end)
 end)
