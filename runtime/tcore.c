@@ -5,6 +5,7 @@
 
 #include "lobject.h"
 #include "lstate.h"
+#include "ltable.h"
 #include "ltm.h"
 
 const char *titan_tag_name(int raw_tag)
@@ -50,26 +51,38 @@ void titan_runtime_argument_type_error(
 
 void titan_runtime_array_bounds_error(
     lua_State *L,
-    int line
+    int line, int col
 ){
     luaL_error(
         L,
-        "out of bounds (outside array part) at line %d",
-        line
+        "out of bounds (outside array part) at line %d, col %d",
+        line, col
     );
     TITAN_UNREACHABLE;
 }
 
-void titan_runtime_array_bounds_error_slow(
-    lua_State *L,
-    int line
+void titan_runtime_array_out_of_bounds_read(
+    lua_State *L, Table *t, lua_Unsigned ui, int line, int col
 ){
-    luaL_error(
-        L,
-        "out of bounds (outside array part) at line %d",
-        line
-    );
-    TITAN_UNREACHABLE;
+    luaH_titan_normalize_table(L, t);
+    unsigned int asize = t->sizearray;
+    if (ui >= asize) {
+        titan_runtime_array_bounds_error(L, line, col);
+    }
+}
+
+void titan_runtime_array_out_of_bounds_write(
+    lua_State *L, Table *t, lua_Unsigned ui, int line, int col
+){
+    luaH_titan_normalize_table(L, t);
+    unsigned int asize = t->sizearray;
+    if (ui > asize) {
+        titan_runtime_array_bounds_error(L, line, col);
+    }
+    if (ui == asize) {
+        asize = (asize == 0 ? 1 : 2*asize);
+        luaH_resizearray(L, t, asize);
+    }
 }
 
 void titan_runtime_array_type_error(

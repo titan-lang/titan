@@ -67,7 +67,7 @@ describe("Scope analysis: ", function()
     it("builtins work", function()
         local prog, errs = run_scope_analysis([[
             function fn(xs:{integer})
-                table_insert(xs, 17)
+                table_remove(xs)
             end
         ]])
         assert.truthy(prog)
@@ -78,7 +78,7 @@ describe("Scope analysis: ", function()
         local var = f_exp.var
         assert.are.equal(ast.Var.Name, var._tag)
         local decl = var._decl
-        assert.are_equal(builtins.table_insert, decl)
+        assert.are_equal(builtins.table_remove, decl)
     end)
 
     it("forbids variables from being used before they are defined", function()

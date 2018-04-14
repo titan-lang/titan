@@ -754,12 +754,33 @@ describe("Titan coder", function()
             end
         ]]
 
+        local denormalized_table = [[
+            local arr = {}
+            for i =  1, 5 do
+                arr[i] = i
+            end
+            for i = 24, 9, -1 do
+                arr[i] = i
+            end
+            for i =  6, 8 do
+                arr[i] = i
+            end
+        ]]
+
         it("reads from an array", function()
             run_coder(array_get_set, [[
                 local arr = {10, 20, 30}
                 assert(10 == test.get(arr, 1))
                 assert(20 == test.get(arr, 2))
                 assert(30 == test.get(arr, 3))
+            ]])
+        end)
+
+        it("reads from a denormalized arrray", function()
+            run_coder(array_get_set,
+                denormalized_table .. [[
+                assert( 1 == test.get(arr,  1))
+                assert(24 == test.get(arr, 24))
             ]])
         end)
 
@@ -770,6 +791,16 @@ describe("Titan coder", function()
                 assert(10 == arr[1])
                 assert(123 == arr[2])
                 assert(30 == arr[3])
+            ]])
+        end)
+
+        it("writes from a denormalized arrray", function()
+            run_coder(array_get_set,
+                denormalized_table .. [[
+                test.set(arr, 24, 77)
+                assert(77 == test.get(arr, 24))
+                test.set(arr, 25, 88)
+                assert(88 == test.get(arr, 25))
             ]])
         end)
 
@@ -800,12 +831,7 @@ describe("Titan coder", function()
                 assert(not ok)
                 assert(string.find(err, "out of bounds", nil, true))
 
-                local ok, err = pcall(test.set, arr, 4, 123)
-                assert(not ok)
-                assert(string.find(err, "out of bounds", nil, true))
-
-                table.remove(arr)
-                local ok, err = pcall(test.set, arr, 3, 123)
+                local ok, err = pcall(test.set, arr, 100, 123)
                 assert(not ok)
                 assert(string.find(err, "out of bounds", nil, true))
             ]])
@@ -819,34 +845,6 @@ describe("Titan coder", function()
                 assert(not ok)
                 assert(
                     string.find(err, "wrong type for array element", nil, true))
-            ]])
-        end)
-
-        it("checks type tags in set", function()
-            run_coder(array_get_set, [[
-                local arr = {10, 20, "hello"}
-
-                local ok, err = pcall(test.set, arr, 3, 20)
-                assert(not ok)
-                assert(
-                    string.find(err, "wrong type for array element", nil, true))
-            ]])
-        end)
-
-        it("can use insert", function()
-            run_coder([[
-                function insert_int(xs: {integer}, v:integer): ()
-                    table_insert(xs, v)
-                end
-            ]], [[
-                local arr = {}
-                for i = 1, 50 do
-                    test.insert_int(arr, 10*i)
-                    assert(i == #arr)
-                    for j = 1, i do
-                        assert(10*j == arr[j])
-                    end
-                end
             ]])
         end)
 

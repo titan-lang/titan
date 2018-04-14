@@ -511,6 +511,23 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
   luaH_resize(L, t, asize, totaluse - na);
 }
 
+void luaH_titan_normalize_table(lua_State *L, Table *t) {
+  unsigned int asize;  /* optimal size for array part */
+  unsigned int na;  /* number of keys in the array part */
+  unsigned int nums[MAXABITS + 1];
+  int i;
+  int totaluse;
+  for (i = 0; i <= MAXABITS; i++) nums[i] = 0;  /* reset counts */
+  na = numusearray(t, nums);  /* count keys in array part */
+  totaluse = na;  /* all those keys are integer keys */
+  totaluse += numusehash(t, nums, &na);  /* count keys in hash part */
+  /* compute new size for array part */
+  asize = computesizes(nums, &na);
+  /* resize the table to new computed sizes */
+  luaH_resize(L, t, asize, totaluse - na);
+}
+
+
 
 
 /*

@@ -239,6 +239,25 @@ end
 --
 --
 
+typedecl.declare(coder, "coder", "Lvalue", {
+    CVar      = {"varname"},
+    SafeSlot  = {"slot_address", "parent_pointer"},
+    ArraySlot = {"slot_address", "parent_pointer"},
+})
+
+typedecl.declare(coder, "coder", "RW", {
+    Read      = {},
+    Write     = {},
+})
+local READ = coder.RW.Read()
+local WRITE = coder.RW.Write()
+
+
+
+--
+--
+--
+
 local function function_name(funcname, kind)
     return string.format("function_%s_%s", funcname, kind)
 end
@@ -996,7 +1015,7 @@ generate_stat = function(stat, ctx)
 
     elseif tag == ast.Stat.Assign then
         ctx:begin_scope()
-        local var_cstats, var_lvalue = generate_var(stat.var, ctx)
+        local var_cstats, var_lvalue = generate_var(stat.var, ctx, WRITE)
         local exp_cstats, exp_cvalue = generate_exp(stat.exp, ctx)
         local assign_stat
         if     var_lvalue._tag == coder.Lvalue.CVar then
@@ -1008,21 +1027,10 @@ generate_stat = function(stat, ctx)
                 var_lvalue.parent_pointer)
 
         elseif var_lvalue._tag == coder.Lvalue.ArraySlot then
-            local assign_slot = set_heap_slot(
+            assign_stat = set_heap_slot(
                 stat.exp._type, var_lvalue.slot_address, exp_cvalue,
                 var_lvalue.parent_pointer)
-            assign_stat = util.render([[
-                if (TITAN_UNLIKELY(!${CHECK_TAG})) {
-                    titan_runtime_array_type_error(L, ${LINE}, ${EXPECTED_TAG}, ${SLOT});
-                }
-                ${ASSIGN_SLOT}
-            ]], {
-                SLOT = var_lvalue.slot_address,
-                CHECK_TAG = check_tag(stat.exp._type, var_lvalue.slot_address),
-                LINE = c_integer(stat.loc.line),
-                EXPECTED_TAG = titan_type_tag(stat.exp._type),
-                ASSIGN_SLOT = assign_slot,
-            })
+
         else
             error("impossible")
         end
@@ -1095,18 +1103,14 @@ generate_stat = function(stat, ctx)
     end
 end
 
-typedecl.declare(coder, "coder", "Lvalue", {
-    CVar      = {"varname"},
-    SafeSlot  = {"slot_address", "parent_pointer"},
-    ArraySlot = {"slot_address", "parent_pointer"},
-})
-
 -- @param var: (ast.Var)
+-- @param cts: (Context)
+-- @param rw:  (ReadWrite)
 -- @returns (string, coder.Lvalue) C Statements, and a lvalue
 --
 -- The lvalue should not not contain side-effects. Anything that could care
 -- about evaluation order should be returned as part of the first argument.
-generate_var = function(var, ctx)
+generate_var = function(var, ctx, rw)
     local tag = var._tag
     if     tag == ast.Var.Name then
         local decl = var._decl
@@ -1133,12 +1137,20 @@ generate_var = function(var, ctx)
         local slot = ctx:new_cvar("TValue *", "slot")
         local t_cstats, t_cvalue = generate_exp(var.exp1, ctx)
         local k_cstats, k_cvalue = generate_exp(var.exp2, ctx)
+        local oob
+        if     rw._tag == coder.RW.Read then
+            oob = "titan_runtime_array_out_of_bounds_read"
+        elseif rw._tag == coder.RW.Write then
+            oob = "titan_runtime_array_out_of_bounds_write"
+        else
+            error("impossible")
+        end
         local stats = util.render([[
             ${T_CSTATS}
             ${K_CSTATS}
             ${UI_DECL} = ((lua_Unsigned)${K_CVALUE}) - 1;
             if (TITAN_UNLIKELY(${UI_NAME} >= ${T_CVALUE}->sizearray)) {
-                titan_runtime_array_bounds_error(L, ${LINE});
+                ${OOB}(L, ${T_CVALUE}, ${UI_NAME}, ${LINE}, ${COL});
             }
             ${SLOT_DECL} = &${T_CVALUE}->array[${UI_NAME}];
         ]], {
@@ -1149,7 +1161,9 @@ generate_var = function(var, ctx)
             UI_NAME = ui.name,
             UI_DECL = c_declaration(ui),
             SLOT_DECL = c_declaration(slot),
+            OOB = oob,
             LINE = c_integer(var.loc.line),
+            COL = c_integer(var.loc.col),
         })
         return stats, coder.Lvalue.ArraySlot(slot.name, t_cvalue)
 
@@ -1159,49 +1173,6 @@ generate_var = function(var, ctx)
     else
         error("impossible")
     end
-end
-
-local function generate_exp_builtin_table_insert(exp, ctx)
-    local args = exp.args
-    assert(#args == 2)
-    local cstats_t, cvalue_t = generate_exp(args[1], ctx)
-    local cstats_v, cvalue_v = generate_exp(args[2], ctx)
-    local ui = ctx:new_cvar("lua_Unsigned", "ui")
-    local size = ctx:new_cvar("lua_Unsigned", "size")
-    local slot = ctx:new_cvar("TValue *", "slot")
-    local cond_gc = gc_cond_gc(ctx)
-    local cstats = util.render([[
-        ${CSTATS_T}
-        ${CSTATS_V}
-        ${UI_DECL} = luaH_getn(${CVALUE_T});
-        ${SIZE_DECL} = ${CVALUE_T}->sizearray;
-        if (TITAN_UNLIKELY(${SIZE} <= ${UI})) {
-            if (${SIZE} < 8) {
-                /* avoid infinite loop if sizearray == 0 */
-                ${SIZE} = 8;
-            }
-            while (${SIZE} <= ${UI}) {
-                ${SIZE} = ${SIZE}*2;
-            }
-            luaH_resizearray(L, ${CVALUE_T}, ${SIZE});
-        }
-        ${SLOT_DECL} = &${CVALUE_T}->array[${UI}];
-        ${SET_SLOT}
-        ${COND_GC}
-    ]], {
-        CSTATS_T = cstats_t,
-        CVALUE_T = cvalue_t,
-        CSTATS_V = cstats_v,
-        CVALUE_V = cvalue_v,
-        UI = ui.name,
-        UI_DECL = c_declaration(ui),
-        SIZE = size.name,
-        SIZE_DECL = c_declaration(size),
-        SLOT_DECL = c_declaration(slot),
-        SET_SLOT = set_heap_slot(args[2]._type, slot.name, cvalue_v, cvalue_t),
-        COND_GC = cond_gc,
-    })
-    return cstats, "VOID"
 end
 
 local function generate_exp_builtin_table_remove(exp, ctx)
@@ -1216,12 +1187,13 @@ local function generate_exp_builtin_table_remove(exp, ctx)
         ${UI_DECL} = luaH_getn(${CVALUE_T});
         if (TITAN_LIKELY(${UI} > 0)) {
             ${UI} = ${UI} - 1;
+            if (${UI} >= ${CVALUE_T}->sizearray) {
+                titan_runtime_array_out_of_bounds_read(L, ${CVALUE_T}, ${UI}, ${LINE},
+                ${COL}); }
             ${SLOT_DECL} = &${CVALUE_T}->array[${UI}];
-            setnilvalue(${SLOT});
+            setempty(${SLOT});
             ${HALFSIZE_DECL} = ${CVALUE_T}->sizearray / 2;
-            if (${UI} < ${HALFSIZE}) {
-                luaH_resizearray(L, ${CVALUE_T}, ${HALFSIZE});
-            }
+            if (${UI} < ${HALFSIZE}) { luaH_resizearray(L, ${CVALUE_T}, ${HALFSIZE}); }
         }
     ]], {
         CSTATS_T = cstats_t,
@@ -1232,6 +1204,8 @@ local function generate_exp_builtin_table_remove(exp, ctx)
         HALFSIZE_DECL = c_declaration(halfsize),
         SLOT = slot.name,
         SLOT_DECL = c_declaration(slot),
+        LINE = exp.loc.line,
+        COL = exp.loc.col,
     })
     return cstats, "VOID"
 end
@@ -1318,9 +1292,7 @@ generate_exp = function(exp, ctx)
 
         if fexp._type._tag == types.T.Builtin then
             local builtin_name = fexp._type.builtin_decl.name
-            if builtin_name == "table.insert" then
-                return generate_exp_builtin_table_insert(exp, ctx)
-            elseif builtin_name == "table.remove" then
+            if builtin_name == "table.remove" then
                 return generate_exp_builtin_table_remove(exp, ctx)
             else
                 error("impossible")
@@ -1449,7 +1421,7 @@ generate_exp = function(exp, ctx)
         error("not implemented")
 
     elseif tag == ast.Exp.Var then
-        local exp_cstats, lvalue = generate_var(exp.var, ctx)
+        local exp_cstats, lvalue = generate_var(exp.var, ctx, READ)
 
         if     lvalue._tag == coder.Lvalue.CVar then
             return exp_cstats, lvalue.varname
