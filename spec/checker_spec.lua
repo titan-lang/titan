@@ -1630,6 +1630,98 @@ describe("Titan type checker", function()
         assert.truthy(ok)
     end)
 
+    it("uses external record type wrongly", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(p: f.Point): string
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("expected string but found float", err)
+    end)
+
+    it("uses external record type correctly", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(p: f.Point): float
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok)
+    end)
+
+    it("uses transitive external record type wrongly", function ()
+        local modules = {
+            baz = [[
+              local f = import "foo"
+              function baz(): f.Point
+                return f.Point.new(1,2)
+              end
+            ]],
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local b = import "baz"
+                function bar(): string
+                    local p = b.baz()
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("expected string but found float", err)
+    end)
+
+    it("uses transitive external record type correctly", function ()
+        local modules = {
+            baz = [[
+              local f = import "foo"
+              function baz(): f.Point
+                return f.Point.new(1,2)
+              end
+            ]],
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local b = import "baz"
+                function bar(): float
+                    local p = b.baz()
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok)
+    end)
+
     it("functions cannot have two parameters with the same name", function()
         local code = [[
             function f(a: integer, a: integer)
