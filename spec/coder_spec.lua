@@ -28,6 +28,17 @@ local function call(modname, code)
     return os.execute(cmd)
 end
 
+local function run_coder(titan_code, lua_test)
+    local ast, err = parse(titan_code)
+    assert.truthy(ast, err)
+    local ok, err = checker.check("test", ast, titan_code, "test.titan")
+    assert.equal(0, #err, table.concat(err, "\n"))
+    local ok, err = driver.compile("test", ast)
+    assert.truthy(ok, err)
+    local ok, err = call("test", lua_test)
+    assert.truthy(ok, err)
+end
+
 describe("Titan code generator", function()
     after_each(function ()
         os.execute("rm -f *.so")
