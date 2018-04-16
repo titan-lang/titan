@@ -1061,19 +1061,18 @@ local function codeunaryop(ctx, node, iscondition)
     end
 end
 
--- In Lua and Titan, the shift ammount in a bitshift can be any integer, but in
--- C shift ammount must be a positive number less than the width of the integer
+-- In Lua and Titan, the shift amount in a bitshift can be any integer, but in
+-- C shift amount must be a positive number less than the width of the integer
 -- type being shifted. This means that we need some if statements to implement
 -- the Lua shift semantics in C.
--- positive amounts less than the width of the integer type being shifted.
 --
 -- Most of the time, the shift amount should be a constant, which will allow the
--- C compiler to eliminate this most branches as dead code and generate code that is
+-- C compiler to eliminate all of these branches as dead code and generate code that is
 -- just as good as a raw C bitshift without the extra Lua semantics.
 --
 -- For the dynamic case, we gain a bit of performance (~20%) compared to the
 -- algorithm in luaV_shiftl by reordering the branches to put the common case
--- (shift ammount is a small positive integer) under only one level of branching
+-- (shift amount is a small positive integer) under only one level of branching
 -- and with a TITAN_LIKELY annotation.
 local function generate_binop_shift(shift_pos, shift_neg, exp, ctx)
     local x_stats, x_var = codeexp(ctx, exp.lhs)

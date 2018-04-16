@@ -1342,7 +1342,7 @@ describe("Titan code generator", function()
             ]])
         end)
 
-        it("unary (+)", function()
+        it("binary (+) overflow", function()
             run_coder([[
                 function f(x:integer, y:integer): integer
                     return x + y
