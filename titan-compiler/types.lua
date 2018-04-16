@@ -119,6 +119,8 @@ function types.compatible(t1, t2)
         return true
     elseif t1._tag == "Type.Array" and t2._tag == "Type.Array" then
         return types.compatible(t1.elem, t2.elem)
+    elseif t1._tag == "Type.Nominal" and t2._tag == "Type.Nominal" then
+        return t1.fqtn == t2.fqtn
     elseif t1._tag == "Type.Function" and t2._tag == "Type.Function" then
         if #t1.params ~= #t2.params then
             return false

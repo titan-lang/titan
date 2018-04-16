@@ -437,7 +437,7 @@ checkvar = util.make_visitor({
                         table.insert(params, field.type)
                     end
                     node._decl = typ
-                    node._type = types.Function(params, {typ}, false)
+                    node._type = types.Function(params, {types.Nominal(typ.name)}, false)
                 else
                     checker.typeerror(errors, node.loc,
                         "trying to access invalid constructor '%s'", node.name)
