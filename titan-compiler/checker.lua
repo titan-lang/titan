@@ -85,7 +85,7 @@ typefromnode = util.make_visitor({
 
     ["Ast.TypeQualName"] = function(node, st, errors)
         local mod = st:find_symbol(node.module)
-        if mod then
+        if mod and mod._type._tag == "Type.Module" then
             local fqtn = mod._type.name .. "." .. node.name
             return types.Nominal(fqtn)
         else
@@ -1084,7 +1084,7 @@ local toplevel_visitor = util.make_visitor({
                 table.insert(errors, err)
             end
         else
-            node._type = types.Nil()
+            node._type = types.Invalid()
             checker.typeerror(errors, node.loc,
                 "problem loading module '%s': %s",
                 node.modname, errs)
