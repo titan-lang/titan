@@ -913,6 +913,17 @@ local function checkfunc(node, st, errors)
     end
 end
 
+-- Typechecks a method body, binding self to the first parameter
+--   node: TopLevelMethod AST node
+--   st: symbol table
+--   errors: list of compile-time errors
+local function checkmethod(node, st, errors)
+    local self = ast.Decl(node.loc, "self", ast.TypeName(node.loc, node._record.name))
+    self._type = typefromnode(self.type, st, errors)
+    st:add_symbol("self", self)
+    checkfunc(node, st, errors)
+end
+
 -- Checks function bodies
 --   ast: AST for the whole module
 --   st: symbol table
@@ -922,6 +933,8 @@ local function checkbodies(ast, st, errors)
         if not node._ignore then
             if node._tag == "Ast.TopLevelFunc" then
                 st:with_block(checkfunc, node, st, errors)
+            elseif node._tag == "Ast.TopLevelMethod" then
+                st:with_block(checkmethod, node, st, errors)
             elseif node._tag == "Ast.TopLevelRecord" then
                 local fields = node._type.type.fields
                 for i, field in ipairs(fields) do
@@ -1001,6 +1014,8 @@ local function toplevel_name(node)
     elseif tag == "Ast.TopLevelFunc" or
            tag == "Ast.TopLevelRecord" then
         return node.name
+    elseif tag == "Ast.TopLevelMethod" then
+        return nil
     else
         error("tag not found " .. tag)
     end
@@ -1079,12 +1094,56 @@ local toplevel_visitor = util.make_visitor({
 
     ["Ast.TopLevelRecord"] = function(node, st, errors)
         local fields = {}
+        local nameset = {}
         for _, field in ipairs(node.fields) do
-            local typ = typefromnode(field.type, st, errors)
-            table.insert(fields, {type = typ, name = field.name})
+            if nameset[field.name] then
+                checker.typeerror(errors, field.loc,
+                "redeclaration of field '%s' in record '%s'",
+                field.name, node.name)
+            else
+                nameset[field.name] = true
+                local typ = typefromnode(field.type, st, errors)
+                table.insert(fields, {type = typ, name = field.name})
+            end
         end
         node._type = types.Type(types.Record(st.modname .. "." .. node.name, fields, {}, {}))
         types.registry[st.modname .. "." .. node.name] = node._type.type
+    end,
+
+    ["Ast.TopLevelMethod"] = function(node, st, errors)
+        local record = st:find_symbol(node.class)
+        if not record then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "record referenced by method declaration '%s:%s' does not exist",
+                node.class, node.name)
+            return
+        end
+        if record._tag ~= "Ast.TopLevelRecord" then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "member referenced by method declaration '%s:%s' is not a record",
+                node.class, node.name)
+            return
+        end
+        local rectype = record._type.type
+        if rectype.methods[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "redeclaration of method '%s:%s'", node.class, node.name)
+            return
+        end
+        node._record = record
+        local ptypes = {}
+        for _, pdecl in ipairs(node.params) do
+            table.insert(ptypes, typefromnode(pdecl.type, st, errors))
+        end
+        local rettypes = {}
+        for _, rt in ipairs(node.rettypes) do
+            table.insert(rettypes, typefromnode(rt, st, errors))
+        end
+        node._type = types.Method(ptypes, rettypes)
+        rectype.methods[node.name] = node._type
     end,
 })
 
@@ -1098,7 +1157,7 @@ local toplevel_visitor = util.make_visitor({
 local function checktoplevel(ast, st, errors, loader)
     for _, node in ipairs(ast) do
         local name = toplevel_name(node)
-        local dup = st:find_dup(name)
+        local dup = name and st:find_dup(name)
         if dup then
             checker.typeerror(errors, node.loc,
                 "duplicate declaration for %s, previous one at line %d",
@@ -1106,7 +1165,9 @@ local function checktoplevel(ast, st, errors, loader)
             node._ignore = true
         else
             toplevel_visitor(node, st, errors, loader)
-            st:add_symbol(name, node)
+            if name and not node._ignore then
+                st:add_symbol(name, node)
+            end
         end
     end
 end

@@ -10,6 +10,7 @@ local types = typedecl("Type", {
         String      = {},
         Value       = {},
         Function    = {"params", "rettypes", "vararg"},
+        Method      = {"params", "rettypes"},
         Array       = {"elem"},
         Record      = {"name", "fields", "functions", "methods"},
         Nominal     = {"fqtn"},
