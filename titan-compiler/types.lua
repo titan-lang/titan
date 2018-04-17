@@ -241,28 +241,6 @@ function types.tostring(t)
     end
 end
 
--- Builds a type for the module from the types of its public members
---   ast: AST for the module
---   returns "Type.Module" type
-function types.makemoduletype(modname, ast)
-    local members = {}
-    for _, tlnode in ipairs(ast) do
-        if tlnode._tag ~= "Ast.TopLevelImport" and not tlnode.islocal and not tlnode._ignore then
-            local tag = tlnode._tag
-            if tag == "Ast.TopLevelFunc" then
-                members[tlnode.name] = tlnode._type
-            elseif tag == "Ast.TopLevelVar" then
-                members[tlnode.decl.name] = tlnode._type
-            elseif tag == "Ast.TopLevelRecord" then
-                members[tlnode.name] = tlnode._type
-            elseif tag == "Ast.TopLevelInterface" then
-                members[tlnode.name] = tlnode._type
-            end
-        end
-    end
-    return types.Module(modname, members)
-end
-
 function types.serialize(t)
     local tag = t._tag
     if tag == "Type.Array" then
@@ -270,7 +248,10 @@ function types.serialize(t)
     elseif tag == "Type.Module" then
         local members = {}
         for name, member in pairs(t.members) do
-            table.insert(members, name .. " = " .. types.serialize(member))
+            table.insert(members, name .. " = { _tag = 'Ast.ModuleMember', module = '" ..
+                member.module .. "', name = '" ..
+                name .. "', type = " ..
+                types.serialize(member.type) .. "}")
         end
         return "Module(" ..
             "'" .. t.name .. "'" .. "," ..
@@ -289,8 +270,27 @@ function types.serialize(t)
             "{" .. table.concat(ptypes, ",") .. "}" .. "," ..
             "{" .. table.concat(rettypes, ",") .. "}" ..
             ")"
+    elseif tag == "Type.Nominal" then
+        return "Nominal(" .. t.fqtn .. ")"
+    elseif tag == "Type.Record" then
+        local fields, methods = {}, {}
+        for _, field in ipairs(t.fields) do
+            table.insert(fields, "{ _tag = 'Ast.Decl', name = '" ..
+                field.name .. "', _type = " .. types.serialize(field._type) ..  "}")
+        end
+        return "Record(" .. string.format("%q", t.name) ..
+            "{" .. table.concat(fields, ",") .. "}" .. "," ..
+            "{" .. table.concat(methods, ",") .. "}" ..
+            ")"
+    elseif tag == "Type.Integer"     then return "Integer()"
+    elseif tag == "Type.Boolean"     then return "Boolean()"
+    elseif tag == "Type.String"      then return "String()"
+    elseif tag == "Type.Nil"         then return "Nil()"
+    elseif tag == "Type.Float"       then return "Float()"
+    elseif tag == "Type.Value"       then return "Value()"
+    elseif tag == "Type.Invalid"     then return "Invalid()"
     else
-        return tag
+        error("invalid tag " .. tag)
     end
 end
 

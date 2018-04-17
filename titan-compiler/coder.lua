@@ -207,7 +207,8 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
     else
         error("invalid type " .. types.tostring(typ))
     end
-    return render(tmpl, { DST = dst, SRC = src })
+    local code = render(tmpl, { DST = dst, SRC = src })
+    return code
 end
 
 local function foreignctype(typ --[[:table]])
@@ -1984,15 +1985,15 @@ function coder.generate(modname, ast)
                 ]], { HANDLE = mprefix .. "handle", INIT = mprefix .. "init", FILE = node._type.file}));
                 table.insert(deps, node.modname)
                 for name, member in pairs(node._type.members) do
-                    if not member._slot and member._tag ~= "Type.Function" then
+                    if not member._slot and member.type._tag ~= "Type.Function" then
                         member._slot = mprefix .. name .. "_titanvar"
                     end
-                if member._tag == "Type.Function" then
+                    if member.type._tag == "Type.Function" then
                         local fname = mprefix .. name .. "_titan"
-                        table.insert(includes, externalsig(fname, member))
+                        table.insert(includes, externalsig(fname, member.type))
                         table.insert(initmods, render([[
                             $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
-                        ]], { NAME = fname, TYPE = funpointer("", member), HANDLE = mprefix .. "handle" }))
+                        ]], { NAME = fname, TYPE = funpointer("", member.type), HANDLE = mprefix .. "handle" }))
                     else
                         table.insert(includes, "static TValue *" .. member._slot .. ";")
                         table.insert(initmods, render([[
@@ -2181,7 +2182,7 @@ function coder.generate(modname, ast)
 
     table.insert(code, render(modtypes, {
         TYPESNAME = tlcontext.prefix .. "types",
-        TYPES = string.format("%q", types.serialize(types.makemoduletype(modname, ast)))
+        TYPES = string.format("%q", types.serialize(ast._type))
     }))
 
     table.insert(code, render(init, {
