@@ -268,8 +268,8 @@ function types.serialize(t)
         end
         return "Function(" ..
             "{" .. table.concat(ptypes, ",") .. "}" .. "," ..
-            "{" .. table.concat(rettypes, ",") .. "}" ..
-            ")"
+            "{" .. table.concat(rettypes, ",") .. "}" .. "," ..
+            tostring(t.vararg) .. ")"
     elseif tag == "Type.Nominal" then
         return "Nominal(" .. t.fqtn .. ")"
     elseif tag == "Type.Record" then
