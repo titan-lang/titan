@@ -271,15 +271,17 @@ function types.serialize(t)
             "{" .. table.concat(rettypes, ",") .. "}" .. "," ..
             tostring(t.vararg) .. ")"
     elseif tag == "Type.Nominal" then
-        return "Nominal(" .. t.fqtn .. ")"
+        return "Nominal('" .. t.fqtn .. "')"
+    elseif tag == "Type.Type" then
+        return "Type(" .. types.serialize(t.type) .. ")"
     elseif tag == "Type.Record" then
         local fields, methods = {}, {}
         for _, field in ipairs(t.fields) do
             table.insert(fields, "{ _tag = 'Ast.Decl', name = '" ..
                 field.name .. "', _type = " .. types.serialize(field._type) ..  "}")
         end
-        return "Record(" .. string.format("%q", t.name) ..
-            "{" .. table.concat(fields, ",") .. "}" .. "," ..
+        return "Record('" .. t.name ..
+            "',{" .. table.concat(fields, ",") .. "}" .. "," ..
             "{" .. table.concat(methods, ",") .. "}" ..
             ")"
     elseif tag == "Type.Integer"     then return "Integer()"

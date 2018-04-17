@@ -14,8 +14,9 @@ end
 local function run_checker_modules(modules, main)
     local imported = {}
     local loader = driver.tableloader(modules, imported)
-    local _, errs = checker.checkimport(main, loader)
-    return #errs == 0, table.concat(errs, "\n"), imported
+    local modt, err = checker.checkimport(main, loader)
+    if not modt then return false, err end
+    return #err == 0, table.concat(err, "\n"), imported
 end
 
 -- Return a version of t2 that only contains fields present in t1 (recursively)
