@@ -13,8 +13,9 @@ end
 local function generate_modules(modules, main)
     local imported = {}
     local loader = driver.tableloader(modules, imported)
-    local _, errs = checker.checkimport(main, loader)
-    if #errs ~= 0 then return nil, table.concat(errs, "\n") end
+    local type, err = checker.checkimport(main, loader)
+    if not type then return nil, err end
+    if #err ~= 0 then return nil, table.concat(err, "\n") end
     for name, mod in pairs(imported) do
         local ok, err = driver.compile_module(name, mod)
         if not ok then return nil, err end
@@ -41,6 +42,8 @@ end
 
 describe("Titan code generator", function()
     after_each(function ()
+        collectgarbage()
+        collectgarbage()
         os.execute("rm -f *.so")
         os.execute("rm -f *.c")
     end)

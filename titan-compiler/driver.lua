@@ -88,6 +88,12 @@ function driver.tableloader(modtable, imported)
         if not ast then return false, parser.error_to_string(err, modf) end
         imported[modname] = CIRCULAR_MARK
         local modt, errors = checker.check(modname, ast, input, modf, loader)
+        local mods = types.serialize(modt)
+        local modtf, err = load("return " .. mods, modname, "t", types)
+        if not modtf then return false, err end
+        local ok, modt_or_err = pcall(modtf)
+        if not ok then return false, modt_or_err end
+        modt = modt_or_err
         imported[modname] = { ast = ast, type = modt, filename = modf }
         return true, modt, errors
     end
