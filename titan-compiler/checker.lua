@@ -413,28 +413,45 @@ checkvar = util.make_visitor({
     end,
 
     ["Ast.VarDot"] = function(node, st, errors)
-        local var = assert(node.exp.var, "left side of dot is not var")
-        checkvar(var, st, errors)
-        node.exp._type = var._type
-        local vartype = var._type
-        if vartype._tag == "Type.Module" or vartype._tag == "Type.ForeignModule" then
-            local mod = vartype
+        if node.exp._tag == "Ast.ExpVar" and
+          (node.exp.var._tag == "Ast.VarName" or (node.exp.var._tag == "Ast.VarDot" and
+              node.exp.var.exp._tag == "Ast.ExpVar" and
+              node.exp.var.exp.var._tag == "Ast.VarName" and
+              node.name == "new")) then
+            checkvar(node.exp.var, st, errors)
+            if node.exp.var._decl then node.exp.var._decl._used = true end
+            node.exp._type = node.exp.var._type
+        else
+            checkexp(node.exp, st, errors)
+        end
+        local ltype = node.exp._type
+        if ltype._tag == "Type.Module" or ltype._tag == "Type.ForeignModule" then
+            local mod = ltype
+            if not node.exp.var then
+                checker.typeerror(errors, node.loc,
+                    "trying to access module '%s' as a first-class value",
+                    mod.name)
+            end
             if not mod.members[node.name] then
                 checker.typeerror(errors, node.loc,
-                    "variable '%s' not found inside module '%s'",
+                    "member '%s' not found inside module '%s'",
                     node.name, mod.name)
             else
-                local decl = mod.members[node.name]
-                node._decl = decl
-                node._type = decl
+                node._decl = mod.members[node.name]
+                node._type = node._decl.type
             end
-        elseif vartype._tag == "Type.Type" then
-            local typ = vartype.type
+        elseif ltype._tag == "Type.Type" then
+            local typ = ltype.type
             if typ._tag == "Type.Record" then
+                if not node.exp.var then
+                    checker.typeerror(errors, node.loc,
+                        "trying to access record '%s' as a first-class value",
+                        typ.name)
+                end
                 if node.name == "new" then
                     local params = {}
                     for _, field in ipairs(typ.fields) do
-                        table.insert(params, field.type)
+                        table.insert(params, field._type)
                     end
                     node._decl = typ
                     node._type = types.Function(params, {types.Nominal(typ.name)}, false)
@@ -446,32 +463,33 @@ checkvar = util.make_visitor({
                 checker.typeerror(errors, node.loc,
                     "invalid access to type '%s'", types.tostring(type))
             end
-        elseif vartype._tag == "Type.Nominal" then
-            local type = types.registry[vartype.fqtn]
+        elseif ltype._tag == "Type.Nominal" then
+            local type = types.registry[ltype.fqtn]
             if not type then
                 checker.typeerror(errors, node.loc,
-                    "type '%s' not found", vartype.fqtn)
+                    "type '%s' not found", ltype.fqtn)
             elseif type._tag ~= "Type.Record" then
                 checker.typeerror(errors, node.loc,
                     "trying to access field '%s' of type '%s' that is not a record but '%s'",
-                    node.name, vartype.fqtn, type._tag)
+                    node.name, ltype.fqtn, type._tag)
             else
                 for _, field in ipairs(type.fields) do
                     if field.name == node.name then
-                        node._type = field.type
+                        node._decl = field
+                        node._type = field._type
                         break
                     end
                 end
                 if not node._type then
                     checker.typeerror(errors, node.loc,
                         "field '%s' not found in record '%s'",
-                        node.name, vartype.fqtn)
+                        node.name, ltype.fqtn)
                 end
             end
         else
             checker.typeerror(errors, node.loc,
                 "trying to access a member of value of type '%s'",
-                types.tostring(vartype))
+                types.tostring(ltype))
         end
         node._type = node._type or types.Invalid()
     end,
@@ -496,6 +514,21 @@ checkvar = util.make_visitor({
 --
 -- Exp
 --
+
+-- Returns best guess of expression name
+local function expname(node)
+    if node._tag == "Ast.ExpVar" then
+        if node.var._tag == "Ast.VarName" then
+            return node.var.name
+        elseif node.var._tag == "Ast.VarDot" then
+            return expname(node.var.exp) .. "." .. node.var.name
+        else
+            return "(expression)"
+        end
+    else
+        return "(expression)"
+    end
+end
 
 -- Typechecks an expression
 --   node: Exp_* AST node
@@ -569,6 +602,11 @@ checkexp = util.make_visitor({
         elseif texp._tag == "Type.Function" then
             checker.typeerror(errors, node.loc,
                 "trying to access a function as a first-class value")
+            node._type = types.Invalid()
+        elseif texp._tag == "Type.Type" then
+            checker.typeerror(errors, node.loc,
+                "trying to access record type '%s' as a first-class value",
+                texp.type.name)
             node._type = types.Invalid()
         else
             node._type = texp
@@ -812,13 +850,34 @@ checkexp = util.make_visitor({
     end,
 
     ["Ast.ExpCall"] = function(node, st, errors, context)
-        assert(node.exp._tag == "Ast.ExpVar", "function calls are first-order only!")
-        local var = node.exp.var
-        checkvar(var, st, errors)
-        node.exp._type = var._type
-        local fname = var._tag == "Ast.VarName" and var.name or (var.exp.var.name .. "." .. var.name)
-        if var._type._tag == "Type.Function" then
-            local ftype = var._type
+        if node.exp._tag == "Ast.ExpVar" then
+            local var = node.exp.var
+            checkvar(var, st, errors)
+            if var._decl then var._decl._used = true end
+            node.exp._type = var._type
+        else
+            checkexp(node.exp, st, errors)
+        end
+        if node.args._tag == "Ast.ArgsFunc" then
+            local ftype = node.exp._type
+            local fname = expname(node.exp)
+            local var = node.exp.var
+            if not (var and var._decl and (var._decl._tag == "Ast.TopLevelFunc" or
+              var._decl._tag == "Ast.ModuleMember" or
+              var._decl._tag == "Type.Record")) then
+                checker.typeerror(errors, node.loc,
+                    "first-class functions are not supported in this version of Titan")
+            end
+            if ftype._tag ~= "Type.Function" then
+                checker.typeerror(errors, node.loc,
+                    "'%s' is not a function but %s",
+                    fname, types.tostring(ftype))
+                for _, arg in ipairs(node.args.args) do
+                    checkexp(arg, st, errors)
+                end
+                node._type = types.Invalid()
+                return
+            end
             local nparams = #ftype.params
             local args = node.args.args
             local nargs = #args
@@ -851,13 +910,7 @@ checkexp = util.make_visitor({
             node._type = ftype.rettypes[1]
             node._types = ftype.rettypes
         else
-            checker.typeerror(errors, node.loc,
-                "'%s' is not a function but %s",
-                fname, types.tostring(var._type))
-            for _, arg in ipairs(node.args.args) do
-                checkexp(arg, st, errors)
-            end
-            node._type = types.Invalid()
+            assert(node.args._tag == "Ast.ArgsMethod")
         end
     end,
 
@@ -938,7 +991,7 @@ local function checkbodies(ast, st, errors)
             elseif node._tag == "Ast.TopLevelRecord" then
                 local fields = node._type.type.fields
                 for i, field in ipairs(fields) do
-                    local ftype = field.type
+                    local ftype = field._type
                     checktype(ftype, node.fields[i].loc, errors)
                 end
             end
@@ -1048,7 +1101,7 @@ local toplevel_visitor = util.make_visitor({
                 local ftype = item.type
                 local decl, err = foreigntypes.convert(st, ftype)
                 if decl then
-                    members[fname] = decl
+                    members[fname] = ast.ModuleMember(name, fname, decl)
                     st:add_foreign_type(fname, decl)
                 else
                     checker.typeerror(errors, err, node._pos)
@@ -1095,6 +1148,7 @@ local toplevel_visitor = util.make_visitor({
     ["Ast.TopLevelRecord"] = function(node, st, errors)
         local fields = {}
         local nameset = {}
+        local fqtn = st.modname .. "." .. node.name
         for _, field in ipairs(node.fields) do
             if nameset[field.name] then
                 checker.typeerror(errors, field.loc,
@@ -1102,11 +1156,11 @@ local toplevel_visitor = util.make_visitor({
                 field.name, node.name)
             else
                 nameset[field.name] = true
-                local typ = typefromnode(field.type, st, errors)
-                table.insert(fields, {type = typ, name = field.name})
+                field._type = typefromnode(field.type, st, errors)
+                table.insert(fields, field)
             end
         end
-        node._type = types.Type(types.Record(st.modname .. "." .. node.name, fields, {}, {}))
+        node._type = types.Type(types.Record(fqtn, fields, {}, {}))
         types.registry[st.modname .. "." .. node.name] = node._type.type
     end,
 
@@ -1183,6 +1237,29 @@ function checker.checkimport(modname, loader)
     return type_or_error, errors
 end
 
+-- Builds a type for the module from the types of its public members
+--   modast: AST for the module
+--   returns "Type.Module" type
+local function makemoduletype(modname, modast)
+    local members = {}
+    for _, tlnode in ipairs(modast) do
+        if tlnode._tag ~= "Ast.TopLevelImport" and not tlnode.islocal and not tlnode._ignore then
+            local tag = tlnode._tag
+            if tag == "Ast.TopLevelFunc" then
+                members[tlnode.name] = ast.ModuleMember(modname, tlnode.name, tlnode._type)
+            elseif tag == "Ast.TopLevelVar" then
+                members[tlnode.decl.name] = ast.ModuleMember(modname, tlnode.decl.name, tlnode._type)
+            elseif tag == "Ast.TopLevelRecord" then
+                members[tlnode.name] = ast.ModuleMember(modname, tlnode.name, tlnode._type)
+            elseif tag == "Ast.TopLevelInterface" then
+                members[tlnode.name] = ast.ModuleMember(modname, tlnode.name, tlnode._type)
+            end
+        end
+    end
+    return types.Module(modname, members)
+end
+
+
 -- Entry point for the typechecker
 --   ast: AST for the whole module
 --   subject: the string that generated the AST
@@ -1202,7 +1279,8 @@ function checker.check(modname, ast, subject, filename, loader)
     local errors = {subject = subject, filename = filename}
     checktoplevel(ast, st, errors, loader)
     checkbodies(ast, st, errors)
-    return types.makemoduletype(modname, ast), errors
+    ast._type = makemoduletype(modname, ast)
+    return ast._type, errors
 end
 
 return checker

@@ -883,7 +883,7 @@ describe("Titan type checker", function()
                 end
             ]]
             local ok, err = run_checker(code)
-            assert.truthy(ok)
+            assert.truthy(ok, err)
         end)
     end
 
@@ -1273,8 +1273,8 @@ describe("Titan type checker", function()
             _tag = "Type.Module",
             name = "test",
             members = {
-                a = { _tag = "Type.Integer" },
-                geta = { _tag = "Type.Function" }
+                a = { type = {_tag = "Type.Integer"} },
+                geta = { type = {_tag = "Type.Function"} }
             }
         })
         assert.falsy(mods.test.type.members.b)
@@ -1320,8 +1320,8 @@ describe("Titan type checker", function()
             _tag = "Type.Module",
             name = "foo",
             members = {
-                a = { _tag = "Type.Integer" },
-                foo = { _tag = "Type.Function" }
+                a = { type = {_tag = "Type.Integer"} },
+                foo = { type = {_tag = "Type.Function"} }
             }
         })
     end)
@@ -1339,7 +1339,7 @@ describe("Titan type checker", function()
                 _tag = "Type.ForeignModule",
                 members = {
                     printf = {
-                        _tag = "Type.Function"
+                        type = {_tag = "Type.Function"}
                     }
                 }
             }
@@ -1384,7 +1384,7 @@ describe("Titan type checker", function()
             end
         ]]
         local ok, err = run_checker(code)
-        assert.truthy(ok)
+        assert.truthy(ok, err)
     end)
 
     it("can check foreign module variables", function()
@@ -2038,7 +2038,7 @@ describe("Titan typecheck of records", function()
             ]]
         }
         local ok, err, mods = run_checker_modules(modules, "bar")
-        assert.truthy(ok)
+        assert.truthy(ok, err)
     end)
 
 end)
