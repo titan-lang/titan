@@ -574,35 +574,54 @@ checkexp = util.make_visitor({
     end,
 
     ["Ast.ExpInitList"] = function(node, st, errors, context)
-        local econtext = context and context.elem
-        local etypes = {}
-        local isarray = true
-        for _, field in ipairs(node.fields) do
-            local exp = field.exp
-            checkexp(exp, st, errors, econtext)
-            table.insert(etypes, exp._type)
-            isarray = isarray and not field.name
-        end
-        local lastfield = node.fields[#node.fields]
-        if lastfield and not lastfield.name and lastfield.exp._types and #lastfield.exp._types > 1 then
-            for i = 2, #lastfield.exp._types do
-                table.insert(node.fields,
-                    ast.Field(lastfield.loc, nil,
-                        ast.ExpExtra(lastfield.loc, lastfield.exp,
-                            i, lastfield.exp._types[i])))
+        if (not context) or context._tag == "Type.Array" then
+            local econtext = context and context.elem
+            local etypes = {}
+            for _, field in ipairs(node.fields) do
+                if field.name then
+                    checker.typeerror(errors, field.loc,
+                        "initializing field '%s' when expecting array", field.name)
+                    checkexp(field.exp, st, errors)
+                else
+                    local exp = field.exp
+                    checkexp(exp, st, errors, econtext)
+                    table.insert(etypes, exp._type)
+                end
             end
-        end
-        if isarray then
+            local lastfield = node.fields[#node.fields]
+            if lastfield and not lastfield.name and lastfield.exp._types and #lastfield.exp._types > 1 then
+                for i = 2, #lastfield.exp._types do
+                    table.insert(node.fields,
+                        ast.Field(lastfield.loc, nil,
+                            ast.ExpExtra(lastfield.loc, lastfield.exp,
+                                i, lastfield.exp._types[i])))
+                end
+            end
             local etype = econtext or etypes[1] or types.Integer()
             node._type = types.Array(etype)
             for i, field in ipairs(node.fields) do
-                field.exp = trycoerce(field.exp, etype, errors)
-                local exp = field.exp
-                checkmatch("array initializer at position " .. i, etype,
-                           exp._type, errors, exp.loc)
+                if not field.name then
+                    field.exp = trycoerce(field.exp, etype, errors)
+                    local exp = field.exp
+                    checkmatch("array initializer at position " .. i, etype,
+                               exp._type, errors, exp.loc)
+                end
             end
+        elseif context._tag == "Type.Record" then
+            error("not implemented")
         else
-            node._type = types.InitList(etypes)
+            local isarray = true
+            local etype = types.Integer()
+            for _, field in ipairs(node.fields) do
+                checkexp(field.exp, st, errors)
+                etype = field.exp._type
+                isarray = isarray and not field.name
+            end
+            if isarray then
+                node._type = types.Array(etype)
+            else
+                node._type = types.Invalid()
+            end
         end
     end,
 
