@@ -5,6 +5,7 @@ local driver = require 'titan-compiler.driver'
 local util = require 'titan-compiler.util'
 
 local function run_checker(code)
+    types.registry = {}
     driver.imported = {}
     local ast = assert(parser.parse("(checker_spec)", code))
     local t, errs = checker.check("test", ast, code, "test.titan", driver.defaultloader)
@@ -55,7 +56,6 @@ local function assert_ast(program, expected)
 end
 
 describe("Titan type checker", function()
-
     it("for loop iteration variables don't shadow var limit and step", function()
         local code = [[
             function fn(x: integer): integer
@@ -1601,7 +1601,7 @@ describe("Titan type checker", function()
         assert.match("'foo.a' is not a function", err)
     end)
 
-    it("catches call if non-function function", function ()
+    it("catches call of non-function function", function ()
         local code = [[
             local a = 2
             function foo(): integer
@@ -1773,7 +1773,7 @@ describe("Titan type checker", function()
         for _, c in ipairs(cases) do
             local ok, err = run_checker(c.code)
             assert.falsy(ok)
-            assert.match("function f called with " .. c.args .. " arguments but expects " .. c.params, err)
+            assert.match("function 'f' called with " .. c.args .. " arguments but expects " .. c.params, err)
         end
     end)
 end)
@@ -1854,9 +1854,9 @@ describe("Titan typecheck of records", function()
     it("doesn't typecheck constructor calls with wrong arguments", function()
         assert_type_error("expected float but found string",
                           wrap_record[[ p = Point.new("a", "b") ]])
-        assert_type_error("Point.new called with 1 arguments but expects 2",
+        assert_type_error("'Point.new' called with 1 arguments but expects 2",
                           wrap_record[[ p = Point.new(1) ]])
-        assert_type_error("Point.new called with 3 arguments but expects 2",
+        assert_type_error("'Point.new' called with 3 arguments but expects 2",
                           wrap_record[[ p = Point.new(1, 2, 3) ]])
     end)
 
@@ -2042,5 +2042,166 @@ describe("Titan typecheck of records", function()
         assert.truthy(ok, err)
     end)
 
+    it("method can call another method of same record", function()
+        assert_type_check([[
+            record Rec
+            end
+
+            function Rec:fn1()
+              self:fn2()
+            end
+
+            function Rec:fn2()
+            end
+        ]])
+    end)
+
+    it("detects attempts to call non-methods", function()
+        assert_type_error("expected record in receiver of method call but found 'integer'", [[
+            function fn()
+                local i: integer = 0
+                i:m()
+            end
+        ]])
+        assert_type_error("method 'm' not found in record 'test.R'", [[
+            record R end
+            function fn(r: R)
+                r:m()
+            end
+        ]])
+        assert_type_error("record type 'test.R' in receiver of method call does not exist", [[
+            function fn(r: R)
+                r:m()
+            end
+        ]])
+    end)
+
+    it("catches call of external non-method", function ()
+        local modules = {
+            foo = [[
+                a: integer = 1
+                record R end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(r: f.R, p: f.P)
+                    r:m()
+                    p:m()
+                    f.a:m()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("record type 'foo.P' in receiver of method call does not exist", err)
+        assert.match("method 'm' not found in record 'foo.R'", err)
+        assert.match("expected record in receiver of method call but found 'integer'", err)
+    end)
+
+    it("correctly uses external method", function ()
+        local modules = {
+            foo = [[
+                record R end
+                function R:a(): integer
+                    return 42
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(r: f.R): integer
+                    return r:a()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok, err)
+    end)
+
+    it("correctly uses transitive external method", function ()
+        local modules = {
+            baz = [[
+                record R end
+                function R:a(): integer
+                    return 42
+                end
+            ]],
+            foo = [[
+                local b = import "baz"
+                function f(): b.R
+                    return b.R.new()
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(): integer
+                    local r = f.f()
+                    return r:a()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok, err)
+    end)
+
+    it("methods cannot have two parameters with the same name", function()
+        assert_type_error("duplicate parameter", [[
+            record R end
+            function R:f(a: integer, a: integer)
+            end
+        ]])
+    end)
+
+    it("typechecks adjustment of argument lists in methods", function()
+        assert_type_check([[
+            record R end
+            function R:g(): (integer, string)
+                return 20, "foo"
+            end
+            function R:f(x: string, y: integer, z: string)
+            end
+            function R:h()
+                self:f("bar", self:g())
+            end
+        ]])
+    end)
+
+    it("catches methods called with wrong arity", function()
+        local cases = {{ code = [[
+            record R end
+            function R:g(): (integer, integer)
+                return 20, 30
+            end
+            function R:f(x: integer, y: integer, z: integer)
+            end
+            function R:h()
+                self:f(self:g())
+            end
+        ]], args = 2, params = 3 }, { code = [[
+            record R end
+            function R:g(): (integer, integer)
+                return 20, 30
+            end
+            function R:f(x: integer, y: integer, z: integer)
+            end
+            function R:h()
+                self:f(20, 30, self:g())
+            end
+        ]], args = 4, params = 3 }, { code = [[
+            record R end
+            function R:g(): (integer, integer)
+                return 20, 30
+            end
+            function R:f(x: integer, y: integer, z: integer)
+            end
+            function R:h()
+                self:f(20, (self:g()))
+            end
+        ]], args = 2, params = 3 }}
+        for _, c in ipairs(cases) do
+            local ok, err = run_checker(c.code)
+            assert.falsy(ok)
+            assert.match("method 'test.R:f' called with " .. c.args .. " arguments but expects " .. c.params, err)
+        end
+    end)
 end)
 

@@ -11,6 +11,7 @@ local function parse(code)
 end
 
 local function generate_modules(modules, main)
+    types.registry = {}
     local imported = {}
     local loader = driver.tableloader(modules, imported)
     local type, err = checker.checkimport(main, loader)
@@ -30,6 +31,7 @@ local function call(modname, code)
 end
 
 local function run_coder(titan_code, lua_test)
+    types.registry = {}
     local ast, err = parse(titan_code)
     assert.truthy(ast, err)
     local ok, err = checker.check("test", ast, titan_code, "test.titan")
@@ -42,8 +44,6 @@ end
 
 describe("Titan code generator", function()
     after_each(function ()
-        collectgarbage()
-        collectgarbage()
         os.execute("rm -f *.so")
         os.execute("rm -f *.c")
     end)

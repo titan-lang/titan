@@ -514,6 +514,38 @@ local function expname(node)
     end
 end
 
+-- Typechecks and argument list for a function or method call
+local function checkargs(ftype, args, loc, fname, st, errors)
+    local nparams = #ftype.params
+    local nargs = #args
+    local lastarg = args[nargs]
+    for i = 1, nargs do
+        local arg = args[i]
+        local ptype = ftype.params[i]
+        checkexp(arg, st, errors, ptype)
+        ptype = ptype or arg._type
+        args[i] = trycoerce(args[i], ptype, errors)
+        local atype = args[i]._type
+        checkmatch("argument " .. i .. " of call to " .. fname, ptype, atype, errors, arg.loc)
+    end
+    if lastarg and lastarg._types then
+        for i = 2, #lastarg._types do
+            local pidx = nargs + i - 1
+            local ptype = ftype.params[pidx]
+            local exp = ast.ExpExtra(lastarg.loc, lastarg, i, lastarg._types[i])
+            ptype = ptype or exp._type
+            exp = trycoerce(exp, ptype, errors)
+            table.insert(args, exp)
+            checkmatch("argument " .. pidx .. " of call to " .. fname, ptype, exp._type, errors, exp.loc)
+        end
+    end
+    if not (#args == nparams or (ftype.vararg and #args > nparams)) then
+        checker.typeerror(errors, loc,
+            "%s called with %d arguments but expects %d.\n%s",
+            fname, #args, nparams, types.tostring(ftype))
+    end
+end
+
 -- Typechecks an expression
 --   node: Exp_* AST node
 --   st: symbol table
@@ -862,39 +894,51 @@ checkexp = util.make_visitor({
                 node._type = types.Invalid()
                 return
             end
-            local nparams = #ftype.params
-            local args = node.args.args
-            local nargs = #args
-            local lastarg = args[nargs]
-            for i = 1, nargs do
-                local arg = args[i]
-                local ptype = ftype.params[i]
-                checkexp(arg, st, errors, ptype)
-                ptype = ptype or arg._type
-                args[i] = trycoerce(args[i], ptype, errors)
-                local atype = args[i]._type
-                checkmatch("argument " .. i .. " of call to function '" .. fname .. "'", ptype, atype, errors, arg.loc)
-            end
-            if lastarg and lastarg._types then
-                for i = 2, #lastarg._types do
-                    local pidx = nargs + i - 1
-                    local ptype = ftype.params[pidx]
-                    local exp = ast.ExpExtra(lastarg.loc, lastarg, i, lastarg._types[i])
-                    ptype = ptype or exp._type
-                    exp = trycoerce(exp, ptype, errors)
-                    table.insert(args, exp)
-                    checkmatch("argument " .. pidx .. " of call to function '" .. fname .. "'", ptype, exp._type, errors, exp.loc)
-                end
-            end
-            if not (#args == nparams or (ftype.vararg and #args > nparams)) then
-                checker.typeerror(errors, node.loc,
-                    "function %s called with %d arguments but expects %d.\n%s",
-                    fname, #args, nparams, types.tostring(ftype))
-            end
+            checkargs(ftype, node.args.args, node.loc,
+                "function '" .. fname .. "'", st, errors)
             node._type = ftype.rettypes[1]
             node._types = ftype.rettypes
         else
             assert(node.args._tag == "Ast.ArgsMethod")
+            local otype = node.exp._type
+            if otype._tag == "Type.Nominal" and
+               types.registry[otype.fqtn] and
+               types.registry[otype.fqtn]._tag == "Type.Record" then
+                local class = types.registry[otype.fqtn]
+                if not class.methods[node.args.method] then
+                    checker.typeerror(errors, node.loc,
+                        "method '%s' not found in record '%s'",
+                        node.args.method, types.tostring(otype))
+                    for _, arg in ipairs(node.args.args) do
+                        checkexp(arg, st, errors)
+                    end
+                    node._type = types.Invalid()
+                    return
+                end
+                local ftype = class.methods[node.args.method]
+                checkargs(ftype, node.args.args, node.loc,
+                    "method '" .. class.name .. ":" .. node.args.method .. "'", st, errors)
+                node._type = ftype.rettypes[1]
+                node._types = ftype.rettypes
+            else
+                if otype._tag ~= "Type.Nominal" then
+                    checker.typeerror(errors, node.loc,
+                        "expected record in receiver of method call but found '%s'",
+                        types.tostring(otype))
+                elseif not types.registry[otype.fqtn] then
+                    checker.typeerror(errors, node.loc,
+                        "record type '%s' in receiver of method call does not exist",
+                        types.tostring(otype))
+                elseif types.registry[otype.fqtn]._tag ~= "Type.Record" then
+                    checker.typeerror(errors, node.loc,
+                        "expected record in receiver of method call but found '%s'",
+                        types.tostring(types.registry[otype.fqtn]))
+                end
+                for _, arg in ipairs(node.args.args) do
+                    checkexp(arg, st, errors)
+                end
+                node._type = types.Invalid()
+            end
         end
     end,
 
