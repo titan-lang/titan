@@ -16,7 +16,8 @@ local types = typedecl("Type", {
         Field       = {"fqtn", "name", "type"},
         Method      = {"fqtn", "name", "params", "rettypes"},
         ForeignModule = {"name", "members"},
-        ModuleMember = {"modname", "name", "type"}
+        ModuleMember = {"modname", "name", "type"},
+        StaticMethod = {"fqtn", "name", "params", "rettypes"}
     }
 })
 
@@ -229,8 +230,10 @@ function types.tostring(t)
             table.insert(out, ")")
         end
         return table.concat(out)
-    elseif tag == "Type.Method" then
-        local out = {"method("}
+    elseif tag == "Type.Method" or tag == "Type.StaticMethod" then
+        local out = {"method", t.fqtn,
+             tag == "Type.Method" and ":" or ".",
+             t.name, "("}
         local ptypes = {}
         for _, param in ipairs(t.params) do
             table.insert(ptypes, types.tostring(param))
@@ -297,7 +300,7 @@ function types.serialize(t)
     elseif tag == "Type.Field" then
         return "Field('" .. t.fqtn .. "', '" ..
              t.name .. "', " .. types.serialize(t.type) .. ")"
-    elseif tag == "Type.Method" then
+    elseif tag == "Type.Method" or tag == "Type.StaticMethod" then
         local ptypes = {}
         for _, pt in ipairs(t.params) do
             table.insert(ptypes, types.serialize(pt))
@@ -306,19 +309,24 @@ function types.serialize(t)
         for _, rt in ipairs(t.rettypes) do
             table.insert(rettypes, types.serialize(rt))
         end
-        return "Method('" .. t.fqtn .. "', '" .. t.name .. "'," ..
+        return (tag == "Type.Method" and "Method('" or "StaticMethod('") ..
+            t.fqtn .. "', '" .. t.name .. "'," ..
             "{" .. table.concat(ptypes, ",") .. "}" .. "," ..
             "{" .. table.concat(rettypes, ",") .. "})"
     elseif tag == "Type.Record" then
-        local fields, methods = {}, {}
+        local functions, fields, methods = {}, {}, {}
         for _, field in ipairs(t.fields) do
             table.insert(fields, types.serialize(field))
         end
         for name, method in pairs(t.methods) do
             table.insert(methods, name .. " = " .. types.serialize(method))
         end
+        for name, func in pairs(t.functions) do
+            table.insert(functions, name .. " = " .. types.serialize(func))
+        end
         return "Record('" .. t.name ..
-            "',{" .. table.concat(fields, ",") .. "}" .. "," ..
+            "',{" .. table.concat(fields, ",") ..
+            "},{" ..table.concat(functions, ",") .. "}" .. "," ..
             "{" .. table.concat(methods, ",") .. "}" ..
             ")"
     elseif tag == "Type.Integer"     then return "Integer()"
