@@ -1834,7 +1834,7 @@ describe("Titan typecheck of records", function()
     end)
 
     it("doesn't typecheck invalid dot operation in record", function()
-        assert_type_error("invalid constructor 'nope'", [[
+        assert_type_error("invalid record function 'nope'", [[
             record Point x: float; y:float end
 
             p = Point.nope(1, 2)

@@ -436,16 +436,13 @@ checkvar = util.make_visitor({
                 node._type = node._decl.type
             end
         elseif ltype._tag == "Type.Record" then
-            if node.name == "new" then
-                local params = {}
-                for _, field in ipairs(ltype.fields) do
-                    table.insert(params, field.type)
-                end
-                node._decl = ltype
-                node._type = types.Function(params, {types.Nominal(ltype.name)}, false)
+            local decl = ltype.functions[node.name]
+            if decl then
+                node._decl = decl
+                node._type = types.Function(decl.params, decl.rettypes, false)
             else
                 checker.typeerror(errors, node.loc,
-                    "trying to access invalid constructor '%s'", node.name)
+                    "trying to access invalid record function '%s'", node.name)
             end
         elseif ltype._tag == "Type.Nominal" then
             local type = types.registry[ltype.fqtn]
@@ -943,7 +940,7 @@ checkexp = util.make_visitor({
             local var = node.exp.var
             if not (var and var._decl and (var._decl._tag == "Ast.TopLevelFunc" or
               var._decl._tag == "Type.ModuleMember" or
-              var._decl._tag == "Type.Record")) then
+              var._decl._tag == "Type.StaticMethod")) then
                 checker.typeerror(errors, node.loc,
                     "first-class functions are not supported in this version of Titan")
             end
@@ -1091,7 +1088,8 @@ local function checkbodies(ast, st, errors)
 end
 
 local function isconstructor(node)
-    return node.var and node.var._decl and node.var._decl._tag == "Type.Record"
+    return node.var and node.var._decl and node.var._decl._tag == "Type.StaticMethod"
+        and node.var._decl.name == "new"
 end
 
 -- Verify if an expression is constant
@@ -1240,6 +1238,7 @@ local toplevel_visitor = util.make_visitor({
         local fields = {}
         local nameset = {}
         local fqtn = st.modname .. "." .. node.name
+        local ftypes = {}
         for _, field in ipairs(node.fields) do
             if nameset[field.name] then
                 checker.typeerror(errors, field.loc,
@@ -1247,11 +1246,15 @@ local toplevel_visitor = util.make_visitor({
                 field.name, node.name)
             else
                 nameset[field.name] = true
+                local ftype = typefromnode(field.type, st, errors)
+                table.insert(ftypes, ftype)
                 table.insert(fields,
-                    types.Field(fqtn, field.name, typefromnode(field.type, st, errors)))
+                    types.Field(fqtn, field.name, ftype))
             end
         end
-        node._type = types.Record(fqtn, fields, {}, {})
+        node._type = types.Record(fqtn, fields, {
+            new = types.StaticMethod(fqtn, "new", ftypes, { types.Nominal(fqtn) })
+        }, {}, {})
         types.registry[fqtn] = node._type
     end,
 
