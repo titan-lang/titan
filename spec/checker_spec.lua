@@ -1170,92 +1170,102 @@ describe("Titan type checker", function()
         end
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
+        it("can implicitly cast from value to " .. t, function()
+            assert_type_check([[
+                record Record end
+                function fn(a: value): ]] .. t .. [[
+                    return a
+                end
+            ]])
+        end)
+    end
+
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
         it("can explicitly cast from value to " .. t, function()
-            local code = [[
+            assert_type_check([[
+                record Record end
                 function fn(a: value): ]] .. t .. [[
                     return a as ]] .. t .. [[
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.truthy(ok)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
         it("can explicitly cast from " .. t .. "to value", function()
-            local code = [[
+            assert_type_check([[
+                record Record end
                 function fn(a: ]] .. t .. [[): value
                     return a as value
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.truthy(ok)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"boolean", "float", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
+        it("can implicitly cast from " .. t .. "to value", function()
+            assert_type_check([[
+                record Record end
+                function fn(a: ]] .. t .. [[): value
+                    return a
+                end
+            ]])
+        end)
+    end
+
+    for _, t in ipairs({"boolean", "float", "integer", "nil", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to {integer}", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): {integer}
                     return a as {integer}
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "integer", "nil", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to float", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): float
                     return a as float
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "nil", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to integer", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): integer
                     return a as integer
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to nil", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): nil
                     return a as nil
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "nil"}) do
+    for _, t in ipairs({"{integer}", "boolean", "nil", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to string", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): string
                     return a as string
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
