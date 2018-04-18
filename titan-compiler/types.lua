@@ -10,11 +10,13 @@ local types = typedecl("Type", {
         String      = {},
         Value       = {},
         Function    = {"params", "rettypes", "vararg"},
-        Method      = {"params", "rettypes"},
         Array       = {"elem"},
         Record      = {"name", "fields", "functions", "methods"},
         Nominal     = {"fqtn"},
+        Field       = {"fqtn", "name", "type"},
+        Method      = {"fqtn", "name", "params", "rettypes"},
         ForeignModule = {"name", "members"},
+        ModuleMember = {"modname", "name", "type"}
     }
 })
 
@@ -265,13 +267,13 @@ function types.serialize(t)
     local tag = t._tag
     if tag == "Type.Array" then
         return "Array(" ..types.serialize(t.elem) .. ")"
+    elseif tag == "Type.ModuleMember" then
+        return "ModuleMember('" .. t.modname .. "', '" ..
+            t.name .. "', " .. types.serialize(t.type) .. ")"
     elseif tag == "Type.Module" then
         local members = {}
         for name, member in pairs(t.members) do
-            table.insert(members, name .. " = { _tag = 'Ast.ModuleMember', module = '" ..
-                member.module .. "', name = '" ..
-                name .. "', type = " ..
-                types.serialize(member.type) .. "}")
+            table.insert(members, name .. " = " .. types.serialize(member))
         end
         return "Module(" ..
             "'" .. t.name .. "'" .. "," ..
@@ -292,11 +294,28 @@ function types.serialize(t)
             tostring(t.vararg) .. ")"
     elseif tag == "Type.Nominal" then
         return "Nominal('" .. t.fqtn .. "')"
+    elseif tag == "Type.Field" then
+        return "Field('" .. t.fqtn .. "', '" ..
+             t.name .. "', " .. types.serialize(t.type) .. ")"
+    elseif tag == "Type.Method" then
+        local ptypes = {}
+        for _, pt in ipairs(t.params) do
+            table.insert(ptypes, types.serialize(pt))
+        end
+        local rettypes = {}
+        for _, rt in ipairs(t.rettypes) do
+            table.insert(rettypes, types.serialize(rt))
+        end
+        return "Method('" .. t.fqtn .. "', '" .. t.name .. "'," ..
+            "{" .. table.concat(ptypes, ",") .. "}" .. "," ..
+            "{" .. table.concat(rettypes, ",") .. "})"
     elseif tag == "Type.Record" then
         local fields, methods = {}, {}
         for _, field in ipairs(t.fields) do
-            table.insert(fields, "{ _tag = 'Ast.Decl', name = '" ..
-                field.name .. "', _type = " .. types.serialize(field._type) ..  "}")
+            table.insert(fields, types.serialize(field))
+        end
+        for name, method in pairs(t.methods) do
+            table.insert(methods, name .. " = " .. types.serialize(method))
         end
         return "Record('" .. t.name ..
             "',{" .. table.concat(fields, ",") .. "}" .. "," ..

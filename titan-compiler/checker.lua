@@ -439,7 +439,7 @@ checkvar = util.make_visitor({
             if node.name == "new" then
                 local params = {}
                 for _, field in ipairs(ltype.fields) do
-                    table.insert(params, field._type)
+                    table.insert(params, field.type)
                 end
                 node._decl = ltype
                 node._type = types.Function(params, {types.Nominal(ltype.name)}, false)
@@ -460,7 +460,7 @@ checkvar = util.make_visitor({
                 for _, field in ipairs(type.fields) do
                     if field.name == node.name then
                         node._decl = field
-                        node._type = field._type
+                        node._type = field.type
                         break
                     end
                 end
@@ -631,10 +631,10 @@ checkexp = util.make_visitor({
                             cfield.name, types.tostring(context))
                         checkexp(cfield.exp, st, errors)
                     else
-                        checkexp(cfield.exp, st, errors, found._type)
-                        cfield.exp = trycoerce(cfield.exp, found._type, errors)
+                        checkexp(cfield.exp, st, errors, found.type)
+                        cfield.exp = trycoerce(cfield.exp, found.type, errors)
                         checkmatch("field " .. cfield.name,
-                            found._type, cfield.exp._type, errors, cfield.loc)
+                            found.type, cfield.exp._type, errors, cfield.loc)
                         cfield._field = found
                     end
                 end
@@ -942,7 +942,7 @@ checkexp = util.make_visitor({
             local fname = expname(node.exp)
             local var = node.exp.var
             if not (var and var._decl and (var._decl._tag == "Ast.TopLevelFunc" or
-              var._decl._tag == "Ast.ModuleMember" or
+              var._decl._tag == "Type.ModuleMember" or
               var._decl._tag == "Type.Record")) then
                 checker.typeerror(errors, node.loc,
                     "first-class functions are not supported in this version of Titan")
@@ -1082,7 +1082,7 @@ local function checkbodies(ast, st, errors)
             elseif node._tag == "Ast.TopLevelRecord" then
                 local fields = node._type.fields
                 for i, field in ipairs(fields) do
-                    local ftype = field._type
+                    local ftype = field.type
                     checktype(ftype, node.fields[i].loc, errors)
                 end
             end
@@ -1192,7 +1192,7 @@ local toplevel_visitor = util.make_visitor({
                 local ftype = item.type
                 local decl, err = foreigntypes.convert(st, ftype)
                 if decl then
-                    members[fname] = ast.ModuleMember(name, fname, decl)
+                    members[fname] = types.ModuleMember(name, fname, decl)
                     st:add_foreign_type(fname, decl)
                 else
                     checker.typeerror(errors, err, node._pos)
@@ -1247,12 +1247,12 @@ local toplevel_visitor = util.make_visitor({
                 field.name, node.name)
             else
                 nameset[field.name] = true
-                field._type = typefromnode(field.type, st, errors)
-                table.insert(fields, field)
+                table.insert(fields,
+                    types.Field(fqtn, field.name, typefromnode(field.type, st, errors)))
             end
         end
         node._type = types.Record(fqtn, fields, {}, {})
-        types.registry[st.modname .. "." .. node.name] = node._type
+        types.registry[fqtn] = node._type
     end,
 
     ["Ast.TopLevelMethod"] = function(node, st, errors)
@@ -1287,7 +1287,7 @@ local toplevel_visitor = util.make_visitor({
         for _, rt in ipairs(node.rettypes) do
             table.insert(rettypes, typefromnode(rt, st, errors))
         end
-        node._type = types.Method(ptypes, rettypes)
+        node._type = types.Method(rectype.name, node.name, ptypes, rettypes)
         rectype.methods[node.name] = node._type
     end,
 })
@@ -1337,13 +1337,13 @@ local function makemoduletype(modname, modast)
         if tlnode._tag ~= "Ast.TopLevelImport" and not tlnode.islocal and not tlnode._ignore then
             local tag = tlnode._tag
             if tag == "Ast.TopLevelFunc" then
-                members[tlnode.name] = ast.ModuleMember(modname, tlnode.name, tlnode._type)
+                members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
             elseif tag == "Ast.TopLevelVar" then
-                members[tlnode.decl.name] = ast.ModuleMember(modname, tlnode.decl.name, tlnode._type)
+                members[tlnode.decl.name] = types.ModuleMember(modname, tlnode.decl.name, tlnode._type)
             elseif tag == "Ast.TopLevelRecord" then
-                members[tlnode.name] = ast.ModuleMember(modname, tlnode.name, tlnode._type)
+                members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
             elseif tag == "Ast.TopLevelInterface" then
-                members[tlnode.name] = ast.ModuleMember(modname, tlnode.name, tlnode._type)
+                members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
             end
         end
     end

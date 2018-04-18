@@ -25,8 +25,6 @@ return typedecl("Ast", {
 
     Decl = {
         Decl = {"loc", "name", "type"},
-        ModuleMember = {"module", "name", "type"},
-        ConstructorRef = {"fqtn"},
     },
 
     Stat = {
