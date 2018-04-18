@@ -14,7 +14,6 @@ local types = typedecl("Type", {
         Array       = {"elem"},
         Record      = {"name", "fields", "functions", "methods"},
         Nominal     = {"fqtn"},
-        Type        = {"type"},
         ForeignModule = {"name", "members"},
     }
 })
@@ -272,8 +271,6 @@ function types.serialize(t)
             tostring(t.vararg) .. ")"
     elseif tag == "Type.Nominal" then
         return "Nominal('" .. t.fqtn .. "')"
-    elseif tag == "Type.Type" then
-        return "Type(" .. types.serialize(t.type) .. ")"
     elseif tag == "Type.Record" then
         local fields, methods = {}, {}
         for _, field in ipairs(t.fields) do

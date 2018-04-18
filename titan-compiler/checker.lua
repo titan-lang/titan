@@ -427,11 +427,6 @@ checkvar = util.make_visitor({
         local ltype = node.exp._type
         if ltype._tag == "Type.Module" or ltype._tag == "Type.ForeignModule" then
             local mod = ltype
-            if not node.exp.var then
-                checker.typeerror(errors, node.loc,
-                    "trying to access module '%s' as a first-class value",
-                    mod.name)
-            end
             if not mod.members[node.name] then
                 checker.typeerror(errors, node.loc,
                     "member '%s' not found inside module '%s'",
@@ -440,28 +435,17 @@ checkvar = util.make_visitor({
                 node._decl = mod.members[node.name]
                 node._type = node._decl.type
             end
-        elseif ltype._tag == "Type.Type" then
-            local typ = ltype.type
-            if typ._tag == "Type.Record" then
-                if not node.exp.var then
-                    checker.typeerror(errors, node.loc,
-                        "trying to access record '%s' as a first-class value",
-                        typ.name)
+        elseif ltype._tag == "Type.Record" then
+            if node.name == "new" then
+                local params = {}
+                for _, field in ipairs(ltype.fields) do
+                    table.insert(params, field._type)
                 end
-                if node.name == "new" then
-                    local params = {}
-                    for _, field in ipairs(typ.fields) do
-                        table.insert(params, field._type)
-                    end
-                    node._decl = typ
-                    node._type = types.Function(params, {types.Nominal(typ.name)}, false)
-                else
-                    checker.typeerror(errors, node.loc,
-                        "trying to access invalid constructor '%s'", node.name)
-                end
+                node._decl = ltype
+                node._type = types.Function(params, {types.Nominal(ltype.name)}, false)
             else
                 checker.typeerror(errors, node.loc,
-                    "invalid access to type '%s'", types.tostring(type))
+                    "trying to access invalid constructor '%s'", node.name)
             end
         elseif ltype._tag == "Type.Nominal" then
             local type = types.registry[ltype.fqtn]
@@ -603,10 +587,10 @@ checkexp = util.make_visitor({
             checker.typeerror(errors, node.loc,
                 "trying to access a function as a first-class value")
             node._type = types.Invalid()
-        elseif texp._tag == "Type.Type" then
+        elseif texp._tag == "Type.Record" then
             checker.typeerror(errors, node.loc,
                 "trying to access record type '%s' as a first-class value",
-                texp.type.name)
+                texp.name)
             node._type = types.Invalid()
         else
             node._type = texp
@@ -989,7 +973,7 @@ local function checkbodies(ast, st, errors)
             elseif node._tag == "Ast.TopLevelMethod" then
                 st:with_block(checkmethod, node, st, errors)
             elseif node._tag == "Ast.TopLevelRecord" then
-                local fields = node._type.type.fields
+                local fields = node._type.fields
                 for i, field in ipairs(fields) do
                     local ftype = field._type
                     checktype(ftype, node.fields[i].loc, errors)
@@ -1160,8 +1144,8 @@ local toplevel_visitor = util.make_visitor({
                 table.insert(fields, field)
             end
         end
-        node._type = types.Type(types.Record(fqtn, fields, {}, {}))
-        types.registry[st.modname .. "." .. node.name] = node._type.type
+        node._type = types.Record(fqtn, fields, {}, {})
+        types.registry[st.modname .. "." .. node.name] = node._type
     end,
 
     ["Ast.TopLevelMethod"] = function(node, st, errors)
@@ -1180,7 +1164,7 @@ local toplevel_visitor = util.make_visitor({
                 node.class, node.name)
             return
         end
-        local rectype = record._type.type
+        local rectype = record._type
         if rectype.methods[node.name] then
             node._ignore = true
             checker.typeerror(errors, node.loc,
