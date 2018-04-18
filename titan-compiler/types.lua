@@ -227,6 +227,27 @@ function types.tostring(t)
             table.insert(out, ")")
         end
         return table.concat(out)
+    elseif tag == "Type.Method" then
+        local out = {"method("}
+        local ptypes = {}
+        for _, param in ipairs(t.params) do
+            table.insert(ptypes, types.tostring(param))
+        end
+        table.insert(out, table.concat(ptypes, ", "))
+        table.insert(out, ")")
+        local rtypes = {}
+        for _, rettype in ipairs(t.rettypes) do
+            table.insert(rtypes, types.tostring(rettype))
+        end
+        if #rtypes == 1 then
+            table.insert(out, ":")
+            table.insert(out, rtypes[1])
+        elseif #rtypes > 1 then
+            table.insert(out, ":(")
+            table.insert(out, table.concat(rtypes), ", ")
+            table.insert(out, ")")
+        end
+        return table.concat(out)
     elseif tag == "Type.Array" then
         return "{ " .. types.tostring(t.elem) .. " }"
     elseif tag == "Type.InitList" then
