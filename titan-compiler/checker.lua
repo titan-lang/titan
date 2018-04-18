@@ -1275,6 +1275,15 @@ local toplevel_visitor = util.make_visitor({
             return
         end
         local rectype = record._type
+        for _, field in ipairs(rectype.fields) do
+            if field.name == node.name then
+                node._ignore = true
+                checker.typeerror(errors, node.loc,
+                "cannot declare method '%s:%s' as field '%s' exists in record '%s'",
+                    node.class, node.name, field.name, node.class)
+                return
+            end
+        end
         if rectype.methods[node.name] then
             node._ignore = true
             checker.typeerror(errors, node.loc,

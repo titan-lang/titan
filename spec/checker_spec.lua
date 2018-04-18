@@ -1887,6 +1887,18 @@ describe("Titan typecheck of records", function()
                           ]])
     end)
 
+    it("doesn't typecheck method with same name as field", function ()
+        assert_type_error("cannot declare method 'Foo:foo' as field 'foo' exists in record 'Foo'",
+                          [[
+                              record Foo
+                                foo: integer
+                              end
+
+                              function Foo:foo()
+                              end
+                          ]])
+    end)
+
     it("doesn't typecheck read/write with invalid types", function()
         assert_type_error("expected float but found test%.Point",
                           wrap_record[[ p.x = p ]])
