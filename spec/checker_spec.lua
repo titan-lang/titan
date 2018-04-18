@@ -336,7 +336,7 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("expected { integer } but found initlist", err)
+        assert.match("initializing field 'x' when expecting array", err)
     end)
 
     it("type-checks numeric 'for' (integer, implicit step)", function()
