@@ -2203,5 +2203,44 @@ describe("Titan typecheck of records", function()
             assert.match("method 'test.R:f' called with " .. c.args .. " arguments but expects " .. c.params, err)
         end
     end)
+
+    it("typechecks initializer list in record context", function ()
+        assert_type_check([[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, y = 2 }
+            end
+        ]])
+        assert_type_error("field 'z' not found in record type 'test.Point'", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, y = 2, z = 3 }
+            end
+        ]])
+        assert_type_error("field 'y' from record type 'test.Point' missing", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1 }
+            end
+        ]])
+        assert_type_error("expected float but found string", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, y = "foo" }
+            end
+        ]])
+    end)
 end)
 
