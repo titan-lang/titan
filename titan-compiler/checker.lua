@@ -607,8 +607,52 @@ checkexp = util.make_visitor({
                                exp._type, errors, exp.loc)
                 end
             end
-        elseif context._tag == "Type.Record" then
-            error("not implemented")
+        elseif context._tag == "Type.Nominal" then
+            if not types.registry[context.fqtn] then
+                checker.typeerror(errors, node.loc,
+                    "record type '%s' in context of record constructor does not exist",
+                    types.tostring(context))
+                for _, field in ipairs(node.fields) do
+                    checkexp(field.exp, st, errors)
+                end
+                node._type = types.Invalid()
+            else
+                local record = types.registry[context.fqtn]
+                for _, cfield in ipairs(node.fields) do
+                    local found
+                    for _, rfield in ipairs(record.fields) do
+                        if rfield.name == cfield.name then
+                            found = rfield
+                        end
+                    end
+                    if not found then
+                        checker.typeerror(errors, cfield.loc,
+                            "field '%s' not found in record type '%s'",
+                            cfield.name, types.tostring(context))
+                        checkexp(cfield.exp, st, errors)
+                    else
+                        checkexp(cfield.exp, st, errors, found._type)
+                        cfield.exp = trycoerce(cfield.exp, found._type, errors)
+                        checkmatch("field " .. cfield.name,
+                            found._type, cfield.exp._type, errors, cfield.loc)
+                        cfield._field = found
+                    end
+                end
+                for _, rfield in ipairs(record.fields) do
+                    local found
+                    for _, cfield in ipairs(node.fields) do
+                        if rfield.name == cfield.name then
+                            found = cfield
+                        end
+                    end
+                    if not found then
+                        checker.typeerror(errors, node.loc,
+                            "field '%s' from record type '%s' missing in constructor",
+                            rfield.name, types.tostring(context))
+                    end
+                end
+                node._type = types.Nominal(context.fqtn)
+            end
         else
             local isarray = true
             local etype = types.Integer()
