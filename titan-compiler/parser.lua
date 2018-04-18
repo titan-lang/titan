@@ -206,12 +206,12 @@ end
 
 local grammar = re.compile([[
 
-    program         <-  SKIP*
-                        {| ( toplevelfunc
+    program         <-  (!Err_001_Flw SKIP^Err_001)*
+                        {| (!Err_002_Flw (toplevelfunc
                            / toplevelvar
                            / toplevelrecord
                            / import
-                           / foreign )* |} !.
+                           / foreign)^Err_002 )* |} !.
 
     toplevelfunc    <- (P  localopt FUNCTION NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
@@ -477,6 +477,11 @@ local grammar = re.compile([[
 
     NEG             <- SUB
     BNEG            <- BXOR
+
+    -- Error reporting/recovery
+    Err_001_Flw	    <- 'function'  /  !.  /  'local'  /  'record'  /  NAME
+    Err_002_Flw     <- !.
+
 
 ]], defs)
 
