@@ -268,7 +268,7 @@ local grammar = re.compile([[
                      / typelist
                      / {| simpletype |}
 
-    type            <- (P  typelist RARROW
+    type            <- (P  typelist RARROW^Err_046
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / (P  {| simpletype |} RARROW
                            rettype^TypeReturnTypes)              -> TypeFunction
