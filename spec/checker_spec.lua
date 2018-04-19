@@ -2254,6 +2254,15 @@ describe("Titan typecheck of records", function()
                 local p: Point = { x = 1 }
             end
         ]])
+        assert_type_error("missing field in initializer for record type 'test.Point'", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, 2 }
+            end
+        ]])
         assert_type_error("expected float but found string", [[
             record Point
                 x: float

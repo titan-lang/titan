@@ -13,7 +13,7 @@ local types = typedecl("Type", {
         Array       = {"elem"},
         Record      = {"name", "fields", "functions", "methods"},
         Nominal     = {"fqtn"},
-        Field       = {"fqtn", "name", "type"},
+        Field       = {"fqtn", "name", "type", "index"},
         Method      = {"fqtn", "name", "params", "rettypes"},
         ForeignModule = {"name", "members"},
         ModuleMember = {"modname", "name", "type"},
@@ -44,7 +44,7 @@ function types.is_gc(t)
            tag == "Type.Array" or
            tag == "Type.Record" or
            tag == "Type.Interface" or
-           (tag == "Type.Nominal" and types.registry[t] and types.is_gc(types.registry[t]))
+           tag == "Type.Nominal"
 end
 
 -- XXX this should be inside typedecl call
@@ -299,7 +299,8 @@ function types.serialize(t)
         return "Nominal('" .. t.fqtn .. "')"
     elseif tag == "Type.Field" then
         return "Field('" .. t.fqtn .. "', '" ..
-             t.name .. "', " .. types.serialize(t.type) .. ")"
+             t.name .. "', " .. types.serialize(t.type) ..
+             ", " .. tostring(t.index) .. ")"
     elseif tag == "Type.Method" or tag == "Type.StaticMethod" then
         local ptypes = {}
         for _, pt in ipairs(t.params) do

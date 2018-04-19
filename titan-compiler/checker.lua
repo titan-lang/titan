@@ -623,9 +623,15 @@ checkexp = util.make_visitor({
                         end
                     end
                     if not found then
-                        checker.typeerror(errors, cfield.loc,
-                            "field '%s' not found in record type '%s'",
-                            cfield.name, types.tostring(context))
+                        if cfield.name then
+                            checker.typeerror(errors, cfield.loc,
+                                "field '%s' not found in record type '%s'",
+                                cfield.name, types.tostring(context))
+                        else
+                            checker.typeerror(errors, cfield.loc,
+                                "missing field in initializer for record type '%s'",
+                                types.tostring(context))
+                        end
                         checkexp(cfield.exp, st, errors)
                     else
                         checkexp(cfield.exp, st, errors, found.type)
@@ -978,6 +984,7 @@ checkexp = util.make_visitor({
                 local ftype = class.methods[node.args.method]
                 checkargs(ftype, node.args.args, node.loc,
                     "method '" .. class.name .. ":" .. node.args.method .. "'", st, errors)
+                node._method = ftype
                 node._type = ftype.rettypes[1]
                 node._types = ftype.rettypes
             else
@@ -1060,6 +1067,7 @@ end
 --   errors: list of compile-time errors
 local function checkmethod(node, st, errors)
     local self = ast.Decl(node.loc, "self", ast.TypeName(node.loc, node._record.name))
+    node._self = self
     self._type = typefromnode(self.type, st, errors)
     st:add_symbol("self", self)
     checkfunc(node, st, errors)
@@ -1239,7 +1247,7 @@ local toplevel_visitor = util.make_visitor({
         local nameset = {}
         local fqtn = st.modname .. "." .. node.name
         local ftypes = {}
-        for _, field in ipairs(node.fields) do
+        for i, field in ipairs(node.fields) do
             if nameset[field.name] then
                 checker.typeerror(errors, field.loc,
                 "redeclaration of field '%s' in record '%s'",
@@ -1249,7 +1257,7 @@ local toplevel_visitor = util.make_visitor({
                 local ftype = typefromnode(field.type, st, errors)
                 table.insert(ftypes, ftype)
                 table.insert(fields,
-                    types.Field(fqtn, field.name, ftype))
+                    types.Field(fqtn, field.name, ftype, i))
             end
         end
         node._type = types.Record(fqtn, fields, {
