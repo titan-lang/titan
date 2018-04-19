@@ -1337,6 +1337,153 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    it("initializes a record and returns a primitive field", function ()
+        run_coder([[
+            record Point
+              x: float
+              y: float
+            end
+            function x(): float
+                local r: Point = { x = 2, y = 3 }
+                return r.x
+            end
+            function y(): float
+                local r: Point = { x = 2, y = 3 }
+                return r.y
+            end
+        ]], [[
+            assert(2.0 == test.x())
+            assert(3.0 == test.y())
+        ]])
+    end)
+
+    it("initializes a record and mutates field", function ()
+        run_coder([[
+            record Point
+              x: float
+              y: float
+            end
+            function x(): float
+                local r: Point = { x = 0, y = 0 }
+                r.x = 2
+                return r.x
+            end
+            function y(): float
+                local r: Point = { x = 0, y = 0 }
+                r.y = 3
+                return r.y
+            end
+        ]], [[
+            assert(2.0 == test.x())
+            assert(3.0 == test.y())
+        ]])
+    end)
+
+    it("initializes a record and returns a gc field", function ()
+        run_coder([[
+            record Pair
+              x: string
+              y: string
+            end
+            function x(): string
+                local r: Pair = { x = 'foo', y = 'bar' }
+                return r.x
+            end
+            function y(): string
+                local r: Pair = { x = 'foo', y = 'bar' }
+                return r.y
+            end
+        ]], [[
+            assert('foo' == test.x())
+            assert('bar' == test.y())
+        ]])
+    end)
+
+    it("calls method that does not access fields, from outside record", function ()
+        run_coder([[
+            record Rec
+            end
+            function Rec:m(): integer
+                return 1
+            end
+            function f(): integer
+                local r: Rec = {}
+                return r:m()
+            end
+        ]], [[
+            assert(1 == test.f())
+        ]])
+    end)
+
+    it("calls method that does not access fields, from inside record", function ()
+        run_coder([[
+            record Rec
+            end
+            function Rec:m1(): integer
+                return self:m2()
+            end
+            function Rec:m2(): integer
+                return 1
+            end
+            function f(): integer
+                local r: Rec = {}
+                return r:m1()
+            end
+        ]], [[
+            assert(1 == test.f())
+        ]])
+    end)
+
+    it("calls record method that accesses fields", function ()
+        run_coder([[
+            record Point
+               x: float
+               y: float
+            end
+            function Point:getx(): float
+                return self.x
+            end
+            function Point:gety(): float
+                return self.y
+            end
+            function f(): (float, float)
+                local r: Point = { x = 2, y = 3 }
+                return r:getx(), r:gety()
+            end
+        ]], [[
+            local x, y = test.f()
+            assert(2.0 == x)
+            assert(3.0 == y)
+        ]])
+    end)
+
+    it("calls record method that mutates fields", function ()
+        run_coder([[
+            record Point
+               x: float
+               y: float
+            end
+            function Point:getx(): float
+                return self.x
+            end
+            function Point:gety(): float
+                return self.y
+            end
+            function Point:move(dx: float, dy: float)
+                self.x, self.y = self.x + dx, self.y + dy
+            end
+            function f(): (float, float)
+                local r: Point = { x = 2, y = 3 }
+                r:move(2, 3)
+                return r:getx(), r:gety()
+            end
+        ]], [[
+            local x, y = test.f()
+            assert(4.0 == x)
+            assert(6.0 == y)
+        ]])
+    end)
+
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()
             run_coder([[

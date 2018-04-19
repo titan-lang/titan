@@ -66,12 +66,44 @@ local function getslot(typ --[[:table]], dst --[[:string?]], src --[[:string]])
     elseif typ._tag == "Type.String" then tmpl = "$DST tsvalue($SRC)"
     elseif typ._tag == "Type.Array" then tmpl = "$DST hvalue($SRC)"
     elseif typ._tag == "Type.Value" then tmpl = "$DST *($SRC)"
-    elseif typ._tag == "Type.Record" then tmpl = "" -- TODO records
+    elseif typ._tag == "Type.Nominal" then tmpl = "$DST clCvalue($SRC)"
     else error("invalid type " .. types.tostring(typ)) end
     return render(tmpl, { DST = dst, SRC = src })
 end
 
-local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string]], line --[[:number]])
+local function tagname(fqtn)
+    return fqtn:gsub("%.", "_") .. "_typetag"
+end
+
+-- get name of the variable holding the tag for this type
+local function type2tagname(ctx, typ --[[:table]])
+    local mod, name = typ.fqtn:match("^(.*)%.(%a+)$")
+    local mangled = tagname(typ.fqtn)
+    if mod == ctx.module then
+        -- local tag
+        return "((ptrdiff_t)&" .. mangled .. ")"
+    else
+        -- imported tag
+        ctx.tags[typ.fqtn] = { module = mod, type = name, mangled = mangled }
+        return mangled
+    end
+end
+
+local function metaname(fqtn)
+    return fqtn:gsub("%.", "_") .. "_typemt"
+end
+
+-- get name of the variable holding the metatable for this type
+local function type2metatable(ctx, typ --[[:table]])
+    local mod, name = typ.fqtn:match("^(.*)%.(%a+)$")
+    local mangled = metaname(typ.fqtn)
+    if mod ~= ctx.module then
+        ctx.metatables[typ.fqtn] = { module = mod, type = name, mangled = mangled }
+    end
+    return mangled
+end
+
+local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:string]], line --[[:number]])
     local tag
     if typ._tag == "Type.Integer" then
         return render([[
@@ -128,9 +160,26 @@ local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string
             EXP = exp,
             VAR = cvar
         })
-    elseif typ._tag == "Type.Record" then
-        -- TODO records
-        tag = "table"
+    elseif typ._tag == "Type.Nominal" then
+        return render([[
+            if (TITAN_LIKELY(ttisfulluserdata($EXP))) {
+              Udata* _ud = uvalue($EXP);
+              ptrdiff_t _tag = *(getudatamem(_ud));
+              if (TITAN_LIKELY($TAG == _tag)) {
+                $VAR = gco2ccl(_ud->user_.gc);
+              } else {
+                luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", lua_typename(L, ttnov($EXP)));
+              }
+            } else {
+              luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", lua_typename(L, ttnov($EXP)));
+            }
+        ]], {
+            TAG = type2tagname(ctx, typ),
+            LINE = c_integer_literal(line),
+            EXP = exp,
+            VAR = cvar,
+            NAME = types.tostring(typ)
+        })
     else
         error("invalid type " .. types.tostring(typ))
     end
@@ -149,7 +198,7 @@ local function checkandget(typ --[[:table]], cvar --[[:string]], exp --[[:string
     })
 end
 
-local function checkandset(typ --[[:table]], dst --[[:string]], src --[[:string]], line --[[:number]])
+local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]], line --[[:number]])
     local tag
     if typ._tag == "Type.Integer" then tag = "integer"
     elseif typ._tag == "Type.Float" then
@@ -176,6 +225,17 @@ local function checkandset(typ --[[:table]], dst --[[:string]], src --[[:string]
         ]], {
             SRC = src,
             DST = dst,
+        })
+    elseif typ._tag == "Type.Nominal" then
+        return render([[
+            {
+              CClosure *_cl;
+              $CHECKANDGET
+              setclCvalue(L, $DST, _cl);
+            }
+        ]], {
+            CHECKANDGET = checkandget(ctx, typ, "_cl", src, line),
+            DST = dst
         })
     else
         error("invalid type " .. types.tostring(typ))
@@ -204,11 +264,25 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
     elseif typ._tag == "Type.String" then tmpl = "setsvalue(L, $DST, $SRC);"
     elseif typ._tag == "Type.Array" then tmpl = "sethvalue(L, $DST, $SRC);"
     elseif typ._tag == "Type.Value" then tmpl = "setobj2t(L, $DST, &$SRC);"
+    elseif typ._tag == "Type.Nominal" then tmpl = "setclCvalue(L, $DST, $SRC);"
     else
         error("invalid type " .. types.tostring(typ))
     end
     local code = render(tmpl, { DST = dst, SRC = src })
     return code
+end
+
+local function setwrapped(typ --[[:table]], dst --[[:string]], src --[[:string]])
+    if typ._tag == "Type.Nominal" then
+        return render([[
+            setobj2t(L, $DST, &(($SRC)->upvalue[0]));
+        ]], {
+            DST = dst,
+            SRC = src
+        })
+    else
+        return setslot(typ, dst, src)
+    end
 end
 
 local function foreignctype(typ --[[:table]])
@@ -241,7 +315,7 @@ local function ctype(typ --[[:table]])
     elseif typ._tag == "Type.String" then return "TString*"
     elseif typ._tag == "Type.Array" then return "Table*"
     elseif typ._tag == "Type.Value" then return "TValue"
-    elseif typ._tag == "Type.Record" then return "TValue"
+    elseif typ._tag == "Type.Nominal" then return "CClosure*"
     elseif typ._tag == "Type.Pointer" then return foreignctype(typ)
     else error("invalid type " .. types.tostring(typ))
     end
@@ -254,10 +328,15 @@ end
 
 local function funpointer(fname, ftype)
     local params = { "lua_State *L" }
+    if ftype._tag == "Type.Method" then
+        table.insert(params, "CClosure*")
+    end
     for i, ptype in ipairs(ftype.params) do
         table.insert(params, ctype(ptype))
     end
-    assert(#ftype.rettypes == 1)
+    for i = 2, #ftype.rettypes do
+        table.insert(params, ctype(ftype.rettypes[i]) .. "*")
+    end
     local rettype = ftype.rettypes[1]
     return render("$RETTYPE (*$FNAME)($PARAMS)", {
         RETTYPE = ctype(rettype),
@@ -279,7 +358,12 @@ local function newcontext(tlcontext)
         depth = 0,  -- current stack depth
         dstack = {}, -- stack of stack depths
         prefix = tlcontext.prefix, -- prefix for module member functions and variables
-        names = {} -- map of names to autoincrement suffixes for disambiguation
+        names = {}, -- map of names to autoincrement suffixes for disambiguation,
+        tags = tlcontext.tags or {}, -- set of external record types that we need tags of
+        metatables = tlcontext.metatables, -- set of external metatables that we need
+        functions = tlcontext.functions, -- set of external functions and methods that we call
+        variables = tlcontext.variables, -- set of external variables that we use
+        module = tlcontext.module, -- module name
     }
 end
 
@@ -554,7 +638,28 @@ end
 local function codeassignment(ctx, var, cexp, etype)
     local vtag = var._tag
     if vtag == "Ast.VarName" or (vtag == "Ast.VarDot" and var._decl) then
-        if vtag == "Ast.VarDot" or (var._decl._tag == "Ast.TopLevelVar" and not var._decl.islocal) then
+        if vtag == "Ast.VarDot" and var._decl._tag == "Type.Field" then
+            local lstats, lexp = codeexp(ctx, var.exp)
+            local index = var._decl.index
+            local slot = render([[&(($RECORD)->upvalue[$INDEX])]], {
+                RECORD = lexp,
+                INDEX = index
+            })
+            return render([[
+                $STATS
+                $SETSLOT
+            ]], {
+                STATS = lstats,
+                SETSLOT = setslot(var._type, slot, cexp)
+            })
+        elseif vtag == "Ast.VarDot" then
+            ctx.variables[var.exp.var.name .. "." .. var.name] = {
+                module = var.exp.var.name,
+                name = var.name,
+                slot = var._decl._slot
+            }
+            return setslot(var._type, var._decl._slot, cexp)
+        elseif var._decl._tag == "Ast.TopLevelVar" and not var._decl.islocal then
             return setslot(var._type, var._decl._slot, cexp)
         elseif var._decl._used then
             local cset = ""
@@ -590,7 +695,7 @@ local function codeassignment(ctx, var, cexp, etype)
                 setobj2t(L, _slot, &_vv);
                 luaC_barrierback(L, _t, &_vv);
             ]], {
-                SETSLOT = setslot(etype, "&_vv", cexp)
+                SETSLOT = setwrapped(etype, "&_vv", cexp)
             })
         else
             cset = setslot(etype, "_slot", cexp)
@@ -766,13 +871,55 @@ local function codecall(ctx, node)
     local castats, caexps, tmpnames, retslots = {}, { "L" }, {}, {}
     local fname
     local fnode = node.exp.var
-    if fnode._tag == "Ast.VarName" then
-        fname = ctx.prefix .. fnode.name .. '_titan'
-    elseif fnode._tag == "Ast.VarDot" then
-        if fnode.exp._type._tag == "Type.ForeignModule" then
-            return codeforeigncall(ctx, node)
+    if node.args._tag == "Ast.ArgsFunc" then
+        if fnode._tag == "Ast.VarName" then
+            fname = ctx.prefix .. fnode.name .. '_titan'
+        elseif fnode._tag == "Ast.VarDot" then
+            if fnode.exp._type._tag == "Type.ForeignModule" then
+                return codeforeigncall(ctx, node)
+            elseif fnode._type._tag == "Type.StaticMethod" then
+                fname = fnode._type.fqtn:gsub("%.", "_") .. "_"
+                    .. fnode._type.name .. "_titanstatic"
+                local mod, record = fnode._type.fqtn:match("^(.*)%.(%a+)$")
+                if mod ~= ctx.module then
+                    ctx.functions[fnode._type.fqtn .. "." .. fnode._type.name] = {
+                        module = mod,
+                        record = record,
+                        type = fnode._type,
+                        name = fnode.name,
+                        mangled = fname
+                    }
+                end
+            else
+                assert(fnode.exp._type._tag == "Type.Module")
+                fname = fnode.exp._type.prefix .. fnode.name .. "_titan"
+                if mod ~= ctx.module then
+                    ctx.functions[fnode.exp.var.name .. "." .. fnode.name] = {
+                        module = fnode.exp.var.name,
+                        name = fnode.name,
+                        type = fnode._type,
+                        mangled = fname
+                    }
+                end
+            end
         end
-        fname = fnode.exp._type.prefix .. fnode.name .. "_titan"
+    else
+        assert(node.args._tag == "Ast.ArgsMethod")
+        local mtype = node._method
+        fname = mtype.fqtn:gsub("%.", "_") .. "_" .. mtype.name .. "_titanmethod"
+        local mod, record = mtype.fqtn:match("^(.*)%.(%a+)$")
+        if mod ~= ctx.module then
+            ctx.functions[mtype.fqtn .. ":" .. mtype.name] = {
+                module = mod,
+                record = record,
+                name = mtype.name,
+                type = mtype,
+                mangled = fname
+            }
+        end
+        local cstat, cexp = codeexp(ctx, node.exp)
+        table.insert(castats, cstat)
+        table.insert(caexps, cexp)
     end
     for _, arg in ipairs(node.args.args) do
         local cstat, cexp = codeexp(ctx, arg)
@@ -942,7 +1089,24 @@ end
 -- the preliminary code is always the empty string
 
 local function codevar(ctx, node)
-    if node._tag == "Ast.VarDot" or (node._decl._tag == "Ast.TopLevelVar" and not node._decl.islocal) then
+    if node._tag == "Ast.VarDot" then
+        if node._decl._tag == "Type.Field" then
+            local cstats, cexp = codeexp(ctx, node.exp)
+            return cstats,
+                getslot(node._type, nil, render("&(($EXP)->upvalue[$INDEX])", {
+                    EXP = cexp,
+                    INDEX = node._decl.index
+                }))
+        else
+            assert(node._decl._tag == "Type.ModuleMember")
+            ctx.variables[node.exp.var.name .. "." .. node.name] = {
+                module = node.exp.var.name,
+                name = node.name,
+                slot = node._decl._slot
+            }
+            return "", getslot(node._type, nil, node._decl._slot)
+        end
+    elseif node._decl._tag == "Ast.TopLevelVar" and not node._decl.islocal then
         return "", getslot(node._type, nil, node._decl._slot)
     else
         return "", node._decl._cvar
@@ -966,7 +1130,7 @@ local function codevalue(ctx, node, target)
     end
 end
 
-local function codetable(ctx, node, target)
+local function codearray(ctx, node, target)
     local stats = {}
     local cinit, ctmp, tmpname, tmpslot
     if target then
@@ -1038,6 +1202,70 @@ local function codetable(ctx, node, target)
             ]], {
                 TMPNAME = tmpname,
                 SLOT = slot,
+            }))
+        end
+    end
+    return table.concat(stats, "\n"), tmpname
+end
+
+local function coderecord(ctx, node, target)
+    local stats = {}
+    local cinit, ctmp, tmpname, tmpslot
+    local record = types.registry[node._type.fqtn]
+    if target then
+        ctmp, tmpname, tmpslot = "", target._cvar, target._slot
+    else
+        ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
+    end
+    cinit = render([[
+        $CTMP
+        $TMPNAME = luaF_newCclosure(L, $NFIELDS);
+        {
+            Udata* _ud = luaS_newudata(L, sizeof(ptrdiff_t));
+            *(getudatamem(_ud)) = $TAG;
+            _ud->metatable = $META;
+            _ud->user_.gc = (GCObject*)$TMPNAME;
+            _ud->ttuv_ = ctb(LUA_TCCL);
+            setuvalue(L, &($TMPNAME->upvalue[0]), _ud);
+        }
+        setclCvalue(L, $TMPSLOT, $TMPNAME);
+    ]], {
+        CTMP = ctmp,
+        TMPNAME = tmpname,
+        TMPSLOT = tmpslot,
+        NFIELDS = #record.fields + 1,
+        TAG = type2tagname(ctx, node._type),
+        META = type2metatable(ctx, node._type)
+    })
+    table.insert(stats, cinit)
+    local slots = {}
+    for _, field in ipairs(node.fields) do
+        local exp = field.exp
+        local cstats, cexp = codeexp(ctx, exp)
+        local ctmpe, tmpename, tmpeslot = newtmp(ctx, field._field.type, true)
+        local code = render([[
+            $CSTATS
+            $CTMPE
+            $TMPENAME = $CEXP;
+            $SETSLOT;
+            setobj2t(L, &($RECORD->upvalue[$INDEX]), $SLOT);
+        ]], {
+            CSTATS = cstats,
+            CTMPE = ctmpe,
+            TMPENAME = tmpename,
+            CEXP = cexp,
+            SETSLOT = setslot(field._field.type, tmpeslot, tmpename),
+            SLOT = tmpeslot,
+            RECORD = tmpname,
+            INDEX = field._field.index
+        })
+        table.insert(stats, code)
+        if types.is_gc(field._field.type) then
+            table.insert(stats, render([[
+                luaC_barrier(L, $TMPNAME, $SLOT);
+            ]], {
+                TMPNAME = tmpname,
+                SLOT = tmpeslot,
             }))
         end
     end
@@ -1290,13 +1518,13 @@ local function codebinaryop(ctx, node, iscondition)
     end
 end
 
-local function codeindex(ctx, node, iscondition)
+local function codeindexarray(ctx, node, iscondition)
     local castats, caexp = codeexp(ctx, node.exp1)
     local cistats, ciexp = codeexp(ctx, node.exp2)
     local typ = node._type
     local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
     local cset = ""
-    local ccheck = checkandget(typ, tmpname, "_s", node.loc.line)
+    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc.line)
     if types.is_gc(typ) then
         cset = setslot(typ, tmpslot, tmpname)
     end
@@ -1366,7 +1594,7 @@ function codeexp(ctx, node, iscondition, target)
     elseif tag == "Ast.VarName" or (tag == "Ast.VarDot" and node._decl) then
         return codevar(ctx, node)
     elseif tag == "Ast.VarBracket" then
-        return codeindex(ctx, node, iscondition)
+        return codeindexarray(ctx, node, iscondition)
     elseif tag == "Ast.ExpNil" or
                 tag == "Ast.ExpBool" or
                 tag == "Ast.ExpInteger" or
@@ -1374,7 +1602,11 @@ function codeexp(ctx, node, iscondition, target)
                 tag == "Ast.ExpString" then
         return codevalue(ctx, node, target)
     elseif tag == "Ast.ExpInitList" then
-        return codetable(ctx, node, target)
+        if node._type._tag == "Type.Nominal" then
+            return coderecord(ctx, node, target)
+        else
+            return codearray(ctx, node, target)
+        end
     elseif tag == "Ast.ExpVar" then
         return codeexp(ctx, node.var, iscondition)
     elseif tag == "Ast.ExpUnop" then
@@ -1401,7 +1633,7 @@ function codeexp(ctx, node, iscondition, target)
         local cstats, cexp = codeexp(ctx, node.exp, iscondition)
         local ctmps, tmpnames = newtmp(ctx, node.exp._type)
         local ctmpt, tmpnamet = newtmp(ctx, node.target)
-        local cget = checkandget(node._type, tmpnamet, "&" .. tmpnames, node.loc.line)
+        local cget = checkandget(ctx, node._type, tmpnamet, "&" .. tmpnames, node.loc.line)
         return render([[
             $EXPSTATS
             $TMPSOURCE
@@ -1426,7 +1658,7 @@ function codeexp(ctx, node, iscondition, target)
         ]], {
             EXPSTATS = cstats,
             TMPTARGET = ctmp,
-            SETSLOT = setslot(node.exp._type, "&" .. tmpname, cexp)
+            SETSLOT = setwrapped(node.exp._type, "&" .. tmpname, cexp)
         }), tmpname
     elseif tag == "Ast.ExpCast" and node.target._tag == "Type.Float" then
         local cstat, cexp = codeexp(ctx, node.exp)
@@ -1586,7 +1818,24 @@ local function codefuncdec(tlcontext, node)
     local ctx = newcontext(tlcontext)
     local stats = {}
     local rettype = node._type.rettypes[1]
+    local fname, luaname
+    if node._tag == "Ast.TopLevelFunc" then
+        fname = tlcontext.prefix .. node.name .. "_titan"
+        luaname = tlcontext.prefix .. node.name .. "_lua"
+    else
+        assert(node._tag == "Ast.TopLevelMethod")
+        fname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_titanmethod"
+        luaname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_luamethod"
+    end
     local cparams = { "lua_State *L" }
+    if node._tag == "Ast.TopLevelMethod" then
+        node._self._cvar = "__self__"
+        if node._self._assigned then
+            node._self._slot = "__selfslot__"
+            table.insert(stats, newslot(ctx, node._self._slot))
+        end
+        table.insert(cparams, ctype(node._self._type) .. " " .. node._self._cvar)
+    end
     for i, param in ipairs(node.params) do
         param._cvar = "_param_" .. param.name
         if types.is_gc(param._type) and param._assigned then
@@ -1635,7 +1884,7 @@ local function codefuncdec(tlcontext, node)
     }]], {
         ISLOCAL = node.islocal and "static" or "",
         RETTYPE = ctype(rettype),
-        NAME = tlcontext.prefix .. node.name .. '_titan',
+        NAME = fname,
         PARAMS = table.concat(cparams, ", "),
         BODY = table.concat(stats, "\n")
     })
@@ -1644,16 +1893,23 @@ local function codefuncdec(tlcontext, node)
     ]], {
         ISLOCAL = node.islocal and "static" or "",
         RETTYPE = ctype(rettype),
-        NAME = tlcontext.prefix .. node.name .. '_titan',
+        NAME = fname,
         PARAMS = table.concat(cparams, ", ")
     })
     -- generate Lua entry point
     local stats = {}
     local pnames = { "L" }
-    for i, param in ipairs(node.params) do
+    local params
+    if node._tag == "Ast.TopLevelFunc" then
+        params = node.params
+    else
+        assert(node._tag == "Ast.TopLevelMethod")
+        params = { node._self, table.unpack(node.params) }
+    end
+    for i, param in ipairs(params) do
         table.insert(pnames, param._cvar)
         table.insert(stats, ctype(param._type) .. " " .. param._cvar .. " = " .. initval(param._type) .. ";")
-        table.insert(stats, checkandget(param._type, param._cvar,
+        table.insert(stats, checkandget(tlcontext, param._type, param._cvar,
             "(func+ " .. i .. ")", node.loc.line))
     end
     for i = 2, #node._type.rettypes do
@@ -1671,9 +1927,9 @@ local function codefuncdec(tlcontext, node)
         _firstret++;
     ]], {
         TYPE = ctype(rettype),
-        NAME = tlcontext.prefix .. node.name .. '_titan',
+        NAME = fname,
         PARAMS = table.concat(pnames, ", "),
-        SETSLOT = setslot(rettype, "_firstret", "res"),
+        SETSLOT = setwrapped(rettype, "_firstret", "res"),
         NRET = #node._type.rettypes
     }))
     for i = 2, #node._type.rettypes do
@@ -1681,7 +1937,7 @@ local function codefuncdec(tlcontext, node)
             $SETSLOT;
             _firstret++;
         ]], {
-            SETSLOT = setslot(node._type.rettypes[i], "_firstret", "_outparam_" .. i)
+            SETSLOT = setwrapped(node._type.rettypes[i], "_firstret", "_outparam_" .. i)
         }))
     end
     table.insert(stats, render([[
@@ -1697,8 +1953,8 @@ local function codefuncdec(tlcontext, node)
         }
         $BODY
     }]], {
-        LUANAME = node.name .. '_lua',
-        EXPECTED = c_integer_literal(#node.params),
+        LUANAME = luaname,
+        EXPECTED = c_integer_literal(#params),
         NAME = c_string_literal(node.name),
         BODY = table.concat(stats, "\n"),
     })
@@ -1753,6 +2009,7 @@ local preamble = [[
 #include "lapi.h"
 #include "lgc.h"
 #include "ltable.h"
+#include "lfunc.h"
 #include "lstring.h"
 #include "lvm.h"
 
@@ -1795,6 +2052,8 @@ inline static TString* _float2str (lua_State *L, lua_Number f) {
 }
 
 $INCLUDES
+
+$SIGS
 
 ]]
 
@@ -1943,6 +2202,7 @@ void $INITNAME(lua_State *L) {
     if(!_initialized) {
         _initialized = 1;
         $INITMODULES
+        $INITRECORDS
         $INITVARS
     }
 }
@@ -1955,10 +2215,27 @@ int $TYPESNAME(lua_State* L) {
 }
 ]]
 
+local function prefix(initmods, mprefixes, modname)
+    if mprefixes[modname] then return mprefixes[modname] end
+    local mprefix = modname:gsub("[%-.]", "_") .. "_"
+    local file = modname:gsub("[.]", "/") .. ".so"
+    mprefixes[modname] = mprefix
+    table.insert(initmods, render([[
+        void *$HANDLE = loadlib(L, "$FILE");
+        void (*$INIT)(lua_State *L) = cast_func(void (*)(lua_State*), loadsym(L, $HANDLE, "$INIT"));
+        $INIT(L);
+    ]], { HANDLE = mprefix .. "handle", INIT = mprefix .. "init", FILE = file}));
+    return mprefix
+end
+
 function coder.generate(modname, ast)
     local tlcontext = {
         module = modname,
-        prefix = modname:gsub("[.]", "_") .. "_"
+        prefix = modname:gsub("[.]", "_") .. "_",
+        variables = {},
+        metatables = {},
+        tags = {},
+        functions = {}
     }
 
     local funcs = {}
@@ -1966,10 +2243,11 @@ function coder.generate(modname, ast)
     local varslots = {}
     local gvars = {}
     local includes = {}
+    local sigs = {}
     local foreignimports = {}
     local initmods = {}
-
-    local deps = {}
+    local mprefixes = {}
+    local initrecs = {}
 
     local initctx = newcontext(tlcontext)
 
@@ -1977,28 +2255,11 @@ function coder.generate(modname, ast)
         if not node._ignore then
             local tag = node._tag
             if tag == "Ast.TopLevelImport" then
-                local mprefix = node._type.prefix
-                table.insert(initmods, render([[
-                    void *$HANDLE = loadlib(L, "$FILE");
-                    void (*$INIT)(lua_State *L) = cast_func(void (*)(lua_State*), loadsym(L, $HANDLE, "$INIT"));
-                    $INIT(L);
-                ]], { HANDLE = mprefix .. "handle", INIT = mprefix .. "init", FILE = node._type.file}));
-                table.insert(deps, node.modname)
+                local mprefix = prefix(initmods, mprefixes, node.modname)
                 for name, member in pairs(node._type.members) do
-                    if not member._slot and member.type._tag ~= "Type.Function" then
+                    if not member._slot and member.type._tag ~= "Type.Function"
+                      and member.type._tag ~= "Type.Record" then
                         member._slot = mprefix .. name .. "_titanvar"
-                    end
-                    if member.type._tag == "Type.Function" then
-                        local fname = mprefix .. name .. "_titan"
-                        table.insert(includes, externalsig(fname, member.type))
-                        table.insert(initmods, render([[
-                            $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
-                        ]], { NAME = fname, TYPE = funpointer("", member.type), HANDLE = mprefix .. "handle" }))
-                    else
-                        table.insert(includes, "static TValue *" .. member._slot .. ";")
-                        table.insert(initmods, render([[
-                            $SLOT = *((TValue**)(loadsym(L, $HANDLE, "$SLOT")));
-                        ]], { SLOT = member._slot, HANDLE = mprefix .. "handle" }))
                     end
                 end
             elseif tag == "Ast.TopLevelForeignImport" then
@@ -2017,13 +2278,7 @@ function coder.generate(modname, ast)
         end
     end
 
-    local code = {
-        render(preamble, {
-            INCLUDES = table.concat(includes, "\n"),
-            FOREIGNIMPORTS = table.concat(foreignimports, "\n"),
-            LIBOPEN = #includes > 0 and libopen or ""
-        })
-    }
+    local code = {}
 
     -- has this module already been initialized?
     table.insert(code, "static int _initialized = 0;")
@@ -2039,6 +2294,17 @@ function coder.generate(modname, ast)
                 if not node.islocal then
                     table.insert(gvars, node)
                 end
+            elseif tag == "Ast.TopLevelRecord" then
+                table.insert(code, "int " .. tagname(node._type.name) .. ";")
+                table.insert(code, "Table *" .. metaname(node._type.name) .. ";")
+                table.insert(initrecs, render([[
+                    luaL_newmetatable(L, "Titan record $TYPE"); /* push metatable */
+                    $META = hvalue(L->top);
+                    L->top--;
+                ]], {
+                    TYPE = node._type.name,
+                    META = metaname(node._type.name)
+                }))
             else
                 -- ignore everything else in this pass
             end
@@ -2048,16 +2314,17 @@ function coder.generate(modname, ast)
     for _, node in pairs(ast) do
         if not node._ignore then
             local tag = node._tag
-            if tag == "Ast.TopLevelFunc" then
+            if tag == "Ast.TopLevelFunc" or tag == "Ast.TopLevelMethod" then
                 codefuncdec(tlcontext, node)
+                table.insert(sigs, node._sig)
                 table.insert(code, node._body)
-                if not node.islocal then
+                if tag == "Ast.TopLevelFunc" and not node.islocal then
                     table.insert(code, node._luabody)
                     table.insert(funcs, render([[
                         lua_pushcfunction(L, $LUANAME);
                         lua_setfield(L, -2, $NAMESTR);
                     ]], {
-                        LUANAME = node.name .. '_lua',
+                        LUANAME = tlcontext.prefix .. node.name .. "_lua",
                         NAMESTR = c_string_literal(node.name),
                     }))
                 end
@@ -2085,7 +2352,7 @@ function coder.generate(modname, ast)
                 }
             ]], {
                 I = c_integer_literal(i),
-                SETSLOT = checkandset(var._type, var._slot, "L->top-1", var.loc.line)
+                SETSLOT = checkandset(tlcontext, var._type, var._slot, "L->top-1", var.loc.line)
             }))
         end
 
@@ -2185,10 +2452,43 @@ function coder.generate(modname, ast)
         TYPES = string.format("%q", types.serialize(ast._type))
     }))
 
+    for name, var in pairs(tlcontext.variables) do
+        table.insert(includes, "static TValue *" .. var.slot .. ";")
+        table.insert(initmods, render([[
+            $SLOT = *((TValue**)(loadsym(L, $HANDLE, "$SLOT")));
+        ]], { SLOT = var.slot, HANDLE = mprefixes[var.module] .. "handle" }))
+    end
+
+    for name, func in pairs(tlcontext.functions) do
+        local mprefix = prefix(initmods, mprefixes, func.module)
+        local fname = func.mangled
+        table.insert(includes, externalsig(fname, func.type))
+        table.insert(initmods, render([[
+            $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
+        ]], { NAME = fname, TYPE = funpointer("", func.type), HANDLE = mprefix .. "handle" }))
+    end
+
+    for name, tag in pairs(tlcontext.tags) do
+        local mprefix = prefix(initmods, mprefixes, tag.module)
+        table.insert("static ptrdiff_t " .. tag.mangled .. ";")
+        table.insert(initmods, render([[
+            $TAG = ((ptrdiff_t)(loadsym(L, $HANDLE, "$TAG")));
+        ]], { TAG = tag.mangled, HANDLE = mprefix .. "handle" }))
+    end
+
+    for name, meta in pairs(tlcontext.metatables) do
+        local mprefix = prefix(initmods, mprefixes, meta.module)
+        table.insert(includes, "static Table *" .. meta.mangled .. ";")
+        table.insert(initmods, render([[
+            $META = *((TValue**)(loadsym(L, $HANDLE, "$SLOT")));
+        ]], { META = meta.mangled, HANDLE = mprefix .. "handle" }))
+    end
+
     table.insert(code, render(init, {
         INITNAME = tlcontext.prefix .. 'init',
         INITMODULES = table.concat(initmods, "\n"),
-        INITVARS = table.concat(initvars, "\n")
+        INITVARS = table.concat(initvars, "\n"),
+        INITRECORDS = table.concat(initrecs, "\n")
     }))
 
     table.insert(code, render(postamble, {
@@ -2198,7 +2498,14 @@ function coder.generate(modname, ast)
         MODNAMESTR = c_string_literal("titan module "..modname),
     }))
 
-    return table.concat(code, "\n\n"), deps
+    local preamble = render(preamble, {
+        INCLUDES = table.concat(includes, "\n"),
+        SIGS = table.concat(sigs, "\n"),
+        FOREIGNIMPORTS = table.concat(foreignimports, "\n"),
+        LIBOPEN = #includes > 0 and libopen or ""
+    })
+
+    return preamble .. "\n\n" .. table.concat(code, "\n\n")
 end
 
 return coder
