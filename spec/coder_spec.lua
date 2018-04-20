@@ -1661,6 +1661,39 @@ describe("Titan code generator", function()
         ]], [[test.f(2)]], "expected test.Rec but found number")
     end)
 
+    it("gets record from titan inside array", function ()
+        run_coder([[
+            record Point
+                x: float
+                y: float
+            end
+            function points1(): { Point }
+                return { { x = 2, y = 3 } }
+            end
+            function points2(): { Point }
+                local ps: { Point } = {}
+                ps[1] = { x = 2, y = 3 }
+                return ps
+            end
+            function unpack(p: Point): (float, float)
+                return p.x, p.y
+            end
+        ]], [[
+            local ps = test.points1()
+            assert(#ps == 1)
+            assert(type(ps[1]) == 'userdata')
+            local x, y = test.unpack(ps[1])
+            assert(2.0 == x)
+            assert(3.0 == y)
+            local ps = test.points2()
+            assert(#ps == 1)
+            assert(type(ps[1]) == 'userdata')
+            local x, y = test.unpack(ps[1])
+            assert(2.0 == x)
+            assert(3.0 == y)
+        ]])
+    end)
+
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()
             run_coder([[

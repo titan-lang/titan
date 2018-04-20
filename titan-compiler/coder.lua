@@ -1141,28 +1141,19 @@ local function codearray(ctx, node, target)
     local stats = {}
     local cinit, ctmp, tmpname, tmpslot
     if target then
-        -- TODO: double check this code, it wan't covered by tests
-        -- and wan't passing anything to the second $TMPNAME placeholder
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
-        cinit = render([[
-            $TMPNAME = luaH_new(L);
-            sethvalue(L, $TMPSLOT, $TMPNAME);
-        ]], {
-            TMPNAME = tmpname,
-            TMPSLOT = tmpslot,
-        })
     else
         ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
-        cinit = render([[
-            $CTMP
-            $TMPNAME = luaH_new(L);
-            sethvalue(L, $TMPSLOT, $TMPNAME);
-        ]], {
-            CTMP = ctmp,
-            TMPNAME = tmpname,
-            TMPSLOT = tmpslot,
-        })
     end
+    cinit = render([[
+        $CTMP
+        $TMPNAME = luaH_new(L);
+        sethvalue(L, $TMPSLOT, $TMPNAME);
+    ]], {
+        CTMP = ctmp,
+        TMPNAME = tmpname,
+        TMPSLOT = tmpslot,
+    })
     table.insert(stats, cinit)
     local slots = {}
     for _, field in ipairs(node.fields) do
@@ -1180,7 +1171,7 @@ local function codearray(ctx, node, target)
             CTMPE = ctmpe,
             TMPENAME = tmpename,
             CEXP = cexp,
-            SETSLOT = setslot(node._type.elem, tmpeslot, tmpename),
+            SETSLOT = setwrapped(node._type.elem, tmpeslot, tmpename),
         })
 
         table.insert(slots, tmpeslot)
