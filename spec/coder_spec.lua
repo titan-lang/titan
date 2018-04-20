@@ -29,7 +29,8 @@ local function call(modname, code)
         modname, code)
     local f = io.popen(cmd)
     local out = f:read()
-    f:close()
+    local ok, err = f:close()
+    if not ok then return false, err end
     local ok, data = out:match("^(true)%s*(.*)$")
     if not ok then
         local _, error = out:match("^(false)%s*(.*)$")
@@ -59,7 +60,7 @@ end
 describe("Titan code generator", function()
     after_each(function ()
         os.execute("rm -f *.so")
-        --os.execute("rm -f *.c")
+        os.execute("rm -f *.c")
     end)
 
     it("deletes array element", function()
@@ -1609,6 +1610,55 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
         local ok, err = call("bar", "x, y = bar.foo(); assert(x == 2.0); assert(y == 3.0)")
         assert.truthy(ok, err)
+    end)
+
+    it("gets record from Titan and sends it back", function ()
+        run_coder([[
+            record Point
+                x: float
+                y: float
+            end
+            function point(): Point
+                return { x = 2, y = 3 }
+            end
+            function unpack(p: Point): (float, float)
+                return p.x, p.y
+            end
+        ]], [[
+            local p1 = test.point()
+            assert(type(p1) == 'userdata')
+            local x, y = test.unpack(p1)
+            assert(2.0 == x)
+            assert(3.0 == y)
+            local p2 = test.point()
+            assert(p1 ~= p2)
+            assert(getmetatable(p1) == getmetatable(p2))
+        ]])
+    end)
+
+    it("gets record from titan and sends it back to wrong type", function ()
+        run_coder([[
+            record Rec
+            end
+            record Point
+              x: float
+              y: float
+            end
+            function point(): Point
+                return { x = 2, y = 3 }
+            end
+            function f(r: Rec)
+            end
+        ]], [[test.f(test.point())]], "expected test.Rec but found test.Point")
+    end)
+
+    it("send wrong type to titan record", function ()
+        run_coder([[
+            record Rec
+            end
+            function f(r: Rec)
+            end
+        ]], [[test.f(2)]], "expected test.Rec but found number")
     end)
 
     describe("Lua vs C operator semantics", function()
