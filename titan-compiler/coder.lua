@@ -164,11 +164,17 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
         return render([[
             if (TITAN_LIKELY(ttisfulluserdata($EXP))) {
               Udata* _ud = uvalue($EXP);
-              ptrdiff_t _tag = *(getudatamem(_ud));
+              ptrdiff_t _tag = *((ptrdiff_t*)(getudatamem(_ud)));
               if (TITAN_LIKELY($TAG == _tag)) {
                 $VAR = gco2ccl(_ud->user_.gc);
               } else {
-                luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", lua_typename(L, ttnov($EXP)));
+                lua_pushlightuserdata(L, (void*)_tag);
+                if(lua_rawget(L, LUA_REGISTRYINDEX) == LUA_TNIL) {
+                    setuvalue(L, L->top, _ud);
+                    luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", luaL_tolstring(L, -1, NULL));
+                } else {
+                    luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", lua_tostring(L, -1));
+                }
               }
             } else {
               luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", lua_typename(L, ttnov($EXP)));
@@ -891,11 +897,12 @@ local function codecall(ctx, node)
                     }
                 end
             else
-                assert(fnode.exp._type._tag == "Type.Module")
+                assert(fnode._decl._tag == "Type.ModuleMember")
                 fname = fnode.exp._type.prefix .. fnode.name .. "_titan"
+                local mod = fnode._decl.modname
                 if mod ~= ctx.module then
-                    ctx.functions[fnode.exp.var.name .. "." .. fnode.name] = {
-                        module = fnode.exp.var.name,
+                    ctx.functions[mod .. "." .. fnode.name] = {
+                        module = mod,
                         name = fnode.name,
                         type = fnode._type,
                         mangled = fname
@@ -1222,7 +1229,7 @@ local function coderecord(ctx, node, target)
         $TMPNAME = luaF_newCclosure(L, $NFIELDS);
         {
             Udata* _ud = luaS_newudata(L, sizeof(ptrdiff_t));
-            *(getudatamem(_ud)) = $TAG;
+            *((ptrdiff_t*)(getudatamem(_ud))) = $TAG;
             _ud->metatable = $META;
             _ud->user_.gc = (GCObject*)$TMPNAME;
             _ud->ttuv_ = ctb(LUA_TCCL);
@@ -2301,7 +2308,11 @@ function coder.generate(modname, ast)
                     luaL_newmetatable(L, "Titan record $TYPE"); /* push metatable */
                     $META = hvalue(L->top);
                     L->top--;
+                    lua_pushlightuserdata(L, &$TAG);
+                    lua_pushstring(L, "$TYPE");
+                    lua_rawset(L, LUA_REGISTRYINDEX);
                 ]], {
+                    TAG = tagname(node._type.name),
                     TYPE = node._type.name,
                     META = metaname(node._type.name)
                 }))
@@ -2470,7 +2481,7 @@ function coder.generate(modname, ast)
 
     for name, tag in pairs(tlcontext.tags) do
         local mprefix = prefix(initmods, mprefixes, tag.module)
-        table.insert("static ptrdiff_t " .. tag.mangled .. ";")
+        table.insert(includes, "static ptrdiff_t " .. tag.mangled .. ";")
         table.insert(initmods, render([[
             $TAG = ((ptrdiff_t)(loadsym(L, $HANDLE, "$TAG")));
         ]], { TAG = tag.mangled, HANDLE = mprefix .. "handle" }))
@@ -2480,7 +2491,7 @@ function coder.generate(modname, ast)
         local mprefix = prefix(initmods, mprefixes, meta.module)
         table.insert(includes, "static Table *" .. meta.mangled .. ";")
         table.insert(initmods, render([[
-            $META = *((TValue**)(loadsym(L, $HANDLE, "$SLOT")));
+            $META = *((Table**)(loadsym(L, $HANDLE, "$META")));
         ]], { META = meta.mangled, HANDLE = mprefix .. "handle" }))
     end
 
