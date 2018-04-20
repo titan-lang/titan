@@ -443,30 +443,17 @@ local function newslot(ctx --[[:table]], name --[[:string]])
     })
 end
 
-local function newtmp(ctx --[[:table]], typ --[[:table]], isgc --[[:boolean]])
+local function newtmp(ctx --[[:table]], typ --[[:table]])
     local tmp = ctx.tmp
     ctx.tmp = ctx.tmp + 1
     local tmpname = "_tmp_" .. tmp
-    if isgc then
-        local slotname = "_tmp_" .. tmp .. "_slot"
-        return render([[
-            $NEWSLOT
-            $TYPE $TMPNAME = $INIT;
-        ]], {
-            TYPE = ctype(typ),
-            NEWSLOT = newslot(ctx, slotname),
-            TMPNAME = tmpname,
-            INIT = initval(typ)
-        }), tmpname, slotname
-    else
-        return render([[
-            $TYPE $TMPNAME = $INIT;
-        ]], {
-            TYPE = ctype(typ),
-            TMPNAME = tmpname,
-            INIT = initval(typ)
-        }), tmpname
-    end
+    return render([[
+        $TYPE $TMPNAME = $INIT;
+    ]], {
+        TYPE = ctype(typ),
+        TMPNAME = tmpname,
+        INIT = initval(typ)
+    }), tmpname
 end
 
 local function newforeigntmp(ctx --[[:table]], typ --[[:table]])
@@ -753,6 +740,7 @@ local function codeassignment(ctx, var, cexp, etype)
                 RECORD = lexp,
                 INDEX = index
             })
+            ctx.live[cexp] = nil
             return render([[
                 $STATS
                 $SETSLOT
@@ -766,14 +754,17 @@ local function codeassignment(ctx, var, cexp, etype)
                 name = var.name,
                 slot = var._decl._slot
             }
+            ctx.live[cexp] = nil
             return setslot(var._type, var._decl._slot, cexp)
         elseif var._decl._tag == "Ast.TopLevelVar" and not var._decl.islocal then
+            ctx.live[cexp] = nil
             return setslot(var._type, var._decl._slot, cexp)
         elseif var._decl._used then
             local cset = ""
             if types.is_gc(var._type) then
                 cset = setslot(var._type, var._decl._slot, var._decl._cvar)
             end
+            ctx.live[cexp] = nil
             return render([[
                 $CVAR = $CEXP;
                 $CSET
@@ -783,6 +774,7 @@ local function codeassignment(ctx, var, cexp, etype)
                 CSET = cset,
             })
         else
+            ctx.live[cexp] = nil
             return render([[
                 ((void)$CEXP);
             ]], {
@@ -810,6 +802,7 @@ local function codeassignment(ctx, var, cexp, etype)
             else
                 cset = setslot(etype, "_slot", cexp)
             end
+            ctx.live[cexp] = nil
             return render([[
                 {
                     $CASTATS
@@ -864,6 +857,7 @@ local function codeassignment(ctx, var, cexp, etype)
 
             local ctmpk, tmpkname, tmpkslot = newtmp(ctx, key._type, true)
 
+            ctx.live[cexp] = nil
             return render([[
                 {
                     $CMSTATS
@@ -877,17 +871,17 @@ local function codeassignment(ctx, var, cexp, etype)
                     $CTABLEKEY
                     $CSET
                 }
-            ]], {
-                CMSTATS = cmstats,
-                CMEXP = cmexp,
-                CKSTATS = ckstats,
-                CTMPK = ctmpk,
-                TMPKNAME = tmpkname,
-                CKEXP = ckexp,
-                SETSLOTK = setwrapped(key._type, tmpkslot, tmpkname),
-                CTABLEKEY = get_table_key(key._type, "_t", tmpkslot, "_slot", true),
-                CSET = cset,
-            })
+                ]], {
+                    CMSTATS = cmstats,
+                    CMEXP = cmexp,
+                    CKSTATS = ckstats,
+                    CTMPK = ctmpk,
+                    TMPKNAME = tmpkname,
+                    CKEXP = ckexp,
+                    SETSLOTK = setwrapped(key._type, tmpkslot, tmpkname),
+                    CTABLEKEY = get_table_key(key._type, "_t", tmpkslot, "_slot", true),
+                    CSET = cset,
+                })
         end
     else
         error("invalid tag for lvalue of assignment: " .. vtag)
@@ -898,6 +892,7 @@ local function codesingleassignment(ctx, node)
     local var = node.vars[1]
     local exp = node.exps[1]
     local cstats, cexp = codeexp(ctx, exp, false, var._decl)
+    ctx.live[cexp] = exp._type
     return cstats .. "\n" .. codeassignment(ctx, var, cexp, exp._type)
 end
 
@@ -910,6 +905,9 @@ local function codemultiassignment(ctx, node)
         if var then
             local typ = exp._type
             local ctmp, tmpname = newtmp(ctx, typ)
+            if types.is_gc(typ) then
+                ctx.live[tmpname] = type
+            end
             tmps[i] = tmpname
             local cstats, cexp = codeexp(ctx, exp)
             table.insert(stats, render([[
@@ -931,23 +929,19 @@ local function codemultiassignment(ctx, node)
 end
 
 local function makestring(ctx, cexp, target)
-    local cstr = render("luaS_new(L, $VALUE)", {
-        VALUE = cexp
-    })
     if target then
-        return "", cstr
-    else
-        local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
         return render([[
-            $CTMP
-            $TMPNAME = $CSTR;
-            setsvalue(L, $TMPSLOT, $TMPNAME);
+            $TARGET = luaS_new(L, $VALUE);
+            setsvalue(L, $SLOT, $TARGET);
         ]], {
-            CTMP = ctmp,
-            TMPNAME = tmpname,
-            CSTR = cstr,
-            TMPSLOT = tmpslot,
-        }), tmpname
+            TARGET = target._cvar,
+            SLOT = target._slot,
+            VALUE = cexp
+        }), target._cvar
+    else
+        return "", render("luaS_new(L, $VALUE)", {
+            VALUE = cexp
+        })
     end
 end
 
@@ -1024,6 +1018,33 @@ local function codeforeignvar(ctx, node)
     return "", node.name
 end
 
+-- checks whether node is a (local|module) variable
+-- or reacheable by indexing from one
+local function isvariable(node)
+    return node._tag == "Ast.ExpVar" and
+     (node.var._tag == "Ast.VarName" or
+        (node.var._tag == "Ast.VarDot" and isvariable(node.var.exp)))
+end
+
+-- pushes a temporary in the stack
+local function pushtmp(ctx, cexp, typ)
+    local tmp = ctx.tmp
+    ctx.tmp = ctx.tmp + 1
+    local tmpname = "_tmp_" .. tmp
+    local slotname = "_tmp_" .. tmp .. "_slot"
+    return render([[
+        $TYPE $TMPNAME = $EXP;
+        $NEWSLOT
+        $SETSLOT
+    ]], {
+        EXP = cexp,
+        TYPE = ctype(typ),
+        NEWSLOT = newslot(ctx, slotname),
+        TMPNAME = tmpname,
+        SETSLOT = setslot(typ, slotname, tmpname)
+    }), tmpname
+end
+
 local function codecall(ctx, node)
     local castats, caexps, tmpnames, retslots = {}, { "L" }, {}, {}
     local fname
@@ -1075,52 +1096,58 @@ local function codecall(ctx, node)
             }
         end
         local cstat, cexp = codeexp(ctx, node.exp)
-        table.insert(castats, cstat)
-        table.insert(caexps, cexp)
+        if isvariable(node.exp) or not types.is_gc(node.exp._type) then
+            table.insert(castats, cstat)
+            table.insert(caexps, cexp)
+        else
+            table.insert(castats, cstat)
+            local cstat, cexp = pushtmp(ctx, cexp, node.exp._type)
+            table.insert(castats, cstat)
+            table.insert(caexps, cexp)
+        end
     end
     for _, arg in ipairs(node.args.args) do
         local cstat, cexp = codeexp(ctx, arg)
-        table.insert(castats, cstat)
-        table.insert(caexps, cexp)
+        if isvariable(arg) or not types.is_gc(arg._type) then
+            table.insert(castats, cstat)
+            table.insert(caexps, cexp)
+        else
+            table.insert(castats, cstat)
+            local cstat, cexp = pushtmp(ctx, cexp, arg._type)
+            table.insert(castats, cstat)
+            table.insert(caexps, cexp)
+        end
     end
     for i = 2, #node._types do
         node._extras = node._extras or {}
         local typ = node._types[i]
-        local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
+        local ctmp, tmpname = newtmp(ctx, typ)
         node._extras[i] = tmpname
         tmpnames[i] = tmpname
         table.insert(castats, ctmp)
         table.insert(caexps, "&" .. tmpname)
-        retslots[i] = tmpslot
     end
-    local cstats = table.concat(castats, "\n")
-    local ccall = render("$NAME($CAEXPS)", {
-        NAME = fname,
-        CAEXPS = table.concat(caexps, ", "),
-    })
-    if util.any(types.is_gc, node._types) then
-        local ctmp, tmpname, tmpslot = newtmp(ctx, node._type, types.is_gc(node._type))
-        tmpnames[1] = tmpname
-        retslots[1] = tmpslot
-        local cslots = {}
-        for i, typ in ipairs(node._types) do
-            if types.is_gc(typ) then
-                table.insert(cslots, setslot(typ, retslots[i], tmpnames[i]) .. ";")
-            end
-        end
-        return render([[
-            $CSTATS
-            $CTMP
-            $TMPNAME = $CCALL;
-            $SLOTS
+    for name, typ in pairs(ctx.live) do
+        table.insert(castats, pushtmp(ctx, name, typ))
+    end
+    ctx.live = {}
+    if #node._types > 1 then
+        local ctmp, tmpname = newtmp(ctx, node._type)
+        table.insert(castats, ctmp)
+        table.insert(castats, render([[
+            $TMP = $NAME($CAEXPS);
         ]], {
-            CSTATS = cstats,
-            CTMP = ctmp,
-            TMPNAME = tmpname,
-            CCALL = ccall,
-            SLOTS = table.concat(cslots, "\n"),
-        }), tmpname
+            NAME = fname,
+            CAEXPS = table.concat(caexps, ", "),
+            TMP = tmpname
+        }))
+        return table.concat(castats, "\n"), tmpname
     else
+        local cstats = table.concat(castats, "\n")
+        local ccall = render("$NAME($CAEXPS)", {
+            NAME = fname,
+            CAEXPS = table.concat(caexps, ", "),
+        })
         return cstats, ccall
     end
 end
@@ -1159,6 +1186,7 @@ local function localname(ctx, name)
 end
 
 function codestat(ctx, node)
+    ctx.live = {}
     local tag = node._tag
     if tag == "Ast.StatDecl" then
         local code = {}
@@ -1293,23 +1321,41 @@ local function codearray(ctx, node, target)
     if target then
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
     else
-        ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
+        ctmp, tmpname = newtmp(ctx, node._type)
     end
     cinit = render([[
         $CTMP
         $TMPNAME = luaH_new(L);
-        sethvalue(L, $TMPSLOT, $TMPNAME);
     ]], {
         CTMP = ctmp,
         TMPNAME = tmpname,
-        TMPSLOT = tmpslot,
     })
     table.insert(stats, cinit)
-    local slots = {}
-    for _, field in ipairs(node.fields) do
+    if tmpslot then
+        table.insert(stats, render([[
+            sethvalue(L, $TMPSLOT, $TMPNAME);
+        ]], {
+            TMPNAME = tmpname,
+            TMPSLOT = tmpslot,
+        }))
+    end
+    if #node.fields > 0 then
+        table.insert(stats, render([[
+            luaH_resizearray(L, $TMPNAME, $SIZE);
+        ]], {
+            TMPNAME = tmpname,
+            SIZE = #node.fields
+        }))
+    end
+    for i, field in ipairs(node.fields) do
         local exp = field.exp
         local cstats, cexp = codeexp(ctx, exp)
-        local ctmpe, tmpename, tmpeslot = newtmp(ctx, node._type.elem, true)
+        local ctmpe, tmpename = newtmp(ctx, node._type.elem)
+
+        local slot = render("&($TMPNAME->array[$INDEX])", {
+            TMPNAME = tmpname,
+            INDEX = i-1,
+        })
 
         local code = render([[
             $CSTATS
@@ -1321,29 +1367,9 @@ local function codearray(ctx, node, target)
             CTMPE = ctmpe,
             TMPENAME = tmpename,
             CEXP = cexp,
-            SETSLOT = setwrapped(node._type.elem, tmpeslot, tmpename),
+            SETSLOT = setwrapped(node._type.elem, slot, tmpename),
         })
 
-        table.insert(slots, tmpeslot)
-        table.insert(stats, code)
-    end
-    if #node.fields > 0 then
-        table.insert(stats, render([[
-            luaH_resizearray(L, $TMPNAME, $SIZE);
-        ]], {
-            TMPNAME = tmpname,
-            SIZE = #node.fields
-        }))
-
-    end
-    for i, slot in ipairs(slots) do
-        table.insert(stats, render([[
-            setobj2t(L, &$TMPNAME->array[$INDEX], $SLOT);
-        ]], {
-            TMPNAME = tmpname,
-            INDEX = i-1,
-            SLOT = slot
-        }))
         if types.is_gc(node._type.elem) then
             table.insert(stats, render([[
                 luaC_barrierback(L, $TMPNAME, $SLOT);
@@ -1352,6 +1378,8 @@ local function codearray(ctx, node, target)
                 SLOT = slot,
             }))
         end
+
+        table.insert(stats, code)
     end
     return table.concat(stats, "\n"), tmpname
 end
@@ -1449,7 +1477,7 @@ local function coderecord(ctx, node, target)
     if target then
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
     else
-        ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
+        ctmp, tmpname = newtmp(ctx, node._type)
     end
     cinit = render([[
         $CTMP
@@ -1462,7 +1490,6 @@ local function coderecord(ctx, node, target)
             _ud->ttuv_ = ctb(LUA_TCCL);
             setuvalue(L, &($TMPNAME->upvalue[0]), _ud);
         }
-        setclCvalue(L, $TMPSLOT, $TMPNAME);
     ]], {
         CTMP = ctmp,
         TMPNAME = tmpname,
@@ -1472,34 +1499,46 @@ local function coderecord(ctx, node, target)
         META = type2metatable(ctx, node._type)
     })
     table.insert(stats, cinit)
+    if tmpslot then
+        table.insert(stats, render([[
+            setclCvalue(L, $TMPSLOT, $TMPNAME);
+        ]], {
+            TMPNAME = tmpname,
+            TMPSLOT = tmpslot,
+        }))
+    end
     local slots = {}
     for _, field in ipairs(node.fields) do
         local exp = field.exp
         local cstats, cexp = codeexp(ctx, exp)
-        local ctmpe, tmpename, tmpeslot = newtmp(ctx, field._field.type, true)
+        local ctmpe, tmpename = newtmp(ctx, field._field.type)
+
+        local slot = render("&($RECORD->upvalue[$INDEX])", {
+            RECORD = tmpname,
+            INDEX = field._field.index
+        })
+
         local code = render([[
             $CSTATS
             $CTMPE
             $TMPENAME = $CEXP;
             $SETSLOT;
-            setobj2t(L, &($RECORD->upvalue[$INDEX]), $SLOT);
         ]], {
             CSTATS = cstats,
             CTMPE = ctmpe,
             TMPENAME = tmpename,
             CEXP = cexp,
-            SETSLOT = setslot(field._field.type, tmpeslot, tmpename),
-            SLOT = tmpeslot,
-            RECORD = tmpname,
-            INDEX = field._field.index
+            SETSLOT = setslot(field._field.type, slot, tmpename),
         })
+
         table.insert(stats, code)
+
         if types.is_gc(field._field.type) then
             table.insert(stats, render([[
                 luaC_barrier(L, $TMPNAME, $SLOT);
             ]], {
                 TMPNAME = tmpname,
-                SLOT = tmpeslot,
+                SLOT = slot,
             }))
         end
     end
@@ -1666,8 +1705,7 @@ local function codebinaryop(ctx, node, iscondition)
         if lstats == "" and rstats == "" and iscondition then
             return "", "(" .. lcode .. " && " .. rcode .. ")"
         else
-            local ctmp, tmpname, tmpslot = newtmp(ctx, node._type, types.is_gc(node._type))
-            local tmpset = types.is_gc(node._type) and setslot(node._type, tmpslot, tmpname) or ""
+            local ctmp, tmpname = newtmp(ctx, node._type)
             local code = render([[
                 $LSTATS
                 $CTMP
@@ -1676,7 +1714,6 @@ local function codebinaryop(ctx, node, iscondition)
                   $RSTATS
                   $TMPNAME = $RCODE;
                 }
-                $TMPSET;
             ]], {
                 CTMP = ctmp,
                 TMPNAME = tmpname,
@@ -1684,7 +1721,6 @@ local function codebinaryop(ctx, node, iscondition)
                 LCODE = lcode,
                 RSTATS = rstats,
                 RCODE = rcode,
-                TMPSET = tmpset,
             })
             return code, tmpname
         end
@@ -1694,8 +1730,7 @@ local function codebinaryop(ctx, node, iscondition)
         if lstats == "" and rstats == "" and iscondition then
             return "", "(" .. lcode .. " || " .. rcode .. ")"
         else
-            local ctmp, tmpname, tmpslot = newtmp(ctx, node._type, types.is_gc(node._type))
-            local tmpset = types.is_gc(node._type) and setslot(node._type, tmpslot, tmpname) or ""
+            local ctmp, tmpname = newtmp(ctx, node._type)
             local code = render([[
                 $LSTATS
                 $CTMP
@@ -1704,7 +1739,6 @@ local function codebinaryop(ctx, node, iscondition)
                     $RSTATS;
                     $TMPNAME = $RCODE;
                 }
-                $TMPSET;
             ]], {
                 CTMP = ctmp,
                 TMPNAME = tmpname,
@@ -1712,7 +1746,6 @@ local function codebinaryop(ctx, node, iscondition)
                 LCODE = lcode,
                 RSTATS = rstats,
                 RCODE = rcode,
-                TMPSET = tmpset,
             })
             return code, tmpname
         end
@@ -1756,12 +1789,8 @@ local function codeindexarray(ctx, node, iscondition)
     local castats, caexp = codeexp(ctx, node.exp1)
     local cistats, ciexp = codeexp(ctx, node.exp2)
     local typ = node._type
-    local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
-    local cset = ""
-    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc)
-    if types.is_gc(typ) then
-        cset = setslot(typ, tmpslot, tmpname)
-    end
+    local ctmp, tmpname = newtmp(ctx, typ)
+    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc.line)
     local cfinish
     if iscondition then
         cfinish = render([[
@@ -1769,20 +1798,16 @@ local function codeindexarray(ctx, node, iscondition)
             $TMPNAME = 0;
           } else {
             $CCHECK
-            $CSET
           }
         ]], {
             TMPNAME = tmpname,
             CCHECK = ccheck,
-            CSET = cset,
         })
     else
         cfinish = render([[
             $CCHECK
-            $CSET
         ]], {
             CCHECK = ccheck,
-            CSET = cset,
         })
     end
     local stats = render([[
@@ -2012,16 +2037,14 @@ function codeexp(ctx, node, iscondition, target)
         if target then
             return cstats, cvt
         else
-            local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
+            local ctmp, tmpname = newtmp(ctx, types.String())
             local code = render([[
                 $CTMP
                 $TMPNAME = $CVT;
-                setsvalue(L, $TMPSLOT, $TMPNAME);
             ]], {
                 CTMP = ctmp,
                 TMPNAME = tmpname,
                 CVT = cvt,
-                TMPSLOT = tmpslot,
             })
             return code, tmpname
         end
@@ -2031,7 +2054,7 @@ function codeexp(ctx, node, iscondition, target)
         return cstats .. fstats, foreigncast(fexp, node._type)
     elseif tag == "Ast.ExpConcat" then
         local strs, copies = {}, {}
-        local ctmp, tmpname, tmpslot = newtmp(ctx, types.String(), true)
+        local ctmp, tmpname = newtmp(ctx, types.String())
         for i, exp in ipairs(node.exps) do
             local cstat, cexp = codeexp(ctx, exp)
             local strvar = string.format('_str%d', i)
@@ -2071,13 +2094,11 @@ function codeexp(ctx, node, iscondition, target)
                   $COPIES
               }
           }
-          setsvalue(L, $TMPSLOT, $TMPNAME);
         ]], {
             CTMP = ctmp,
             STRS = table.concat(strs, "\n"),
             COPIES = table.concat(copies, "\n"),
             TMPNAME = tmpname,
-            TMPSLOT = tmpslot,
         })
         return code, tmpname
     elseif tag == "Ast.ExpAdjust" then
