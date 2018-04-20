@@ -25,12 +25,21 @@ local function generate_modules(modules, main)
 end
 
 local function call(modname, code)
-    local cmd = string.format("lua/src/lua -l %s -e \"%s\"",
+    local cmd = string.format("lua/src/lua -l %s -e \"print(pcall(function () %s end))\"",
         modname, code)
-    return os.execute(cmd)
+    local f = io.popen(cmd)
+    local out = f:read()
+    f:close()
+    local ok, data = out:match("^(true)%s*(.*)$")
+    if not ok then
+        local _, error = out:match("^(false)%s*(.*)$")
+        return false, error
+    else
+        return true, data
+    end
 end
 
-local function run_coder(titan_code, lua_test)
+local function run_coder(titan_code, lua_test, errmsg)
     types.registry = {}
     local ast, err = parse(titan_code)
     assert.truthy(ast, err)
@@ -39,13 +48,18 @@ local function run_coder(titan_code, lua_test)
     local ok, err = driver.compile("test", ast)
     assert.truthy(ok, err)
     local ok, err = call("test", lua_test)
-    assert.truthy(ok, err)
+    if errmsg then
+        assert.falsy(ok)
+        assert.match(errmsg, err)
+    else
+        assert.truthy(ok, err)
+    end
 end
 
 describe("Titan code generator", function()
     after_each(function ()
         os.execute("rm -f *.so")
-        os.execute("rm -f *.c")
+        --os.execute("rm -f *.c")
     end)
 
     it("deletes array element", function()
@@ -1457,6 +1471,53 @@ describe("Titan code generator", function()
         ]])
     end)
 
+    it("casts from record to value and back successfully", function ()
+        run_coder([[
+            record Point
+              x: float
+              y: float
+            end
+            function f(): float
+                local p: Point = { x = 2, y = 0 }
+                local v: value = p
+                local pp: Point = v
+                p.y = 3
+                return pp.y
+            end
+        ]], [[
+            assert(3.0 == test.f())
+        ]])
+    end)
+
+    it("casts from record to value and back unsuccessfully", function ()
+        run_coder([[
+            record Rec
+            end
+            record Point
+              x: float
+              y: float
+            end
+            function f(): float
+                local p: Point = { x = 2, y = 0 }
+                local v: value = p
+                local r: Rec = v
+                return 0
+            end
+        ]], [[test.f()]], "expected test.Rec but found test.Point")
+    end)
+
+    it("casts from value to record unsuccessfully", function ()
+        run_coder([[
+            record Rec
+            end
+            function f(): float
+                local v: value = 0
+                local r: Rec = v
+                return 0
+            end
+        ]], [[test.f()]], "expected test.Rec but found number")
+    end)
+
     it("calls record method that mutates fields", function ()
         run_coder([[
             record Point
@@ -1482,6 +1543,72 @@ describe("Titan code generator", function()
             assert(4.0 == x)
             assert(6.0 == y)
         ]])
+    end)
+
+    it("uses method of record from another module", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+                function Point:move(dx: float, dy: float)
+                    self.x, self.y = self.x + dx, self.y + dy
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(): (float, float)
+                    local p: f.Point = { x = 2, y = 3 }
+                    p:move(2, 3)
+                    return p.x, p.y
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "bar")
+        assert.truthy(ok, err)
+        local ok, err = call("bar", "x, y = bar.bar(); assert(x == 4.0); assert(y == 6.0)")
+        assert.truthy(ok, err)
+    end)
+
+    it("uses method of record from transitive module", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+                function Point:move(dx: float, dy: float)
+                    self.x, self.y = self.x + dx, self.y + dy
+                end
+            ]],
+            baz = [[
+                local f = import "foo"
+                function point(x: float, y: float): f.Point
+                    return { x = 2, y = 3 }
+                end
+            ]],
+            bar = [[
+                local b = import "baz"
+                function bar(): (float, float)
+                    local p = b.point(2,3)
+                    p:move(2, 3)
+                    return p.x, p.y
+                end
+                function foo(): (float, float)
+                    local p = b.point(2,3)
+                    local v: value = p
+                    p = v
+                    return p.x, p.y
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "bar")
+        assert.truthy(ok, err)
+        local ok, err = call("bar", "x, y = bar.bar(); assert(x == 4.0); assert(y == 6.0)")
+        assert.truthy(ok, err)
+        local ok, err = call("bar", "x, y = bar.foo(); assert(x == 2.0); assert(y == 3.0)")
+        assert.truthy(ok, err)
     end)
 
     describe("Lua vs C operator semantics", function()
