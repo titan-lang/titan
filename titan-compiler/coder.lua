@@ -37,6 +37,13 @@ local function c_float_literal(n)
     return string.format("%f", n)
 end
 
+-- checks whether node is a (local|module) variable
+-- or reacheable by indexing from one
+local function isvariable(node)
+    return node._tag == "Ast.ExpVar" and
+     (node.var._tag == "Ast.VarName" or
+        (node.var._tag == "Ast.VarDot" and isvariable(node.var.exp)))
+end
 
 -- Is this expression a numeric literal?
 -- If yes, return that number. If not, returns nil.
@@ -892,7 +899,9 @@ local function codesingleassignment(ctx, node)
     local var = node.vars[1]
     local exp = node.exps[1]
     local cstats, cexp = codeexp(ctx, exp, false, var._decl)
-    ctx.live[cexp] = exp._type
+    if not isvariable(exp) and types.is_gc(exp._type) then
+        ctx.live[cexp] = exp._type
+    end
     return cstats .. "\n" .. codeassignment(ctx, var, cexp, exp._type)
 end
 
@@ -1016,14 +1025,6 @@ end
 
 local function codeforeignvar(ctx, node)
     return "", node.name
-end
-
--- checks whether node is a (local|module) variable
--- or reacheable by indexing from one
-local function isvariable(node)
-    return node._tag == "Ast.ExpVar" and
-     (node.var._tag == "Ast.VarName" or
-        (node.var._tag == "Ast.VarDot" and isvariable(node.var.exp)))
 end
 
 -- pushes a temporary in the stack
@@ -1780,6 +1781,11 @@ local function codebinaryop(ctx, node, iscondition)
         end
     else
         local lstats, lcode = codeexp(ctx, node.lhs)
+        if (op == "==") or (op == "!=") then
+            if not isvariable(node.lhs) and types.is_gc(node.lhs._type) then
+                ctx.live[lcode] = node.lhs._type
+            end
+        end
         local rstats, rcode = codeexp(ctx, node.rhs)
         return lstats .. rstats, "(" .. lcode .. op .. rcode .. ")"
     end
@@ -1787,6 +1793,7 @@ end
 
 local function codeindexarray(ctx, node, iscondition)
     local castats, caexp = codeexp(ctx, node.exp1)
+    ctx.live[caexp] = node.exp1._type
     local cistats, ciexp = codeexp(ctx, node.exp2)
     local typ = node._type
     local ctmp, tmpname = newtmp(ctx, typ)
@@ -2057,6 +2064,9 @@ function codeexp(ctx, node, iscondition, target)
         local ctmp, tmpname = newtmp(ctx, types.String())
         for i, exp in ipairs(node.exps) do
             local cstat, cexp = codeexp(ctx, exp)
+            if not isvariable(exp) and types.is_gc(exp._type) then
+                ctx.live[cexp] = exp._type
+            end
             local strvar = string.format('_str%d', i)
             local lenvar = string.format('_len%d', i)
             table.insert(strs, render([[
