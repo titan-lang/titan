@@ -103,7 +103,7 @@ local function type2metatable(ctx, typ --[[:table]])
     return mangled
 end
 
-local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:string]], line --[[:number]])
+local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:string]], loc --[[:table]])
     local tag
     if typ._tag == "Type.Integer" then
         return render([[
@@ -113,17 +113,19 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
                 float _v = fltvalue($EXP);
                 float _flt = l_floor(_v);
                 if (TITAN_UNLIKELY(_v != _flt)) {
-                    luaL_error(L, "type error at line %d, number '%f' has no integer representation", $LINE, _v);
+                    luaL_error(L, "%s:%d:%d: type error, number '%f' has no integer representation", $FILE, $LINE, $COL, _v);
                 } else {
                     lua_numbertointeger(_flt, &$VAR);
                 }
             } else {
-                luaL_error(L, "type error at line %d, expected integer but found %s", $LINE, lua_typename(L, ttnov($EXP)));
+                luaL_error(L, "%s:%d:%d: type error, expected integer but found %s", $FILE, $LINE, $COL, lua_typename(L, ttnov($EXP)));
             }
         ]], {
             EXP = exp,
             VAR = cvar,
-            LINE = c_integer_literal(line)
+            FILE = c_string_literal(loc.filename),
+            LINE = c_integer_literal(loc.line),
+            COL = c_integer_literal(loc.col),
         })
     elseif typ._tag == "Type.Float" then
         return render([[
@@ -132,12 +134,14 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
             } else if (ttisinteger($EXP)) {
                 $VAR = (lua_Number)ivalue($EXP);
             } else {
-                luaL_error(L, "type error at line %d, expected float but found %s", $LINE, lua_typename(L, ttnov($EXP)));
+                luaL_error(L, "%s:%d:%d: type error, expected float but found %s", $FILE, $LINE, $COL, lua_typename(L, ttnov($EXP)));
             }
         ]], {
             EXP = exp,
             VAR = cvar,
-            LINE = c_integer_literal(line),
+            FILE = c_string_literal(loc.filename),
+            LINE = c_integer_literal(loc.line),
+            COL = c_integer_literal(loc.col),
         })
     elseif typ._tag == "Type.Boolean" then
         return render([[
@@ -171,17 +175,19 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
                 lua_pushlightuserdata(L, (void*)_tag);
                 if(lua_rawget(L, LUA_REGISTRYINDEX) == LUA_TNIL) {
                     setuvalue(L, L->top, _ud);
-                    luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", luaL_tolstring(L, -1, NULL));
+                    luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, "$NAME", luaL_tolstring(L, -1, NULL));
                 } else {
-                    luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", lua_tostring(L, -1));
+                    luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, "$NAME", lua_tostring(L, -1));
                 }
               }
             } else {
-              luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, "$NAME", lua_typename(L, ttnov($EXP)));
+              luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, "$NAME", lua_typename(L, ttnov($EXP)));
             }
         ]], {
             TAG = type2tagname(ctx, typ),
-            LINE = c_integer_literal(line),
+            FILE = c_string_literal(loc.filename),
+            LINE = c_integer_literal(loc.line),
+            COL = c_integer_literal(loc.col),
             EXP = exp,
             VAR = cvar,
             NAME = types.tostring(typ)
@@ -193,18 +199,20 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
         if (TITAN_LIKELY($PREDICATE($EXP))) {
             $GETSLOT;
         } else {
-            luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, $TAG, lua_typename(L, ttnov($EXP)));
+            luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, $TAG, lua_typename(L, ttnov($EXP)));
         }
     ]], {
         EXP = exp,
         TAG = c_string_literal(tag),
         PREDICATE = 'ttis'..tag,
         GETSLOT = getslot(typ, cvar, exp),
-        LINE = c_integer_literal(line),
-    })
+        FILE = c_string_literal(loc.filename),
+        LINE = c_integer_literal(loc.line),
+        COL = c_integer_literal(loc.col),
+})
 end
 
-local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]], line --[[:number]])
+local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]], loc --[[:table]])
     local tag
     if typ._tag == "Type.Integer" then tag = "integer"
     elseif typ._tag == "Type.Float" then
@@ -214,12 +222,14 @@ local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:st
             } else if (ttisinteger($SRC)) {
                 setfltvalue($DST, ((lua_Number)ivalue($SRC)));
             } else {
-                luaL_error(L, "type error at line %d, expected float but found %s", $LINE, lua_typename(L, ttnov($SRC)));
+                luaL_error(L, "%s:%d:%d: type error, expected float but found %s", $FILE, $LINE, $COL, lua_typename(L, ttnov($SRC)));
             }
         ]], {
             SRC = src,
             DST = dst,
-            LINE = c_integer_literal(line),
+            FILE = c_string_literal(loc.filename),
+            LINE = c_integer_literal(loc.line),
+            COL = c_integer_literal(loc.col),
         })
     elseif typ._tag == "Type.Boolean" then tag = "boolean"
     elseif typ._tag == "Type.Nil" then tag = "nil"
@@ -240,7 +250,7 @@ local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:st
               setclCvalue(L, $DST, _cl);
             }
         ]], {
-            CHECKANDGET = checkandget(ctx, typ, "_cl", src, line),
+            CHECKANDGET = checkandget(ctx, typ, "_cl", src, loc),
             DST = dst
         })
     else
@@ -250,15 +260,17 @@ local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:st
         if (TITAN_LIKELY($PREDICATE($SRC))) {
             setobj2t(L, $DST, $SRC);
         } else {
-            luaL_error(L, "type error at line %d, expected %s but found %s", $LINE, $TAG, lua_typename(L, ttnov($SRC)));
+            luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, $TAG, lua_typename(L, ttnov($SRC)));
         }
     ]], {
         TAG = c_string_literal(tag),
         PREDICATE = 'ttis'..tag,
         SRC = src,
         DST = dst,
-        LINE = c_integer_literal(line),
-    })
+        FILE = c_string_literal(loc.filename),
+        LINE = c_integer_literal(loc.line),
+        COL = c_integer_literal(loc.col),
+})
 end
 
 local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
@@ -1522,7 +1534,7 @@ local function codeindexarray(ctx, node, iscondition)
     local typ = node._type
     local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
     local cset = ""
-    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc.line)
+    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc)
     if types.is_gc(typ) then
         cset = setslot(typ, tmpslot, tmpname)
     end
@@ -1631,7 +1643,7 @@ function codeexp(ctx, node, iscondition, target)
         local cstats, cexp = codeexp(ctx, node.exp, iscondition)
         local ctmps, tmpnames = newtmp(ctx, node.exp._type)
         local ctmpt, tmpnamet = newtmp(ctx, node.target)
-        local cget = checkandget(ctx, node._type, tmpnamet, "&" .. tmpnames, node.loc.line)
+        local cget = checkandget(ctx, node._type, tmpnamet, "&" .. tmpnames, node.loc)
         return render([[
             $EXPSTATS
             $TMPSOURCE
@@ -1801,6 +1813,76 @@ function codeforeignexp(ctx, node)
     end
 end
 
+-- Generate Lua entry point `lua_name` for a Titan
+-- function or method with name `titan_name` and Titan
+-- entry point `titan_entry`, type `typ`, and declared on location `loc`
+local function genluaentry(tlcontext, titan_name, titan_entry, typ, loc, lua_name)
+    -- generate Lua entry point
+    local stats = {}
+    local pnames = { "L" }
+    local params
+    if typ._tag == "Type.Function" or typ._tag == "Type.StaticMethod" then
+        params = typ.params
+    else
+        assert(typ._tag == "Type.Method")
+        params = { types.Nominal(typ.fqtn), table.unpack(typ.params) }
+    end
+    for i, param in ipairs(params) do
+        local pname = "_param_" .. tostring(i)
+        local slot = "(func+ " .. i .. ")"
+        table.insert(pnames, pname)
+        table.insert(stats, ctype(param) .. " " .. pname .. " = " .. initval(param) .. ";")
+        table.insert(stats, checkandget(tlcontext, param, pname, slot, loc))
+    end
+    for i = 2, #typ.rettypes do
+        local ptype = typ.rettypes[i]
+        local pname = "_outparam_" .. i
+        table.insert(pnames, "&" .. pname)
+        table.insert(stats, ctype(ptype) .. " " .. pname .. " = " .. initval(ptype) .. ";")
+    end
+    local rettype = typ.rettypes[1]
+    table.insert(stats, render([[
+        lua_checkstack(L, $NRET);
+        TValue *_firstret = L->top;
+        L->top += $NRET;
+        $TYPE res = $NAME($PARAMS);
+        $SETSLOT;
+        _firstret++;
+    ]], {
+        TYPE = ctype(rettype),
+        NAME = titan_entry,
+        PARAMS = table.concat(pnames, ", "),
+        SETSLOT = setwrapped(rettype, "_firstret", "res"),
+        NRET = #typ.rettypes
+    }))
+    for i = 2, #typ.rettypes do
+        table.insert(stats, render([[
+            $SETSLOT;
+            _firstret++;
+        ]], {
+            SETSLOT = setwrapped(typ.rettypes[i], "_firstret", "_outparam_" .. i)
+        }))
+    end
+    table.insert(stats, render([[
+        return $NRET;
+    ]], {
+        NRET = #typ.rettypes
+    }))
+    return render([[
+    static int $LUANAME(lua_State *L) {
+        TValue *func = L->ci->func;
+        if((L->top - func - 1) != $EXPECTED) {
+            luaL_error(L, "calling Titan function %s with %d arguments, but expected %d", $NAME, L->top - func - 1, $EXPECTED);
+        }
+        $BODY
+    }]], {
+        LUANAME = lua_name,
+        EXPECTED = c_integer_literal(#params),
+        NAME = c_string_literal(titan_name),
+        BODY = table.concat(stats, "\n"),
+    })
+end
+
 -- Titan calling convention:
 --     first parameter is a lua_State*, other parameters
 --     get the other arguments, with each being its actual
@@ -1894,68 +1976,7 @@ local function codefuncdec(tlcontext, node)
         NAME = fname,
         PARAMS = table.concat(cparams, ", ")
     })
-    -- generate Lua entry point
-    local stats = {}
-    local pnames = { "L" }
-    local params
-    if node._tag == "Ast.TopLevelFunc" then
-        params = node.params
-    else
-        assert(node._tag == "Ast.TopLevelMethod")
-        params = { node._self, table.unpack(node.params) }
-    end
-    for i, param in ipairs(params) do
-        table.insert(pnames, param._cvar)
-        table.insert(stats, ctype(param._type) .. " " .. param._cvar .. " = " .. initval(param._type) .. ";")
-        table.insert(stats, checkandget(tlcontext, param._type, param._cvar,
-            "(func+ " .. i .. ")", node.loc.line))
-    end
-    for i = 2, #node._type.rettypes do
-        local ptype = node._type.rettypes[i]
-        local pname = "_outparam_" .. i
-        table.insert(pnames, "&" .. pname)
-        table.insert(stats, ctype(ptype) .. " " .. pname .. " = " .. initval(ptype) .. ";")
-    end
-    table.insert(stats, render([[
-        lua_checkstack(L, $NRET);
-        TValue *_firstret = L->top;
-        L->top += $NRET;
-        $TYPE res = $NAME($PARAMS);
-        $SETSLOT;
-        _firstret++;
-    ]], {
-        TYPE = ctype(rettype),
-        NAME = fname,
-        PARAMS = table.concat(pnames, ", "),
-        SETSLOT = setwrapped(rettype, "_firstret", "res"),
-        NRET = #node._type.rettypes
-    }))
-    for i = 2, #node._type.rettypes do
-        table.insert(stats, render([[
-            $SETSLOT;
-            _firstret++;
-        ]], {
-            SETSLOT = setwrapped(node._type.rettypes[i], "_firstret", "_outparam_" .. i)
-        }))
-    end
-    table.insert(stats, render([[
-        return $NRET;
-    ]], {
-        NRET = #node._type.rettypes
-    }))
-    node._luabody = render([[
-    static int $LUANAME(lua_State *L) {
-        TValue *func = L->ci->func;
-        if((L->top - func - 1) != $EXPECTED) {
-            luaL_error(L, "calling Titan function %s with %d arguments, but expected %d", $NAME, L->top - func - 1, $EXPECTED);
-        }
-        $BODY
-    }]], {
-        LUANAME = luaname,
-        EXPECTED = c_integer_literal(#params),
-        NAME = c_string_literal(node.name),
-        BODY = table.concat(stats, "\n"),
-    })
+    node._luabody = genluaentry(tlcontext, node.name, fname, node._type, node.loc, luaname)
 end
 
 local function codevardec(tlctx, ctx, node)
@@ -2354,7 +2375,7 @@ function coder.generate(modname, ast)
                 }
             ]], {
                 I = c_integer_literal(i),
-                SETSLOT = checkandset(tlcontext, var._type, var._slot, "L->top-1", var.loc.line)
+                SETSLOT = checkandset(tlcontext, var._type, var._slot, "L->top-1", var.loc)
             }))
         end
 
