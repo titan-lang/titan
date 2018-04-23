@@ -274,7 +274,7 @@ local grammar = re.compile([[
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / simpletype
 
-    recordfields    <- {| recordfield+ |}                        -- produces {Decl}
+    recordfields    <- {| (!Err_050_Flw recordfield^Err_050)+ |}                        -- produces {Decl}
 
     recordfield     <- (P  NAME COLON^ColonRecordField
                            type^TypeRecordField SEMICOLON?)      -> Decl
@@ -488,6 +488,7 @@ local grammar = re.compile([[
     Err_035_Flw	<-	'='
     Err_039_Flw	<-	')'
     Err_040_Flw	<-	')'
+    Err_050_Flw	<-	'end'
 
 
 ]], defs)
