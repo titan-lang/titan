@@ -238,7 +238,7 @@ local grammar = re.compile([[
 
     rettypeopt      <- (P  (!Err_026_Flw (COLON rettype^TypeFunc)^Err_026) ?)            -> rettypeopt
 
-    paramlist       <- {| (param (COMMA param^DeclParList)*)? |} -- produces {Decl}
+    paramlist       <- {| (!Err_029_Flw (param (!Err_028_Flw (COMMA param^DeclParList)^Err_028)*)^Err_029)? |} -- produces {Decl}
 
     param           <- (P  NAME COLON^ParamSemicolon
                            type^TypeDecl)                        -> Decl
@@ -482,6 +482,8 @@ local grammar = re.compile([[
     Err_001_Flw	    <- 'function'  /  !.  /  'local'  /  'record'  /  NAME
     Err_002_Flw     <- !.
     Err_026_Flw	<-	'while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '('
+    Err_028_Flw	<-	')'
+    Err_029_Flw	<-	')'
 
 
 ]], defs)
