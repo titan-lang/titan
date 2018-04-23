@@ -243,7 +243,7 @@ local grammar = re.compile([[
     param           <- (P  NAME COLON^ParamSemicolon
                            type^TypeDecl)                        -> Decl
 
-    decl            <- (P  NAME (COLON type^TypeDecl)? -> opt)   -> Decl
+    decl            <- (P  NAME (!Err_033_Flw (COLON type^TypeDecl)^Err_033)? -> opt)   -> Decl
 
     decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
 
@@ -484,6 +484,7 @@ local grammar = re.compile([[
     Err_026_Flw	<-	'while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '('
     Err_028_Flw	<-	')'
     Err_029_Flw	<-	')'
+    Err_033_Flw	<-	'='  /  ','
 
 
 ]], defs)
