@@ -913,7 +913,8 @@ describe("Titan parser", function()
 
         assert_type_syntax_error([[ (a,,,) -> b ]], "TypelistType")
 
-        assert_type_syntax_error([[ (a, b -> b  ]], "RParenTypelist")
+        -- LabelRecovery: RParenTypelist x typelist
+        --assert_type_syntax_error([[ (a, b -> b  ]], "RParenTypelist")
 
         assert_type_syntax_error([[ (a, b) -> = nil ]], "TypeReturnTypes")
 

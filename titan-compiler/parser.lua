@@ -245,7 +245,7 @@ local grammar = re.compile([[
 
     decl            <- (P  NAME (!Err_033_Flw (COLON type^TypeDecl)^Err_033)? -> opt)   -> Decl
 
-    decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
+    decllist        <- {| decl (!Err_035_Flw (COMMA decl^DeclParList)^Err_035)* |}      -- produces {Decl}
 
     simpletype      <- (P  NIL)                                  -> TypeNil
                      / (P  BOOLEAN)                              -> TypeBoolean
@@ -258,7 +258,7 @@ local grammar = re.compile([[
                            RCURLY^RCurlyType)                    -> TypeArray
 
     typelist        <- ( LPAREN
-                         {| (type (COMMA type^TypelistType)*)? |}
+                         {| (!Err_040_Flw (type (!Err_039_Flw (COMMA type^TypelistType)^Err_039)*)^Err_040)? |}
                          RPAREN^RParenTypelist )                 -- produces {Type}
 
     rettype         <- {| (P  typelist RARROW
@@ -485,6 +485,9 @@ local grammar = re.compile([[
     Err_028_Flw	<-	')'
     Err_029_Flw	<-	')'
     Err_033_Flw	<-	'='  /  ','
+    Err_035_Flw	<-	'='
+    Err_039_Flw	<-	')'
+    Err_040_Flw	<-	')'
 
 
 ]], defs)
