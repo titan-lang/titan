@@ -236,7 +236,7 @@ local grammar = re.compile([[
                           (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
                            STRINGLIT^StringImport))              -> TopLevelForeignImport
 
-    rettypeopt      <- (P  (COLON rettype^TypeFunc)?)            -> rettypeopt
+    rettypeopt      <- (P  (!Err_026_Flw (COLON rettype^TypeFunc)^Err_026) ?)            -> rettypeopt
 
     paramlist       <- {| (param (COMMA param^DeclParList)*)? |} -- produces {Decl}
 
@@ -481,6 +481,7 @@ local grammar = re.compile([[
     -- Error reporting/recovery
     Err_001_Flw	    <- 'function'  /  !.  /  'local'  /  'record'  /  NAME
     Err_002_Flw     <- !.
+    Err_026_Flw	<-	'while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '('
 
 
 ]], defs)
