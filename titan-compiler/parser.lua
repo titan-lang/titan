@@ -292,7 +292,7 @@ local grammar = re.compile([[
                      / (P  FOR decl^DeclFor
                            ASSIGN^AssignFor exp^Exp1For
                            COMMA^CommaFor exp^Exp2For
-                           (COMMA exp^Exp3For)?                  -> opt
+                           (!Err_071_Flw (COMMA exp^Exp3For)^Err_071)?                  -> opt
                            DO^DoFor block END^EndFor)            -> StatFor
                      / (P  LOCAL decllist^DeclLocal ASSIGN^AssignLocal
                                  explist^ExpLocal)                   -> StatDecl
@@ -492,7 +492,7 @@ local grammar = re.compile([[
     Err_053_Flw	<-	'end' / NAME
     Err_054_Flw	<-	'until'  /  'return'  /  'end'  /  'elseif'  /  'else'
     Err_055_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'
-
+    Err_071_Flw	<-	'do'
 
 
 ]], defs)
