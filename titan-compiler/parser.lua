@@ -302,12 +302,12 @@ local grammar = re.compile([[
                      / (P  (suffixedexp => exp_is_call))         -> StatCall
                      / &exp %{ExpStat}
 
-    elseifstats     <- {| elseifstat* |}                         -- produces {Then}
+    elseifstats     <- {| (!Err_079_Flw elseifstat^Err_079)* |}                         -- produces {Then}
 
     elseifstat      <- (P  ELSEIF exp^ExpElseIf
                            THEN^ThenElseIf block)                -> Then
 
-    elseopt         <- (ELSE block)?                             -> opt
+    elseopt         <- (!Err_082_Flw (ELSE block)^Err_082)?                             -> opt
 
     returnstat      <- (P  RETURN (explist? -> listopt) SEMICOLON?)      -> StatReturn
 
@@ -493,6 +493,8 @@ local grammar = re.compile([[
     Err_054_Flw	<-	'until'  /  'return'  /  'end'  /  'elseif'  /  'else'
     Err_055_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'
     Err_071_Flw	<-	'do'
+    Err_079_Flw	<-	'end'  /  ELSE
+    Err_082_Flw	<-	'end'
 
 
 ]], defs)

@@ -981,12 +981,13 @@ describe("Titan parser", function()
             end
         ]], "ThenIf")
 
-        assert_statements_syntax_error([[
-            if x > 10 then
-                x = x - 1
-                return 42
-            return 41
-        ]], "EndIf")
+        -- LabelRecovery: EndIf x elseopt (Err_082)
+        --assert_statements_syntax_error([[
+        --    if x > 10 then
+        --        x = x - 1
+        --        return 42
+        --    return 41
+        --]], "EndIf")
 
         assert_statements_syntax_error([[
             for = 1, 10 do
