@@ -309,7 +309,7 @@ local grammar = re.compile([[
 
     elseopt         <- (!Err_082_Flw (ELSE block)^Err_082)?                             -> opt
 
-    returnstat      <- (P  RETURN (explist? -> listopt) SEMICOLON?)      -> StatReturn
+    returnstat      <- (P  RETURN ((!Err_083_Flw explist^Err_083)? -> listopt) (!Err_084_Flw SEMICOLON^Err_084)?)      -> StatReturn
 
     op1             <- ( OR -> 'or' )
     op2             <- ( AND -> 'and' )
@@ -495,6 +495,8 @@ local grammar = re.compile([[
     Err_071_Flw	<-	'do'
     Err_079_Flw	<-	'end'  /  ELSE
     Err_082_Flw	<-	'end'
+    Err_083_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'  /  ';'
+    Err_084_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'
 
 
 ]], defs)
