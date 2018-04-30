@@ -279,7 +279,7 @@ local grammar = re.compile([[
     recordfield     <- (P  NAME COLON^ColonRecordField
                            type^TypeRecordField (!Err_053_Flw SEMICOLON^Err_053)?)      -> Decl
 
-    block           <- (P  {| statement* returnstat? |})         -> StatBlock
+    block           <- (P  {| (!Err_054_Flw statement^Err_054)* (!Err_055_Flw returnstat^Err_055)? |})         -> StatBlock
 
     statement       <- (SEMICOLON)                               -- ignore
                      / (DO block END^EndBlock)                   -- produces StatBlock
@@ -490,6 +490,9 @@ local grammar = re.compile([[
     Err_040_Flw	<-	')'
     Err_050_Flw	<-	'end'
     Err_053_Flw	<-	'end' / NAME
+    Err_054_Flw	<-	'until'  /  'return'  /  'end'  /  'elseif'  /  'else'
+    Err_055_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'
+
 
 
 ]], defs)
