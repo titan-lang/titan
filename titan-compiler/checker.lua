@@ -1084,6 +1084,8 @@ local function checkbodies(ast, st, errors)
                 st:with_block(checkfunc, node, st, errors)
             elseif node._tag == "Ast.TopLevelMethod" then
                 st:with_block(checkmethod, node, st, errors)
+            elseif node._tag == "Ast.TopLevelStatic" then
+                st:with_block(checkfunc, node, st, errors)
             elseif node._tag == "Ast.TopLevelRecord" then
                 local fields = node._type.fields
                 for i, field in ipairs(fields) do
@@ -1097,7 +1099,9 @@ end
 
 local function isconstructor(node)
     return node.var and node.var._decl and node.var._decl._tag == "Type.StaticMethod"
-        and node.var._decl.name == "new"
+        and #node.var._decl.rettypes == 1
+        and node.var._decl.rettypes[1]._tag == "Type.Nominal"
+        and node.var._decl.rettypes[1].fqtn == node.var._decl.fqtn
 end
 
 -- Verify if an expression is constant
@@ -1164,7 +1168,7 @@ local function toplevel_name(node)
     elseif tag == "Ast.TopLevelFunc" or
            tag == "Ast.TopLevelRecord" then
         return node.name
-    elseif tag == "Ast.TopLevelMethod" then
+    elseif tag == "Ast.TopLevelMethod" or tag == "Ast.TopLevelStatic" then
         return nil
     else
         error("tag not found " .. tag)
@@ -1260,10 +1264,60 @@ local toplevel_visitor = util.make_visitor({
                     types.Field(fqtn, field.name, ftype, i))
             end
         end
-        node._type = types.Record(fqtn, fields, {
-            new = types.StaticMethod(fqtn, "new", ftypes, { types.Nominal(fqtn) })
-        }, {}, {})
+        node._type = types.Record(fqtn, fields, {}, {})
         types.registry[fqtn] = node._type
+    end,
+
+    ["Ast.TopLevelStatic"] = function(node, st, errors)
+        local record = st:find_symbol(node.class)
+        if not record then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "record referenced by static method declaration '%s.%s' does not exist",
+                node.class, node.name)
+            return
+        end
+        if record._tag ~= "Ast.TopLevelRecord" then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "member referenced by static method declaration '%s.%s' is not a record",
+                node.class, node.name)
+            return
+        end
+        local rectype = record._type
+        for _, field in ipairs(rectype.fields) do
+            if field.name == node.name then
+                node._ignore = true
+                checker.typeerror(errors, node.loc,
+                "cannot declare static method '%s.%s' as field '%s' exists in record '%s'",
+                    node.class, node.name, field.name, node.class)
+                return
+            end
+        end
+        if rectype.methods[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "cannot declare static method '%s.%s' as method '%s:%s' exists in record '%s'",
+                    node.class, node.name, node.class, node.name, node.class)
+            return
+        end
+        if rectype.functions[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "redeclaration of static method '%s.%s'", node.class, node.name)
+            return
+        end
+        node._record = record
+        local ptypes = {}
+        for _, pdecl in ipairs(node.params) do
+            table.insert(ptypes, typefromnode(pdecl.type, st, errors))
+        end
+        local rettypes = {}
+        for _, rt in ipairs(node.rettypes) do
+            table.insert(rettypes, typefromnode(rt, st, errors))
+        end
+        node._type = types.StaticMethod(rectype.name, node.name, ptypes, rettypes)
+        rectype.functions[node.name] = node._type
     end,
 
     ["Ast.TopLevelMethod"] = function(node, st, errors)
@@ -1291,6 +1345,13 @@ local toplevel_visitor = util.make_visitor({
                     node.class, node.name, field.name, node.class)
                 return
             end
+        end
+        if rectype.functions[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "cannot declare method '%s:%s' as static method '%s.%s' exists in record '%s'",
+                    node.class, node.name, node.class, node.name, node.class)
+            return
         end
         if rectype.methods[node.name] then
             node._ignore = true

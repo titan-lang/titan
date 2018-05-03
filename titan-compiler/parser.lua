@@ -204,6 +204,22 @@ function defs.exp_is_call(_, pos, exp)
     end
 end
 
+function defs.recorddecl(pos, name, fields)
+    local params, initlist = {}, {}
+    for _, field in ipairs(fields) do
+        table.insert(params, ast.Decl(field.loc, field.name, field.type))
+        table.insert(initlist, ast.Field(field.loc, field.name,
+            ast.ExpVar(field.loc, ast.VarName(field.loc, field.name))))
+    end
+    local body = ast.StatBlock(pos, {
+        ast.StatReturn(pos, {
+            ast.ExpInitList(pos, initlist)
+        })
+    })
+    return ast.TopLevelRecord(pos, name, fields),
+           ast.TopLevelStatic(pos, name, "new", params, { ast.TypeName(pos, name) }, body)
+end
+
 local grammar = re.compile([[
 
     program         <-  SKIP*
@@ -226,8 +242,9 @@ local grammar = re.compile([[
                            !(IMPORT / FOREIGN)
                            exp^ExpVarDec)                        -> TopLevelVar
 
-    toplevelrecord  <- (P  RECORD NAME^NameRecord recordfields^FieldRecord
-                           END^EndRecord)                        -> TopLevelRecord
+    toplevelrecord  <- (P  RECORD NAME^NameRecord
+                           recordfields^FieldRecord
+                           END^EndRecord)                        -> recorddecl
 
     localopt        <- (LOCAL)?                                  -> boolopt
 

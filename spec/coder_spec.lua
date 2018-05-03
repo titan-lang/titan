@@ -1834,6 +1834,43 @@ describe("Titan code generator", function()
         ]])
     end)
 
+    it("initializes a record using new", function ()
+        run_coder([[
+            record Point
+              x: float
+              y: float
+            end
+            function x(): float
+                local r: Point = Point.new(2,3)
+                return r.x
+            end
+            function y(): float
+                local r: Point = Point.new(2,3)
+                return r.y
+            end
+        ]], [[
+            assert(2.0 == test.x())
+            assert(3.0 == test.y())
+        ]])
+    end)
+
+    it("initializes a record using new from Lua", function ()
+        run_coder([[
+            record Point
+              x: float
+              y: float
+            end
+            function unwrap(p: Point): (float, float)
+                return p.x, p.y
+            end
+        ]], [[
+            local p = test.Point.new(2, 3)
+            local x, y = test.unwrap(p)
+            assert(2.0 == x)
+            assert(3.0 == y)
+        ]])
+    end)
+
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()
             run_coder([[

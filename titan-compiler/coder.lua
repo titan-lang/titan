@@ -895,16 +895,16 @@ local function codecall(ctx, node)
         elseif fnode._tag == "Ast.VarDot" then
             if fnode.exp._type._tag == "Type.ForeignModule" then
                 return codeforeigncall(ctx, node)
-            elseif fnode._type._tag == "Type.StaticMethod" then
-                fname = fnode._type.fqtn:gsub("%.", "_") .. "_"
-                    .. fnode._type.name .. "_titanstatic"
-                local mod, record = fnode._type.fqtn:match("^(.*)%.(%a+)$")
+            elseif fnode._decl._tag == "Type.StaticMethod" then
+                fname = fnode._decl.fqtn:gsub("%.", "_") .. "_"
+                    .. fnode._decl.name .. "_titanstatic"
+                local mod, record = fnode._decl.fqtn:match("^(.*)%.(%a+)$")
                 if mod ~= ctx.module then
-                    ctx.functions[fnode._type.fqtn .. "." .. fnode._type.name] = {
+                    ctx.functions[fnode._decl.fqtn .. "." .. fnode._decl.name] = {
                         module = mod,
                         record = record,
-                        type = fnode._type,
-                        name = fnode.name,
+                        type = fnode._decl,
+                        name = fnode._decl.name,
                         mangled = fname
                     }
                 end
@@ -1902,6 +1902,9 @@ local function codefuncdec(tlcontext, node)
     if node._tag == "Ast.TopLevelFunc" then
         fname = tlcontext.prefix .. node.name .. "_titan"
         luaname = tlcontext.prefix .. node.name .. "_lua"
+    elseif node._tag == "Ast.TopLevelStatic" then
+        fname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_titanstatic"
+        luaname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_luastatic"
     else
         assert(node._tag == "Ast.TopLevelMethod")
         fname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_titanmethod"
@@ -2462,7 +2465,7 @@ function coder.generate(modname, ast)
     for _, node in pairs(ast) do
         if not node._ignore then
             local tag = node._tag
-            if tag == "Ast.TopLevelFunc" or tag == "Ast.TopLevelMethod" then
+            if tag == "Ast.TopLevelFunc" or tag == "Ast.TopLevelMethod" or tag == "Ast.TopLevelStatic" then
                 codefuncdec(tlcontext, node)
                 table.insert(sigs, node._sig)
                 table.insert(code, node._body)
@@ -2477,7 +2480,26 @@ function coder.generate(modname, ast)
                     }))
                 elseif tag == "Ast.TopLevelMethod" then
                     table.insert(code, node._luabody)
+                elseif tag == "Ast.TopLevelStatic" then
+                    table.insert(code, node._luabody)
+                    table.insert(funcs, render([[
+                        lua_getfield(L, -1, $RECNAME);
+                        lua_pushcfunction(L, $LUANAME);
+                        lua_setfield(L, -2, $NAMESTR);
+                        lua_pop(L, 1);
+                    ]], {
+                        RECNAME = c_string_literal(node.class),
+                        LUANAME = tlcontext.prefix .. node.class .. "_" .. node.name .. "_luastatic",
+                        NAMESTR = c_string_literal(node.name),
+                    }))
                 end
+            elseif tag == "Ast.TopLevelRecord" then
+                table.insert(funcs, render([[
+                    lua_newtable(L);
+                    lua_setfield(L, -2, $NAMESTR);
+                ]], {
+                    NAMESTR = c_string_literal(node.name),
+                }))
             else
                 -- ignore other nodes in second pass
             end
