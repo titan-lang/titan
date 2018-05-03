@@ -90,10 +90,10 @@ they are in the roadmap:
 * early-bound modules
 * multiple assignment/multiple returns
 * FFI with C (C pointers, call C functions)
+* records (structs) with methods
 
 ## In progress
 
-* records (structs)
 * first-class functions (still only in the top-level)
 
 ## Next
