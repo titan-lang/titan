@@ -89,7 +89,7 @@ end
 ### Records
 
 Records types in Titan are nominal and should be declared in the top level.
-The following example declare a record `Point` with the fields `x` and `y`
+The following example declares a record `Point` with the fields `x` and `y`
 which are floats.
 
     record Point
@@ -97,20 +97,56 @@ which are floats.
         y: float
     end
 
-You can create records with initializer lists or using the `new` constructor.
-When using initializer lists, you must assign a value to each field of the
-record.
-The `Type.new()` constructor is automatically declared and receive a parameter
-for each field in the order they were declared.
-For instance, you could initialize an instance of the record `Point` with:
-`{ x = 3, y = 5 }`, `{ y = 5, x = 3 }` or `Point.new(3, 5)`.
-In all those cases, the field `x` will receive the value `3` and the field `y`,
-`5`.
-Like arrays constructors, Titan will try to locally infer the type of
-initializer lists.
+You can create records with record constructor expressions or using `new`.
+When using a constructor expression, you must assign a value to each field of the
+record, like `{ x = 2, y = 3 }` or `{ y = 3, x = 2 }` for the `Point` record
+shown above. 
 
-You can read and write from fields of a record instance using the dot operator
-`instance.field`. For example, `local x = p.x` and `p.y = 7`.
+Constructor expressions are only valid in a context that expects
+a record type, like the right-hand side of an assignment where the
+left-hand side has record type, as an argument for a parameter of
+record type, or in the right-hand side of a declaration that has
+been explicitly declared with a record type.
+
+For the `Point` record shown above, you can also use a `Point.new` constructor
+that takes two floats and returns an instance of `Point`, like this: `Point.new(2, 3)`.
+Parameters are positional: they correspond to the fields that you have declared,
+in the same order they appear. You can use a `new` constructor in the right-hand
+side of a declaration that does not have an explicit type, and Titan will infer
+the record type.
+
+You can read and write from fields of a record instance using the dot operator.
+For example, `local x = p.x` and `p.y = 7`, if `p` is an instance of the
+`Point` record type shown above.
+
+Record can have methods, declared with the following syntax:
+
+    function Point:move(dx: float, dy: float)
+        self.x = self.x + dx
+        self.y = self.y + dy
+    end
+
+Methods have an implicit `self` parameter that holds the receiver. You
+call a method with a colon expression, like `p:move(2, 3)`.
+
+Record types are always exported from the module. If you are importing
+a module that declares a record type `Point` and you have given the module
+a local name `mod`, you can use the record type `Point` in type declarations
+as `mod.Point`, and call its `new` constructor with `mod.Point.new`.
+
+You can send a record to Lua and then access its fields and call its
+methods from Lua normally. Lua can send the record back to Titan, as
+well. You can also call the `new` constructor of the record type from
+Lua, to instantiate records from the Lua side:
+
+    -- this is Lua code
+    local mod = require "titan_module"
+    local p = mod.Point.new(2, 3)
+    print(p.x, p.y)
+    p:move(4, 5)
+
+As nominal types, two records types are incompatible even if they have
+the same structure.
 
 ### The `value` type
 
