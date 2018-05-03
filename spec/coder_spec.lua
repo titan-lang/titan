@@ -1694,6 +1694,117 @@ describe("Titan code generator", function()
         ]])
     end)
 
+    it("gets record from titan through module variable", function ()
+        run_coder([[
+            record Point
+                x: float
+                y: float
+            end
+            p: Point = { x = 2, y = 3 }
+            function unpack(p: Point): (float, float)
+                return p.x, p.y
+            end
+        ]], [[
+            local p = test.p
+            assert(type(p) == 'userdata')
+            local x, y = test.unpack(p)
+            assert(2.0 == x)
+            assert(3.0 == y)
+        ]])
+    end)
+
+    it("send record to titan through module variable", function ()
+        run_coder([[
+            record Point
+                x: float
+                y: float
+            end
+            p: Point = { x = 0, y = 0 }
+            function point(): Point
+                return { x = 2, y = 3 }
+            end
+            function unpack(p: Point): (float, float)
+                return p.x, p.y
+            end
+        ]], [[
+            test.p = test.point()
+            local x, y = test.unpack(test.p)
+            assert(2.0 == x)
+            assert(3.0 == y)
+        ]])
+    end)
+
+    it("access record field from Lua", function ()
+        run_coder([[
+            record Point
+                x: float
+                y: float
+            end
+            record Rec
+                x: float
+                y: string
+                z: Point
+            end
+            r: Rec = { x = 2, y = 'foo', z = { x = 2, y = 3 } }
+            function rec(): Rec
+                return { x = 3, y = 'bar', z = { x = 3, y = 2 } }
+            end
+        ]], [[
+            local r1 = test.r
+            local r2 = test.rec()
+            assert(2.0 == r1.x)
+            assert(3.0 == r2.x)
+            assert('foo' == r1.y)
+            assert('bar' == r2.y)
+            assert(2.0 == r1.z.x)
+            assert(3.0 == r1.z.y)
+            assert(3.0 == r2.z.x)
+            assert(2.0 == r2.z.y)
+        ]])
+    end)
+
+    it("mutate record field from Lua", function ()
+        run_coder([[
+            record Point
+                x: float
+                y: float
+            end
+            record Rec
+                x: float
+                y: string
+                z: Point
+            end
+            r: Rec = { x = 2, y = 'foo', z = { x = 2, y = 3 } }
+            function rec(): Rec
+                return { x = 3, y = 'bar', z = { x = 3, y = 2 } }
+            end
+            function getX(r: Rec): float
+                return r.x
+            end
+            function getY(r: Rec): string
+                return r.y
+            end
+            function getZX(r: Rec): float
+                return r.z.x
+            end
+        ]], [[
+            local r1 = test.r
+            local r2 = test.rec()
+            r1.x = 4
+            r1.y = 'baz'
+            r1.z.x = 5
+            r2.x = 8
+            r2.y = 'xyz'
+            r2.z.x = 10
+            assert(4.0 == test.getX(r1))
+            assert(8.0 == test.getX(r2))
+            assert('baz' == test.getY(r1))
+            assert('xyz' == test.getY(r2))
+            assert(5.0 == test.getZX(r1))
+            assert(10.0 == test.getZX(r2))
+        ]])
+    end)
+
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()
             run_coder([[

@@ -245,7 +245,7 @@ local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:st
     elseif typ._tag == "Type.Nominal" then
         return render([[
             {
-              CClosure *_cl;
+              CClosure *_cl = NULL;
               $CHECKANDGET
               setclCvalue(L, $DST, _cl);
             }
@@ -2316,17 +2316,128 @@ function coder.generate(modname, ast)
             elseif tag == "Ast.TopLevelRecord" then
                 table.insert(code, "int " .. tagname(node._type.name) .. ";")
                 table.insert(code, "Table *" .. metaname(node._type.name) .. ";")
+                local fieldmap, getswitch, setswitch = {}, {}, {}
+                for i, field in ipairs(node._type.fields) do
+                    table.insert(fieldmap, render([[
+                        lua_pushliteral(L, $NAME);
+                        lua_pushinteger(L, $INDEX);
+                        lua_rawset(L, -3);
+                    ]], {
+                        NAME = c_string_literal(field.name),
+                        INDEX = c_integer_literal(field.index)
+                    }))
+                    table.insert(getswitch, render([[
+                        case $INDEX: {
+                            $SETWRAPPED
+                            break;
+                        }
+                    ]], {
+                        INDEX = c_integer_literal(field.index),
+                        SETWRAPPED = field.type._tag == "Type.Nominal" and
+                            "setobj2t(L, L->top-1, &((clCvalue(_slot))->upvalue[0]));" or
+                            "setobj2t(L, L->top-1, _slot);"
+                    }))
+                    table.insert(setswitch, render([[
+                        case $INDEX: {
+                            $CHECKANDSET;
+                            break;
+                        }
+                    ]], {
+                        INDEX = c_integer_literal(field.index),
+                        CHECKANDSET = checkandset(tlcontext, field.type, "_dst", "_src", node.loc)
+                    }))
+                end
+                if #node._type.fields > 0 then
+                    table.insert(code, render([[
+                        static int __index_$RECNAME(lua_State *L) {
+                            TValue *_recslot = L->ci->func + 1;
+                            CClosure *_rec = NULL;
+                            $CHECKANDGET;
+                            TValue *_fieldslot = L->ci->func + 2;
+                            CClosure *_func = clCvalue(L->ci->func);
+                            Table *_fieldmap = hvalue(&(_func->upvalue[0]));
+                            const TValue *_fieldidx = luaH_get(_fieldmap, _fieldslot);
+                            if(TITAN_LIKELY(_fieldidx != luaO_nilobject)) {
+                                TValue *_slot = &_rec->upvalue[ivalue(_fieldidx)];
+                                switch(ivalue(_fieldidx)) {
+                                    $GETCASES
+                                }
+                                return 1;
+                            } else {
+                                return luaL_error(L, "%s:%d:%d: field %s not found in record %s", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
+                            }
+                        }
+                        static int __newindex_$RECNAME(lua_State *L) {
+                            TValue *_recslot = L->ci->func + 1;
+                            CClosure *_rec = NULL;
+                            $CHECKANDGET;
+                            TValue *_fieldslot = L->ci->func + 2;
+                            CClosure *_func = clCvalue(L->ci->func);
+                            Table *_fieldmap = hvalue(&(_func->upvalue[0]));
+                            const TValue *_fieldidx = luaH_get(_fieldmap, _fieldslot);
+                            if(TITAN_LIKELY(_fieldidx != luaO_nilobject)) {
+                                TValue* _dst = &(_rec->upvalue[ivalue(_fieldidx)]);
+                                TValue* _src = L->ci->func + 3;
+                                switch(ivalue(_fieldidx)) {
+                                    $SETCASES
+                                }
+                                return 0;
+                            } else {
+                                return luaL_error(L, "%s:%d:%d: field %s not found in record %s", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
+                            }
+                        }
+                    ]], {
+                        RECNAME = node._type.name:gsub("%.", "_"),
+                        CHECKANDGET = checkandget(tlcontext, types.Nominal(node._type.name), "_rec", "_recslot", node.loc),
+                        FQTN = c_string_literal(node._type.name),
+                        FILE = c_string_literal(node.loc.filename),
+                        LINE = c_integer_literal(node.loc.line),
+                        COL = c_integer_literal(node.loc.col),
+                        GETCASES = table.concat(getswitch, "\n"),
+                        SETCASES = table.concat(setswitch, "\n")
+                    }))
+                else
+                    table.insert(code, render([[
+                        static int __index_$RECNAME(lua_State *L) {
+                            return luaL_error(L, "%s:%d:%d: field %s not found in record %s", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
+                        }
+                        static int __newindex_$RECNAME(lua_State *L) {
+                            return luaL_error(L, "%s:%d:%d: field %s not found in record %s", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
+                        }
+                    ]], {
+                        RECNAME = node._type.name:gsub("%.", "_"),
+                        FQTN = c_string_literal(node._type.name),
+                        FILE = c_string_literal(node.loc.filename),
+                        LINE = c_integer_literal(node.loc.line),
+                        COL = c_integer_literal(node.loc.col),
+                    }))
+                end
                 table.insert(initrecs, render([[
                     luaL_newmetatable(L, "Titan record $TYPE"); /* push metatable */
                     $META = hvalue(L->top);
-                    L->top--;
+                    lua_pushliteral(L, "__metatable");
+                    lua_pushliteral(L, "Titan record $TYPE");
+                    lua_rawset(L, -3);
+                    lua_newtable(L);
+                    $FIELDMAP
+                    lua_pushliteral(L, "__index");
+                    lua_pushvalue(L, -2);
+                    lua_pushcclosure(L, __index_$RECNAME, 1);
+                    lua_rawset(L, -4);
+                    lua_pushliteral(L, "__newindex");
+                    lua_pushvalue(L, -2);
+                    lua_pushcclosure(L, __newindex_$RECNAME, 1);
+                    lua_rawset(L, -4);
+                    L->top -= 2;
                     lua_pushlightuserdata(L, &$TAG);
                     lua_pushstring(L, "$TYPE");
                     lua_rawset(L, LUA_REGISTRYINDEX);
                 ]], {
+                    RECNAME = node._type.name:gsub("%.", "_"),
                     TAG = tagname(node._type.name),
                     TYPE = node._type.name,
-                    META = metaname(node._type.name)
+                    META = metaname(node._type.name),
+                    FIELDMAP = table.concat(fieldmap, "\n")
                 }))
             else
                 -- ignore everything else in this pass
@@ -2361,12 +2472,21 @@ function coder.generate(modname, ast)
         local switch_get, switch_set = {}, {}
 
         for i, var in ipairs(gvars) do
-            table.insert(switch_get, render([[
-                case $I: setobj2t(L, L->top-1, $SLOT); break;
-            ]], {
-                I = c_integer_literal(i),
-                SLOT = var._slot
-            }))
+            if var._type._tag == "Type.Nominal" then
+                table.insert(switch_get, render([[
+                    case $I: setobj2t(L, L->top-1, &(clCvalue($SLOT)->upvalue[0])); break;
+                ]], {
+                    I = c_integer_literal(i),
+                    SLOT = var._slot
+                }))
+            else
+                table.insert(switch_get, render([[
+                    case $I: setobj2t(L, L->top-1, $SLOT); break;
+                ]], {
+                    I = c_integer_literal(i),
+                    SLOT = var._slot
+                }))
+            end
             table.insert(switch_set, render([[
                 case $I: {
                     lua_pushvalue(L, 3);
@@ -2416,33 +2536,33 @@ function coder.generate(modname, ast)
         local nslots = initctx.nslots + #varslots + 1
 
         table.insert(initvars, 1, render([[
-        luaL_newmetatable(L, $MODNAMESTR); /* push metatable */
-        int _meta = lua_gettop(L);
-        TValue *_base = L->top;
-        /* protect it */
-        lua_pushliteral(L, $MODNAMESTR);
-        lua_setfield(L, -2, "__metatable");
-        /* reserve needed stack space */
-        if (L->stack_last - L->top > $NSLOTS) {
-            if (L->ci->top < L->top + $NSLOTS) L->ci->top = L->top + $NSLOTS;
-        } else {
-            lua_checkstack(L, $NSLOTS);
-        }
-        L->top += $NSLOTS;
-        for(TValue *_s = L->top - 1; _base <= _s; _s--) {
-            setnilvalue(_s);
-        }
-        Table *_map = luaH_new(L);
-        sethvalue(L, L->top-$VARSLOTS, _map);
-        lua_pushcclosure(L, __index, $VARSLOTS);
-        TValue *_upvals = clCvalue(L->top-1)->upvalue;
-        lua_setfield(L, _meta, "__index");
-        sethvalue(L, L->top, _map);
-        L->top++;
-        lua_pushcclosure(L, __newindex, 1);
-        lua_setfield(L, _meta, "__newindex");
-        L->top++;
-        sethvalue(L, L->top-1, _map);
+            luaL_newmetatable(L, $MODNAMESTR); /* push metatable */
+            int _meta = lua_gettop(L);
+            TValue *_base = L->top;
+            /* protect it */
+            lua_pushliteral(L, $MODNAMESTR);
+            lua_setfield(L, -2, "__metatable");
+            /* reserve needed stack space */
+            if (L->stack_last - L->top > $NSLOTS) {
+                if (L->ci->top < L->top + $NSLOTS) L->ci->top = L->top + $NSLOTS;
+            } else {
+                lua_checkstack(L, $NSLOTS);
+            }
+            L->top += $NSLOTS;
+            for(TValue *_s = L->top - 1; _base <= _s; _s--) {
+                setnilvalue(_s);
+            }
+            Table *_map = luaH_new(L);
+            sethvalue(L, L->top-$VARSLOTS, _map);
+            lua_pushcclosure(L, __index, $VARSLOTS);
+            TValue *_upvals = clCvalue(L->top-1)->upvalue;
+            lua_setfield(L, _meta, "__index");
+            sethvalue(L, L->top, _map);
+            L->top++;
+            lua_pushcclosure(L, __newindex, 1);
+            lua_setfield(L, _meta, "__newindex");
+            L->top++;
+            sethvalue(L, L->top-1, _map);
         ]], {
             MODNAMESTR = c_string_literal("titan module "..modname),
             NSLOTS = c_integer_literal(nslots),
