@@ -28,7 +28,7 @@ local errors = {
     -- (tested in spec/parser_spec.lua)
     --
 
-    NameFunc = "Expected a function name after 'function'.",
+   NameFunc = "Expected a function name after 'function'.",
 
    LParPList = "Expected '(' for the parameter list.",
 

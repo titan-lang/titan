@@ -327,8 +327,8 @@ local grammar = re.compile([[
 
     exp             <- e1
     e1              <- (P  {| e2  (!Err_086_Flw (op1  e2^OpExp)^Err_086)* |})           -> fold_binop_left
-    e2              <- (P  {| e3  (op2  e3^OpExp)* |})           -> fold_binop_left
-    e3              <- (P  {| e4  (op3  e4^OpExp)* |})           -> fold_binop_left
+    e2              <- (P  {| e3  (!Err_088_Flw (op2  e3^OpExp)^Err_088)* |})           -> fold_binop_left
+    e3              <- (P  {| e4  (!Err_090_Flw (op3  e4^OpExp)^Err_090)* |})           -> fold_binop_left
     e4              <- (P  {| e5  (op4  e5^OpExp)* |})           -> fold_binop_left
     e5              <- (P  {| e6  (op5  e6^OpExp)* |})           -> fold_binop_left
     e6              <- (P  {| e7  (op6  e7^OpExp)* |})           -> fold_binop_left
@@ -498,6 +498,8 @@ local grammar = re.compile([[
     Err_083_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'  /  ';'
     Err_084_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'
     Err_086_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
+    Err_088_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
+    Err_090_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
 
 
 ]], defs)
