@@ -2347,6 +2347,16 @@ function coder.generate(modname, ast)
                         CHECKANDSET = checkandset(tlcontext, field.type, "_dst", "_src", node.loc)
                     }))
                 end
+                for name, method in pairs(node._type.methods) do
+                    table.insert(fieldmap, render([[
+                        lua_pushliteral(L, $NAME);
+                        lua_pushcclosure(L, $METHOD, 0);
+                        lua_rawset(L, -3);
+                    ]], {
+                        NAME = c_string_literal(name),
+                        METHOD = method.fqtn:gsub("%.", "_") .. "_" .. name .. "_luamethod"
+                    }))
+                end
                 if #node._type.fields > 0 then
                     table.insert(code, render([[
                         static int __index_$RECNAME(lua_State *L) {
@@ -2358,13 +2368,17 @@ function coder.generate(modname, ast)
                             Table *_fieldmap = hvalue(&(_func->upvalue[0]));
                             const TValue *_fieldidx = luaH_get(_fieldmap, _fieldslot);
                             if(TITAN_LIKELY(_fieldidx != luaO_nilobject)) {
-                                TValue *_slot = &_rec->upvalue[ivalue(_fieldidx)];
-                                switch(ivalue(_fieldidx)) {
-                                    $GETCASES
+                                if(ttislcf(_fieldidx)) {
+                                    setobj2t(L, L->top-1, _fieldidx);
+                                } else {
+                                    TValue *_slot = &_rec->upvalue[ivalue(_fieldidx)];
+                                    switch(ivalue(_fieldidx)) {
+                                        $GETCASES
+                                    }
                                 }
                                 return 1;
                             } else {
-                                return luaL_error(L, "%s:%d:%d: field %s not found in record %s", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
+                                return luaL_error(L, "%s:%d:%d: field '%s' not found in record '%s'", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
                             }
                         }
                         static int __newindex_$RECNAME(lua_State *L) {
@@ -2375,7 +2389,7 @@ function coder.generate(modname, ast)
                             CClosure *_func = clCvalue(L->ci->func);
                             Table *_fieldmap = hvalue(&(_func->upvalue[0]));
                             const TValue *_fieldidx = luaH_get(_fieldmap, _fieldslot);
-                            if(TITAN_LIKELY(_fieldidx != luaO_nilobject)) {
+                            if(TITAN_LIKELY(_fieldidx != luaO_nilobject && ttisinteger(_fieldidx))) {
                                 TValue* _dst = &(_rec->upvalue[ivalue(_fieldidx)]);
                                 TValue* _src = L->ci->func + 3;
                                 switch(ivalue(_fieldidx)) {
@@ -2383,7 +2397,7 @@ function coder.generate(modname, ast)
                                 }
                                 return 0;
                             } else {
-                                return luaL_error(L, "%s:%d:%d: field %s not found in record %s", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
+                                return luaL_error(L, "%s:%d:%d: field '%s' not found in record '%s'", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
                             }
                         }
                     ]], {
@@ -2461,6 +2475,8 @@ function coder.generate(modname, ast)
                         LUANAME = tlcontext.prefix .. node.name .. "_lua",
                         NAMESTR = c_string_literal(node.name),
                     }))
+                elseif tag == "Ast.TopLevelMethod" then
+                    table.insert(code, node._luabody)
                 end
             else
                 -- ignore other nodes in second pass
