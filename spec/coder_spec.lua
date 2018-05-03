@@ -1760,6 +1760,9 @@ describe("Titan code generator", function()
             assert(3.0 == r1.z.y)
             assert(3.0 == r2.z.x)
             assert(2.0 == r2.z.y)
+            local ok, err = pcall(function () return r1.foo end)
+            assert(not ok)
+            assert(err:match('not found'))
         ]])
     end)
 
@@ -1802,6 +1805,32 @@ describe("Titan code generator", function()
             assert('xyz' == test.getY(r2))
             assert(5.0 == test.getZX(r1))
             assert(10.0 == test.getZX(r2))
+            local ok, err = pcall(function () r1.foo = 2 end)
+            assert(not ok)
+            assert(err:match('not found'))
+        ]])
+    end)
+
+    it("call record method from Lua", function ()
+        run_coder([[
+            record Point
+                x: float
+                y: float
+            end
+            function Point:move(dx: float, dy: float)
+                self.x, self.y = self.x + dx, self.y + dy
+            end
+            function point(x: float, y: float): Point
+                return { x = x, y = y }
+            end
+        ]], [[
+            local p = test.point(2, 3)
+            p:move(2, 3)
+            assert(4.0 == p.x)
+            assert(6.0 == p.y)
+            local ok, err = pcall(function () p.move = 2 end)
+            assert(not ok)
+            assert(err:match('not found'))
         ]])
     end)
 
