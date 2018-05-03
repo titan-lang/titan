@@ -16,6 +16,7 @@ return typedecl("Ast", {
 
     TopLevel = {
         TopLevelMethod  = {"loc", "class", "name", "params", "rettypes", "block"},
+        TopLevelStatic  = {"loc", "class", "name", "params", "rettypes", "block"},
         TopLevelFunc    = {"loc", "islocal", "name", "params", "rettypes", "block"},
         TopLevelVar     = {"loc", "islocal", "decl", "value"},
         TopLevelRecord  = {"loc", "name", "fields"},
