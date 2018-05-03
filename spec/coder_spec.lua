@@ -1871,6 +1871,35 @@ describe("Titan code generator", function()
         ]])
     end)
 
+    it("constructs record from other module", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            baz = [[
+                local f = import "foo"
+                function point(x: float, y: float): f.Point
+                    return f.Point.new(x, y)
+                end
+            ]],
+            bar = [[
+                local b = import "baz"
+                function bar(): (float, float)
+                    local p = b.point(2,3)
+                    p = { x = 4, y = 6 }
+                    return p.x, p.y
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "bar")
+        assert.truthy(ok, err)
+        local ok, err = call("bar", "x, y = bar.bar(); assert(x == 4.0); assert(y == 6.0)")
+        assert.truthy(ok, err)
+    end)
+
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()
             run_coder([[
