@@ -329,10 +329,10 @@ local grammar = re.compile([[
     e1              <- (P  {| e2  (!Err_086_Flw (op1  e2^OpExp)^Err_086)* |})           -> fold_binop_left
     e2              <- (P  {| e3  (!Err_088_Flw (op2  e3^OpExp)^Err_088)* |})           -> fold_binop_left
     e3              <- (P  {| e4  (!Err_090_Flw (op3  e4^OpExp)^Err_090)* |})           -> fold_binop_left
-    e4              <- (P  {| e5  (op4  e5^OpExp)* |})           -> fold_binop_left
-    e5              <- (P  {| e6  (op5  e6^OpExp)* |})           -> fold_binop_left
-    e6              <- (P  {| e7  (op6  e7^OpExp)* |})           -> fold_binop_left
-    e7              <- (P  {| e8  (op7  e8^OpExp)* |})           -> fold_binop_left
+    e4              <- (P  {| e5  (!Err_092_Flw (op4  e5^OpExp)^Err_092)* |})           -> fold_binop_left
+    e5              <- (P  {| e6  (!Err_094_Flw (op5  e6^OpExp)^Err_094)* |})           -> fold_binop_left
+    e6              <- (P  {| e7  (!Err_096_Flw (op6  e7^OpExp)^Err_096)* |})           -> fold_binop_left
+    e7              <- (P  {| e8  (!Err_098_Flw (op7  e8^OpExp)^Err_098)* |})           -> fold_binop_left
     e8              <- (P     e9  (op8  e8^OpExp)?)              -> binop_concat
     e9              <- (P  {| e10 (op9  e10^OpExp)* |})          -> fold_binop_left
     e10             <- (P  {| e11 (op10 e11^OpExp)* |})          -> fold_binop_left
@@ -500,6 +500,11 @@ local grammar = re.compile([[
     Err_086_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
     Err_088_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
     Err_090_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
+    Err_092_Flw	<-	'~='  /  '}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
+    Err_094_Flw	<-	'~='  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
+    Err_096_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
+    Err_098_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  GT  /  '=='  /  '<='  /  LT  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.
+
 
 
 ]], defs)
