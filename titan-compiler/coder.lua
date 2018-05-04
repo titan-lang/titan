@@ -71,8 +71,48 @@ local function getslot(typ --[[:table]], dst --[[:string?]], src --[[:string]])
     return render(tmpl, { DST = dst, SRC = src })
 end
 
+local function mangle_qn(qualname)
+    return qualname:gsub("[%-.]", "_")
+end
+
 local function tagname(fqtn)
-    return fqtn:gsub("%.", "_") .. "_typetag"
+    return mangle_qn(fqtn) .. "_typetag"
+end
+
+local function fname_prefix(typ)
+    return mangle_qn(typ.fqtn) .. "_" .. typ.name
+end
+
+local function static_name(typ)
+    return fname_prefix(typ) .. "_titanstatic"
+end
+
+local function static_luaname(typ)
+    return fname_prefix(typ) .. "_luastatic"
+end
+
+local function method_name(typ)
+    return fname_prefix(typ) .. "_titanmethod"
+end
+
+local function method_luaname(typ)
+    return fname_prefix(typ) .. "_luamethod"
+end
+
+local function modprefix(modname)
+    return mangle_qn(modname) .. "_"
+end
+
+local function func_name(modname, name)
+    return modprefix(modname) .. name .. "_titan"
+end
+
+local function func_luaname(modname, name)
+    return modprefix(modname) .. name .. "_lua"
+end
+
+local function var_name(modname, name)
+    return modprefix(modname) .. name .. "_titanvar"
 end
 
 -- get name of the variable holding the tag for this type
@@ -90,7 +130,7 @@ local function type2tagname(ctx, typ --[[:table]])
 end
 
 local function metaname(fqtn)
-    return fqtn:gsub("%.", "_") .. "_typemt"
+    return mangle_qn(fqtn) .. "_typemt"
 end
 
 -- get name of the variable holding the metatable for this type
@@ -891,13 +931,12 @@ local function codecall(ctx, node)
     local fnode = node.exp.var
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
-            fname = ctx.prefix .. fnode.name .. '_titan'
+            fname = func_name(ctx.module, fnode.name)
         elseif fnode._tag == "Ast.VarDot" then
             if fnode.exp._type._tag == "Type.ForeignModule" then
                 return codeforeigncall(ctx, node)
             elseif fnode._decl._tag == "Type.StaticMethod" then
-                fname = fnode._decl.fqtn:gsub("%.", "_") .. "_"
-                    .. fnode._decl.name .. "_titanstatic"
+                fname = static_name(fnode._decl)
                 local mod, record = fnode._decl.fqtn:match("^(.*)%.(%a+)$")
                 if mod ~= ctx.module then
                     ctx.functions[fnode._decl.fqtn .. "." .. fnode._decl.name] = {
@@ -910,7 +949,7 @@ local function codecall(ctx, node)
                 end
             else
                 assert(fnode._decl._tag == "Type.ModuleMember")
-                fname = fnode.exp._type.prefix .. fnode.name .. "_titan"
+                fname = func_name(fnode._decl.modname, fnode.name)
                 local mod = fnode._decl.modname
                 if mod ~= ctx.module then
                     ctx.functions[mod .. "." .. fnode.name] = {
@@ -925,7 +964,7 @@ local function codecall(ctx, node)
     else
         assert(node.args._tag == "Ast.ArgsMethod")
         local mtype = node._method
-        fname = mtype.fqtn:gsub("%.", "_") .. "_" .. mtype.name .. "_titanmethod"
+        fname = method_name(mtype)
         local mod, record = mtype.fqtn:match("^(.*)%.(%a+)$")
         if mod ~= ctx.module then
             ctx.functions[mtype.fqtn .. ":" .. mtype.name] = {
@@ -1900,15 +1939,15 @@ local function codefuncdec(tlcontext, node)
     local rettype = node._type.rettypes[1]
     local fname, luaname
     if node._tag == "Ast.TopLevelFunc" then
-        fname = tlcontext.prefix .. node.name .. "_titan"
-        luaname = tlcontext.prefix .. node.name .. "_lua"
+        fname = func_name(tlcontext.module, node.name)
+        luaname = func_luaname(tlcontext.module, node.name)
     elseif node._tag == "Ast.TopLevelStatic" then
-        fname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_titanstatic"
-        luaname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_luastatic"
+        fname = static_name(node._type)
+        luaname = static_luaname(node._type)
     else
         assert(node._tag == "Ast.TopLevelMethod")
-        fname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_titanmethod"
-        luaname = tlcontext.prefix .. node.class .. "_" .. node.name .. "_luamethod"
+        fname = method_name(node._type)
+        luaname = method_luaname(node._type)
     end
     local cparams = { "lua_State *L" }
     if node._tag == "Ast.TopLevelMethod" then
@@ -2008,7 +2047,7 @@ local function codevardec(tlctx, ctx, node)
             })
         end
     else
-        node._slot = tlctx.prefix .. node.decl.name .. "_titanvar"
+        node._slot = var_name(tlctx.module, node.decl.name)
         node._cdecl = "TValue *" .. node._slot .. ";"
         node._init = render([[
             $CSTATS
@@ -2239,7 +2278,7 @@ int $TYPESNAME(lua_State* L) {
 
 local function prefix(initmods, mprefixes, modname)
     if mprefixes[modname] then return mprefixes[modname] end
-    local mprefix = modname:gsub("[%-.]", "_") .. "_"
+    local mprefix = mangle_qn(modname) .. "_"
     local file = modname:gsub("[.]", "/") .. ".so"
     mprefixes[modname] = mprefix
     table.insert(initmods, render([[
@@ -2253,7 +2292,7 @@ end
 function coder.generate(modname, ast)
     local tlcontext = {
         module = modname,
-        prefix = modname:gsub("[.]", "_") .. "_",
+        prefix = mangle_qn(modname) .. "_",
         variables = {},
         metatables = {},
         tags = {},
@@ -2281,7 +2320,7 @@ function coder.generate(modname, ast)
                 for name, member in pairs(node._type.members) do
                     if not member._slot and member.type._tag ~= "Type.Function"
                       and member.type._tag ~= "Type.Record" then
-                        member._slot = mprefix .. name .. "_titanvar"
+                        member._slot = var_name(member.modname, name)
                     end
                 end
             elseif tag == "Ast.TopLevelForeignImport" then
@@ -2357,7 +2396,7 @@ function coder.generate(modname, ast)
                         lua_rawset(L, -3);
                     ]], {
                         NAME = c_string_literal(name),
-                        METHOD = method.fqtn:gsub("%.", "_") .. "_" .. name .. "_luamethod"
+                        METHOD = method_luaname(method)
                     }))
                 end
                 if #node._type.fields > 0 then
@@ -2404,7 +2443,7 @@ function coder.generate(modname, ast)
                             }
                         }
                     ]], {
-                        RECNAME = node._type.name:gsub("%.", "_"),
+                        RECNAME = mangle_qn(node._type.name),
                         CHECKANDGET = checkandget(tlcontext, types.Nominal(node._type.name), "_rec", "_recslot", node.loc),
                         FQTN = c_string_literal(node._type.name),
                         FILE = c_string_literal(node.loc.filename),
@@ -2422,7 +2461,7 @@ function coder.generate(modname, ast)
                             return luaL_error(L, "%s:%d:%d: field %s not found in record %s", $FILE, $LINE, $COL, lua_tostring(L, 2), $FQTN);
                         }
                     ]], {
-                        RECNAME = node._type.name:gsub("%.", "_"),
+                        RECNAME = mangle_qn(node._type.name),
                         FQTN = c_string_literal(node._type.name),
                         FILE = c_string_literal(node.loc.filename),
                         LINE = c_integer_literal(node.loc.line),
@@ -2450,7 +2489,7 @@ function coder.generate(modname, ast)
                     lua_pushstring(L, "$TYPE");
                     lua_rawset(L, LUA_REGISTRYINDEX);
                 ]], {
-                    RECNAME = node._type.name:gsub("%.", "_"),
+                    RECNAME = mangle_qn(node._type.name),
                     TAG = tagname(node._type.name),
                     TYPE = node._type.name,
                     META = metaname(node._type.name),
@@ -2475,7 +2514,7 @@ function coder.generate(modname, ast)
                         lua_pushcfunction(L, $LUANAME);
                         lua_setfield(L, -2, $NAMESTR);
                     ]], {
-                        LUANAME = tlcontext.prefix .. node.name .. "_lua",
+                        LUANAME = func_luaname(tlcontext.module, node.name),
                         NAMESTR = c_string_literal(node.name),
                     }))
                 elseif tag == "Ast.TopLevelMethod" then
@@ -2489,7 +2528,7 @@ function coder.generate(modname, ast)
                         lua_pop(L, 1);
                     ]], {
                         RECNAME = c_string_literal(node.class),
-                        LUANAME = tlcontext.prefix .. node.class .. "_" .. node.name .. "_luastatic",
+                        LUANAME = static_luaname(node._type),
                         NAMESTR = c_string_literal(node.name),
                     }))
                 end
@@ -2673,7 +2712,7 @@ function coder.generate(modname, ast)
     }))
 
     table.insert(code, render(postamble, {
-        LUAOPEN_NAME = 'luaopen_' .. modname:gsub("[.]", "_"),
+        LUAOPEN_NAME = 'luaopen_' .. mangle_qn(modname),
         INITNAME = tlcontext.prefix .. 'init',
         FUNCS = table.concat(funcs, "\n"),
         MODNAMESTR = c_string_literal("titan module "..modname),
