@@ -375,16 +375,16 @@ local grammar = re.compile([[
                      / {| initlist |}                            -- produces {Exp}
                      / {| (P  STRINGLIT) -> ExpString |}         -- produces {Exp}
 
-    explist         <- {| exp (COMMA exp^ExpExpList)* |}      -- produces {Exp}
+    explist         <- {| exp (!Err_120_Flw (COMMA exp^ExpExpList)^Err_120)* |}      -- produces {Exp}
 
-    initlist        <- (P  LCURLY {| fieldlist? |}
+    initlist        <- (P  LCURLY {| (!Err_121_Flw fieldlist^Err_121)? |}
                                   RCURLY^RCurlyInitList)         -> ExpInitList
 
     fieldlist       <- (field
                         (fieldsep
                          (field /
                           !RCURLY %{ExpFieldList}))*
-                        fieldsep?)                          -- produces Field...
+                        (!Err_123_Flw fieldsep^Err_123)?)                          -- produces Field...
 
     field           <- (P  (NAME ASSIGN)? -> opt exp)       -> Field
 
@@ -512,6 +512,9 @@ local grammar = re.compile([[
     --Erro em 105 quando tava '%%', coloquei MOD
     Err_116_Flw	<-	'='
     Err_117_Flw	<-	')'
+    Err_120_Flw	<-	'while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  ')'  /  '('
+    Err_121_Flw	<-	'}'
+    Err_123_Flw	<-	'}'
 
 
 

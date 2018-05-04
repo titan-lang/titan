@@ -1096,7 +1096,8 @@ describe("Titan parser", function()
 
         assert_expression_syntax_error([[ f(42,) ]], "ExpExpList")
 
-        assert_expression_syntax_error([[ y{42 ]], "RCurlyInitList")
+        -- LabelRecovery: RParList x fieldlist (Err_123)
+        --assert_expression_syntax_error([[ y{42 ]], "RCurlyInitList")
 
         assert_expression_syntax_error([[ y{42,,} ]], "ExpFieldList")
 
