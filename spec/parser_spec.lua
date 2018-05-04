@@ -1053,9 +1053,10 @@ describe("Titan parser", function()
             local x =
         ]], "ExpLocal")
 
-        assert_statements_syntax_error([[
-            x
-        ]], "AssignAssign")
+        -- LabelRecovery: AssignAssign x varlist (Err_116)
+        --assert_statements_syntax_error([[
+        --    x
+        --]], "AssignAssign")
 
         assert_statements_syntax_error([[
             x =
