@@ -336,8 +336,8 @@ local grammar = re.compile([[
     e8              <- (P     e9  (op8  e8^OpExp)?)              -> binop_concat
     e9              <- (P  {| e10 (!Err_100_Flw (op9  e10^OpExp)^Err_100)* |})          -> fold_binop_left
     e10             <- (P  {| e11 (!Err_102_Flw (op10 e11^OpExp)^Err_102)* |})          -> fold_binop_left
-    --e11             <- (P  {| (!Err_103_Flw unop^Err_103)* |}  e12)                     -> fold_unops
-    e11             <- (P  {| unop* |}  e12)                     -> fold_unops
+    e11             <- (P  {| (!Err_103_Flw unop^Err_103)* |}  e12)                     -> fold_unops
+    --e11             <- (P  {| unop* |}  e12)                     -> fold_unops
     e12             <- (P  castexp (!Err_105_Flw (op12 e11^OpExp)^Err_105)?)            -> binop_right
 
     suffixedexp     <- (prefixexp {| expsuffix+ |})              -> fold_suffixes
