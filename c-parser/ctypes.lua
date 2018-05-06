@@ -3,20 +3,17 @@ local ctypes = {}
 
 local util = require("titan-compiler.util")
 local inspect = require("inspect")
+local typed = require("typed")
 
 local equal_declarations
 
-local function add_type(lst, name, typ)
+local add_type = typed("TypeList, string, CType -> ()", function(lst, name, typ)
     lst[name] = typ
     table.insert(lst, { name = name, type = typ })
-end
+end)
 
--- Compare two strings or two lists of declarations
-local function equal_lists(l1, l2)
-    if type(l1) == "string" or type(l1) == "nil" then
-        return l1 == l2
-    end
-
+-- Compare two lists of declarations
+local equal_lists = typed("array, array -> boolean", function(l1, l2)
     if #l1 ~= #l2 then
         return false
     end
@@ -27,7 +24,7 @@ local function equal_lists(l1, l2)
         end
     end
     return true
-end
+end)
 
 equal_declarations = function(t1, t2)
     if type(t1) == "string" or type(t2) == "nil" then
@@ -100,24 +97,18 @@ end
 local get_type
 local get_fields
 
-local convert_value = function (lst, src)
-    local name, ret_pointer, idxs
-    if type(src) == "string" then
-        src = { src }
-        name = nil
-        ret_pointer = {}
-        idxs = nil
-    elseif type(src.id) == "table" or type(src.ids) == "table" then
+local convert_value = typed("TypeList, table -> CType?, string?", function (lst, src)
+    local name = nil
+    local ret_pointer = {}
+    local idxs = nil
+
+    if type(src.id) == "table" or type(src.ids) == "table" then
         -- FIXME multiple ids, e.g.: int *x, y, *z;
         local ok
         ok, name, ret_pointer, idxs = get_name(src.id or src.ids)
         if not ok then
             return nil, name
         end
-    else
-        name = nil
-        ret_pointer = {}
-        idxs = nil
     end
 
     local typ, err = get_type(lst, src, ret_pointer)
@@ -125,12 +116,12 @@ local convert_value = function (lst, src)
         return nil, err
     end
 
-    return {
+    return typed.table("CType", {
         name = name,
         type = typ,
         idxs = idxs,
-    }, nil
-end
+    }), nil
+end)
 
 -- Interpret field data from `field_src` and add it to `fields`.
 local function add_to_fields(lst, field_src, fields)
@@ -173,16 +164,17 @@ local function get_enum_items(_, values)
     return items
 end
 
-local get_composite_type = function(lst, specid, spectype, parts, partsfield, get_parts)
+local get_composite_type = typed("TypeList, string?, string, array, string, function -> CType, string",
+                           function(lst, specid, spectype, parts, partsfield, get_parts)
     local name = specid
     local key = spectype .. "@" .. (name or tostring(parts))
 
     if not lst[key] then
         -- Forward declaration
-        lst[key] = {
+        lst[key] = typed.table("CType", {
             type = spectype,
             name = name,
-        }
+        })
     end
 
     if parts then
@@ -193,11 +185,11 @@ local get_composite_type = function(lst, specid, spectype, parts, partsfield, ge
         end
     end
 
-    local typ = {
+    local typ = typed.table("CType", {
         type = spectype,
         name = name,
         [partsfield] = parts,
-    }
+    })
 
     if lst[key] then
         if typ[partsfield] and lst[key][partsfield] and not equal_declarations(typ, lst[key]) then
@@ -207,7 +199,7 @@ local get_composite_type = function(lst, specid, spectype, parts, partsfield, ge
     add_type(lst, key, typ)
 
     return typ, key
-end
+end)
 
 local function get_structunion(lst, spec)
     if spec.fields and not spec.fields[1] then
@@ -354,9 +346,8 @@ local function get_params(lst, params_src)
     local params = {}
     local vararg = false
 
-    if params_src.param then
-        params_src = { params_src }
-    end
+    assert(not params_src.param)
+
     for _, param_src in ipairs(params_src) do
         if param_src == "..." then
             vararg = true
@@ -403,7 +394,7 @@ local register_decl_item = function(lst, id, spec)
         if not params then
             return false, vararg
         end
-        typ = {
+        typ = typed.table("CType", {
             type = "function",
             name = name,
             idxs = idxs,
@@ -412,13 +403,13 @@ local register_decl_item = function(lst, id, spec)
             },
             params = params,
             vararg = vararg,
-        }
+        })
     else
-        typ = {
+        typ = typed.table("CType", {
             type = ret_type,
             name = name,
             idxs = idxs,
-        }
+        })
     end
 
     if lst[name] then
@@ -451,7 +442,7 @@ local function register_static_function(lst, item)
     return true
 end
 
-local register_typedef_item = function(lst, id, spec)
+local register_typedef_item = typed("TypeList, table, table -> boolean, string?", function(lst, id, spec)
     local ok, name, ret_pointer = get_name(id.decl)
     if not ok then
         return false, name or "failed"
@@ -460,11 +451,11 @@ local register_typedef_item = function(lst, id, spec)
     if not def then
         return false, err or "failed"
     end
-    local typ = {
+    local typ = typed.table("CType", {
         type = "typedef",
         name = name,
         def = def,
-    }
+    })
 
     if lst[name] then
         if not equal_declarations(lst[name], typ) then
@@ -474,7 +465,7 @@ local register_typedef_item = function(lst, id, spec)
     add_type(lst, name, typ)
 
     return true, nil
-end
+end)
 
 local register_typedefs = function(lst, item)
     return register_many(register_typedef_item, lst, item.ids, item.spec)
@@ -488,15 +479,10 @@ local function register_enum(lst, item)
     return get_enum(lst, item.spec)
 end
 
-function ctypes.register_types(parsed)
-    local lst = {}
-    if parsed.spec then
-        parsed = { parsed }
-    end
+ctypes.register_types = typed("{Decl} -> TypeList?, string?", function(parsed)
+    local lst = typed.table("TypeList", {})
     for _, item in ipairs(parsed) do
-        if type(item.spec) == "string" then
-            item.spec = { item.spec }
-        end
+        typed.check(item.spec, "table")
         local spec_set = util.to_set(item.spec)
         if spec_set.extern and item.ids then
             local ok, err = register_decls(lst, item.ids, item.spec)
@@ -528,6 +514,8 @@ function ctypes.register_types(parsed)
             if not ok then
                 return nil, err or "failed enum"
             end
+        elseif not item.ids then
+            -- forward declaration (e.g. "struct foo;")
         elseif item.ids.decl then
             local ok, err = register_decls(lst, item.ids, item.spec)
             if not ok then
@@ -537,7 +525,7 @@ function ctypes.register_types(parsed)
             return nil, "FIXME Uncategorized declaration: " .. inspect(item)
         end
     end
-    return lst
-end
+    return lst, nil
+end)
 
 return ctypes

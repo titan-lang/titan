@@ -1,6 +1,7 @@
 
 local cpp = {}
 
+local typed = require("typed")
 local c99 = require("c-parser.c99")
 
 local SEP = package.config:sub(1,1)
@@ -51,9 +52,6 @@ local function is_sequence(xs)
    return true
 end
 --]]
----[[
-local function debug() end
---]]
 
 local gcc_default_defines
 do
@@ -83,6 +81,7 @@ do
             output = {},
             current_dir = {},
         }
+        typed.set_type(blank_ctx, "Ctx")
         local ctx = cpp.parse_file("-", pd, blank_ctx)
 
         ctx.defines["__builtin_va_list"] = { "char", "*" }
@@ -193,7 +192,7 @@ local function add(buf, txt)
     return buf
 end
 
-function cpp.initial_processing(fd)
+cpp.initial_processing = typed("FILE* -> LineList", function(fd)
     local backslash_buf
     local buf
     local state = "any"
@@ -289,28 +288,13 @@ function cpp.initial_processing(fd)
         end
     end
     fd:close()
+    typed.set_type(output, "LineList")
     return output
-end
+end)
 
-local function singleton(t)
-    return t and type(t) == "table" and next(t) == 1 and next(t, 1) == nil
-end
-
-function cpp.remove_wrapping_subtables(t)
-    while singleton(t) do
-        t = t[1]
-    end
-    if type(t) == "table" then
-        for k, v in pairs(t) do
-            t[k] = cpp.remove_wrapping_subtables(v)
-        end
-    end
-    return t
-end
-
-function cpp.tokenize(line)
+cpp.tokenize = typed("string -> table", function(line)
     return c99.match_preprocessing_grammar(line)
-end
+end)
 
 local function find_file(ctx, filename, mode, is_next)
     local paths = {}
@@ -344,46 +328,49 @@ local function find_file(ctx, filename, mode, is_next)
     return nil, nil, "file not found"
 end
 
-local function parse_expression(tokens)
+local parse_expression = typed("{string} -> Exp", function(tokens)
     local text = table.concat(tokens, " ")
     local exp, err, _, _, fragment = c99.match_preprocessing_expression_grammar(text)
     if not exp then
         print("Error parsing expression: " .. tostring(err) .. ": " .. fragment)
     end
-    exp = cpp.remove_wrapping_subtables(exp)
     return exp
-end
+end)
 
-local function eval_exp(ctx, exp)
+local eval_exp
+eval_exp = typed("Ctx, Exp -> number", function(ctx, exp)
     debug(exp)
-    if type(exp) == "string" then
-        local defined = ctx.defines[exp]
-        if singleton(defined) and defined[1] ~= exp then
-            return eval_exp(ctx, defined[1])
+
+    if not exp.op then
+        local val = exp[1]
+        typed.check(val, "string")
+
+        local defined = ctx.defines[val]
+        if defined then
+            assert(type(defined) == "table")
+            if #defined == 1 and defined[1] ~= val then
+                return eval_exp(ctx, defined[1])
+            end
         end
-        exp = exp:gsub("U*L*$", "")
-        if exp:match("^0[xX]") then
-            return tonumber(exp) or 0
-        elseif exp:sub(1,1) == "0" then
-            return tonumber(exp, 8) or 0
+        val = val:gsub("U*L*$", "")
+        if val:match("^0[xX]") then
+            return tonumber(val) or 0
+        elseif val:sub(1,1) == "0" then
+            return tonumber(val, 8) or 0
         else
-            return tonumber(exp) or 0
+            return tonumber(val) or 0
         end
-    end
-
-    assert(type(exp) == "table", "unexpected type: " .. type(exp))
-
-    if exp.op == "+"  then
+    elseif exp.op == "+"  then
         if exp[2] then
             return eval_exp(ctx, exp[1]) + eval_exp(ctx, exp[2])
         else
-            return eval_exp(ctx, exp.exp)
+            return eval_exp(ctx, exp[1])
         end
     elseif exp.op == "-"  then
         if exp[2] then
             return eval_exp(ctx, exp[1]) - eval_exp(ctx, exp[2])
         else
-            return -(eval_exp(ctx, exp.exp))
+            return -(eval_exp(ctx, exp[1]))
         end
     elseif exp.op == "*"  then return eval_exp(ctx, exp[1]) * eval_exp(ctx, exp[2])
     elseif exp.op == "/"  then return eval_exp(ctx, exp[1]) / eval_exp(ctx, exp[2])
@@ -395,7 +382,7 @@ local function eval_exp(ctx, exp)
     elseif exp.op == "<=" then return (eval_exp(ctx, exp[1]) <= eval_exp(ctx, exp[2])) and 1 or 0
     elseif exp.op == ">"  then return (eval_exp(ctx, exp[1]) > eval_exp(ctx, exp[2])) and 1 or 0
     elseif exp.op == "<"  then return (eval_exp(ctx, exp[1]) < eval_exp(ctx, exp[2])) and 1 or 0
-    elseif exp.op == "!"  then return (eval_exp(ctx, exp.exp) == 1) and 0 or 1
+    elseif exp.op == "!"  then return (eval_exp(ctx, exp[1]) == 1) and 0 or 1
     elseif exp.op == "&&" then
         for _, e in ipairs(exp) do
             if eval_exp(ctx, e) == 0 then
@@ -417,18 +404,17 @@ local function eval_exp(ctx, exp)
             return eval_exp(ctx, exp[3])
         end
     elseif exp.op == "defined" then
-        return (ctx.defines[exp.exp] ~= nil) and 1 or 0
+        return (ctx.defines[exp[1][1]] ~= nil) and 1 or 0
     else
         error("unimplemented operator " .. tostring(exp.op))
     end
-end
+end)
 
-local function consume_parentheses(tokens, start, linelist)
+local consume_parentheses = typed("{string}, number, LineList, number -> {{string}}, number", function(tokens, start, linelist, cur)
     local args = {}
     local i = start + 1
     local arg = {}
     local stack = 0
-    local cur = linelist.cur
     while true do
         local token = tokens[i]
         if token == nil then
@@ -438,9 +424,6 @@ local function consume_parentheses(tokens, start, linelist)
                     error("unterminated function-like macro")
                 end
                 local nextline = linelist[cur].tk
-                if singleton(nextline) then
-                    nextline = nextline[1]
-                end
                 linelist[cur].tk = {}
                 table.move(nextline, 1, #nextline, i, tokens)
                 token = tokens[i]
@@ -471,7 +454,7 @@ local function consume_parentheses(tokens, start, linelist)
         i = i + 1
     end
     return args, i
-end
+end)
 
 local function array_copy(t)
     local t2 = {}
@@ -501,12 +484,11 @@ local function table_replace_n_with(list, at, n, values)
     assert(#list == old - n + #values)
 end
 
-local function stringify(tokens)
+local stringify = typed("{string} -> string", function(tokens)
     return '"'..table.concat(tokens, " "):gsub("\"", "\\")..'"'
-end
+end)
 
 local macro_expand
-
 
 local function mark_noloop(noloop, token, n)
     noloop[token] = math.max(noloop[token] or 0, n)
@@ -522,7 +504,7 @@ local function valid_noloop(noloop, token, n)
     return noloop[token] == nil or noloop[token] < n
 end
 
-local function replace_args(ctx, tokens, args, linelist)
+local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", function(ctx, tokens, args, linelist, cur)
     local i = 1
     local hash_next = false
     local join_next = false
@@ -538,7 +520,7 @@ local function replace_args(ctx, tokens, args, linelist)
             join_next = true
             table.remove(tokens, i)
         elseif args[token] then
-            macro_expand(ctx, args[token], linelist, false)
+            macro_expand(ctx, args[token], linelist, cur, false)
             if hash_next then
                 tokens[i] = stringify(args[token])
                 hash_next = false
@@ -561,9 +543,9 @@ local function replace_args(ctx, tokens, args, linelist)
             i = i + 1
         end
     end
-end
+end)
 
-macro_expand = function(ctx, tokens, linelist, expr_mode)
+macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(ctx, tokens, linelist, cur, expr_mode)
     local i = 1
     local noloop = {}
     while true do
@@ -588,14 +570,14 @@ macro_expand = function(ctx, tokens, linelist, expr_mode)
             local repl = define.repl
             if define.args then
                 if tokens[i + 1] == "(" then
-                    local args, j = consume_parentheses(tokens, i + 1, linelist)
+                    local args, j = consume_parentheses(tokens, i + 1, linelist, cur)
                     debug("args:", #args, args)
                     local named_args = {}
                     for i = 1, #define.args do
                         named_args[define.args[i]] = args[i] or {}
                     end
                     local expansion = array_copy(repl)
-                    replace_args(ctx, expansion, named_args, linelist)
+                    replace_args(ctx, expansion, named_args, linelist, cur)
                     local nexpansion = #expansion
                     local n = j - i + 1
                     if nexpansion == 0 then
@@ -626,15 +608,15 @@ macro_expand = function(ctx, tokens, linelist, expr_mode)
             i = i + 1
         end
     end
-end
+end)
 
-local function run_expression(ctx, tks, linelist)
-    macro_expand(ctx, tks, linelist, true)
+local run_expression = typed("Ctx, {string}, LineList, number -> boolean", function(ctx, tks, linelist, cur)
+    macro_expand(ctx, tks, linelist, cur, true)
     local exp = parse_expression(tks)
     return eval_exp(ctx, exp) ~= 0
-end
+end)
 
-function cpp.parse_file(filename, fd, ctx)
+cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filename, fd, ctx)
     if not ctx then
         ctx = {
             incdirs = cpp_include_paths(),
@@ -643,6 +625,7 @@ function cpp.parse_file(filename, fd, ctx)
             output = {},
             current_dir = {}
         }
+        typed.set_type(ctx, "Ctx")
         -- if not absolute path
         if not filename:match("^/") then
             local found_name, found_fd = find_file(ctx, filename, "system")
@@ -676,12 +659,12 @@ function cpp.parse_file(filename, fd, ctx)
     end
 
     local ifmode = ctx.ifmode
-    for i, lineitem in ipairs(linelist) do
+    for cur, lineitem in ipairs(linelist) do
         local line = lineitem.line
         local tk = lineitem.tk
-        linelist.cur = i
 
         debug(filename, ifmode[#ifmode], #ifmode, line)
+
         if #ifmode == 1 and (tk.directive == "elif" or tk.directive == "else" or tk.directive == "endif") then
             return nil, "unexpected directive " .. tk.directive
         end
@@ -703,7 +686,7 @@ function cpp.parse_file(filename, fd, ctx)
             elseif tk.directive == "ifndef" then
                 table.insert(ifmode, (ctx.defines[tk.id] == nil))
             elseif tk.directive == "if" then
-                table.insert(ifmode, run_expression(ctx, tk.exp, linelist))
+                table.insert(ifmode, run_expression(ctx, tk.exp, linelist, cur))
             elseif tk.directive == "elif" then
                 ifmode[#ifmode] = "skip"
             elseif tk.directive == "else" then
@@ -722,12 +705,8 @@ function cpp.parse_file(filename, fd, ctx)
                 end
                 cpp.parse_file(inc_filename, inc_fd, ctx)
             else
-                local tokens = tk
-                if singleton(tk) and type(tk[1]) == "table" then
-                    tokens = tk[1]
-                end
-                macro_expand(ctx, tokens, linelist, false)
-                table.insert(ctx.output, table.concat(tokens, " "))
+                macro_expand(ctx, tk, linelist, cur, false)
+                table.insert(ctx.output, table.concat(tk, " "))
             end
         elseif ifmode[#ifmode] == false then
             if tk.directive == "ifdef"
@@ -737,7 +716,7 @@ function cpp.parse_file(filename, fd, ctx)
             elseif tk.directive == "else" then
                 ifmode[#ifmode] = not ifmode[#ifmode]
             elseif tk.directive == "elif" then
-                ifmode[#ifmode] = run_expression(ctx, tk.exp, linelist)
+                ifmode[#ifmode] = run_expression(ctx, tk.exp, linelist, cur)
             elseif tk.directive == "endif" then
                 table.remove(ifmode, #ifmode)
             end
@@ -757,17 +736,17 @@ function cpp.parse_file(filename, fd, ctx)
 
     table.remove(ctx.current_dir)
 
-    return ctx
-end
+    return ctx, nil
+end)
 
-function cpp.expand_macro(macro, define_set)
-    local ctx = setmetatable({
+cpp.expand_macro = typed("string, table -> string", function(macro, define_set)
+    local ctx = typed.table("Ctx", setmetatable({
         defines = define_set,
-    }, { __index = error, __newindex = error })
+    }, { __index = error, __newindex = error }))
     local tokens = { macro }
-    local linelist = { { nr = 1, line = macro } }
-    macro_expand(ctx, tokens, linelist, false)
+    local linelist = typed.table("LineList", { { nr = 1, line = macro } })
+    macro_expand(ctx, tokens, linelist, 1, false)
     return table.concat(tokens, " ")
-end
+end)
 
 return cpp
