@@ -323,7 +323,6 @@ describe("Titan parser", function()
                 { exp = { value = 20 } },
                 { exp = { value = 30 } }, }})
 
-        --LabelRecovery: annotated rule e11 (Err_105) fails on this test
         assert_expression_ast("{40;50;60;}", -- (semicolons)
             { _tag = "Ast.ExpInitList", fields = {
                 { exp = { value = 40 } },
@@ -420,14 +419,12 @@ describe("Titan parser", function()
         assert_statements_syntax_error([[
             local x, = 10, 20
         ]], "DeclParList")
-        -- LabelRecovery: ExpLocal x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    local x =
-        --]], "ExpLocal")
-        -- LabelRecovery: ExpExpList x fieldlist (Err_125)
-        --assert_statements_syntax_error([[
-        --    local x, y = 10,
-        --]], "ExpExpList")
+        assert_statements_syntax_error([[
+            local x =
+        ]], "ExpLocal")
+        assert_statements_syntax_error([[
+            local x, y = 10,
+        ]], "ExpExpList")
     end)
 
     it("can parse numeric for loops", function()
@@ -470,14 +467,12 @@ describe("Titan parser", function()
         })
     end)
 
-
-    -- LabelRecovery: EndFunc x rettypeopt (Err_084)
-    --it("requires that return statements be the last in the block", function()
-    --    assert_statements_syntax_error([[
-    --        return 10
-    --        return 11
-    --    ]], "EndFunc")
-    --end)
+    it("requires that return statements be the last in the block", function()
+        assert_statements_syntax_error([[
+            return 10
+            return 11
+        ]], "EndFunc")
+    end)
 
     it("does not allow extra semicolons after a return", function()
         assert_statements_syntax_error([[
@@ -807,8 +802,7 @@ describe("Titan parser", function()
 
     it("does not allow parentheses in the LHS of an assignment", function()
         assert_statements_syntax_error([[ local (x) = 42 ]], "DeclLocal")
-        -- LabelRecovery: ExpAssign x e1 (Err_086)
-        --assert_statements_syntax_error([[ (x) = 42 ]], "ExpAssign")
+        assert_statements_syntax_error([[ (x) = 42 ]], "ExpAssign")
     end)
 
     it("does not allow identifiers that are type names", function()
@@ -824,10 +818,9 @@ describe("Titan parser", function()
         ]], "DeclLocal")
     end)
 
-    -- LabelRecovery: ExpAssign x e11 (Err_105)
-    --it("doesn't allow using a primitive type as a record", function()
-    --    assert_expression_syntax_error("integer.new(10)", "ExpAssign")
-    --end)
+    it("doesn't allow using a primitive type as a record", function()
+        assert_expression_syntax_error("integer.new(10)", "ExpAssign")
+    end)
 
     it("uses specific error labels for some errors", function()
 
@@ -841,11 +834,10 @@ describe("Titan parser", function()
             end
         ]], "LParPList")
 
-        -- LabelRecovery: RParList x paramlist
-        --assert_program_syntax_error([[
-        --    function foo ( : int
-        --    end
-        --]], "RParPList")
+        assert_program_syntax_error([[
+            function foo ( : int
+            end
+        ]], "RParPList")
 
         assert_program_syntax_error([[
             function foo () :
@@ -853,37 +845,33 @@ describe("Titan parser", function()
             end
         ]], "TypeFunc")
 
-        -- LabelRecovery: EndFunc x rettypeopt (Err_084)
-        --assert_program_syntax_error([[
-        --    function foo () : int
-        --      local x = 3
-        --      return x
-        --]], "EndFunc")
+        assert_program_syntax_error([[
+            function foo () : int
+              local x = 3
+              return x
+        ]], "EndFunc")
 
         assert_program_syntax_error([[
             function foo(x, y) : int
             end
         ]], "ParamSemicolon")
 
-       -- LabelRecovery: AssignVar x decl
-       -- assert_program_syntax_error([[
-       --     x 3
-       -- ]], "AssignVar")
+        assert_program_syntax_error([[
+            x 3
+        ]], "AssignVar")
 
-        -- LabelRecovery: ExpVarDec x e11 (Err_105)
-        --assert_program_syntax_error([[
-        --    x =
-        --]], "ExpVarDec")
+        assert_program_syntax_error([[
+            x =
+        ]], "ExpVarDec")
 
         assert_program_syntax_error([[
             record
         ]], "NameRecord")
 
-        -- LabelRecovery: EndRecord x recordfields
-        --assert_program_syntax_error([[
-        --    record A
-        --        x : int
-        --]], "EndRecord")
+        assert_program_syntax_error([[
+            record A
+                x : int
+        ]], "EndRecord")
 
         assert_program_syntax_error([[
             record A
@@ -923,8 +911,7 @@ describe("Titan parser", function()
 
         assert_type_syntax_error([[ (a,,,) -> b ]], "TypelistType")
 
-        -- LabelRecovery: RParenTypelist x typelist
-        --assert_type_syntax_error([[ (a, b -> b  ]], "RParenTypelist")
+        assert_type_syntax_error([[ (a, b -> b  ]], "RParenTypelist")
 
         assert_type_syntax_error([[ (a, b) -> = nil ]], "TypeReturnTypes")
 
@@ -941,19 +928,17 @@ describe("Titan parser", function()
             end
         ]], "TypeRecordField")
 
-        -- LabelRecovery: EndBlock x rettypeopt (Err_084)
-        --assert_program_syntax_error([[
-        --    function f ( x : int) : string
-        --        do
-        --        return "42"
-        --]], "EndBlock")
+        assert_program_syntax_error([[
+            function f ( x : int) : string
+                do
+                return "42"
+        ]], "EndBlock")
 
-        -- LabelRecovery: ExpWhile x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    while do
-        --        x = x - 1
-        --    end
-        --]], "ExpWhile")
+        assert_statements_syntax_error([[
+            while do
+                x = x - 1
+            end
+        ]], "ExpWhile")
 
         assert_statements_syntax_error([[
             while x > 3
@@ -961,14 +946,12 @@ describe("Titan parser", function()
             end
         ]], "DoWhile")
 
-
-        -- LabelRecovery: EndWhile x rettypeopt (Err_084)
-        --assert_statements_syntax_error([[
-        --    while x > 3 do
-        --        x = x - 1
-        --        return 42
-        --    return 41
-        --]], "EndWhile")
+        assert_statements_syntax_error([[
+            while x > 3 do
+                x = x - 1
+                return 42
+            return 41
+        ]], "EndWhile")
 
         assert_statements_syntax_error([[
             repeat
@@ -976,19 +959,17 @@ describe("Titan parser", function()
             end
         ]], "UntilRepeat")
 
-        -- LabelRecovery: ExpRepeat x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    repeat
-        --        x = x - 1
-        --    until
-        --]], "ExpRepeat")
+        assert_statements_syntax_error([[
+            repeat
+                x = x - 1
+            until
+        ]], "ExpRepeat")
 
-        -- LabelRecovery: ExpIf x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    if then
-        --        x = x - 1
-        --    end
-        --]], "ExpIf")
+        assert_statements_syntax_error([[
+            if then
+                x = x - 1
+            end
+        ]], "ExpIf")
 
         assert_statements_syntax_error([[
             if x > 10
@@ -996,92 +977,80 @@ describe("Titan parser", function()
             end
         ]], "ThenIf")
 
-        -- LabelRecovery: EndIf x elseopt (Err_082)
-        --assert_statements_syntax_error([[
-        --    if x > 10 then
-        --        x = x - 1
-        --        return 42
-        --    return 41
-        --]], "EndIf")
+        assert_statements_syntax_error([[
+            if x > 10 then
+                x = x - 1
+                return 42
+            return 41
+        ]], "EndIf")
 
         assert_statements_syntax_error([[
             for = 1, 10 do
             end
         ]], "DeclFor")
 
-        -- LabelRecovery: AssignFor x decl
-        --assert_statements_syntax_error([[
-        --    for x  1, 10 do
-        --    end
-        --]], "AssignFor")
+        assert_statements_syntax_error([[
+            for x  1, 10 do
+            end
+        ]], "AssignFor")
 
-        -- LabelRecovery: Exp1For x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    for x = , 10 do
-        --    end
-        --]], "Exp1For")
+        assert_statements_syntax_error([[
+            for x = , 10 do
+            end
+        ]], "Exp1For")
 
-        -- LabelRecovery: CommaFor x e1 (Err_086)
-        --assert_statements_syntax_error([[
-        --    for x = 1 10 do
-        --    end
-        --]], "CommaFor")
+        assert_statements_syntax_error([[
+            for x = 1 10 do
+            end
+        ]], "CommaFor")
 
-        -- LabelRecovery: Exp2For x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    for x = 1, do
-        --    end
-        --]], "Exp2For")
+        assert_statements_syntax_error([[
+            for x = 1, do
+            end
+        ]], "Exp2For")
 
-        -- LabelRecovery: Exp3For x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    for x = 1, 10, do
-        --    end
-        --]], "Exp3For")
+        assert_statements_syntax_error([[
+            for x = 1, 10, do
+            end
+        ]], "Exp3For")
 
         assert_statements_syntax_error([[
             for x = 1, 10, 1
             end
         ]], "DoFor")
 
-        -- LabelRecovery: EndFor x rettypeopt (Err_084)
-        --assert_statements_syntax_error([[
-        --    for x = 1, 10, 1 do
-        --        return 42
-        --    return 41
-        --]], "EndFor")
+        assert_statements_syntax_error([[
+            for x = 1, 10, 1 do
+                return 42
+            return 41
+        ]], "EndFor")
 
         assert_statements_syntax_error([[
             local = 3
         ]], "DeclLocal")
 
-        -- LabelRecovery: AssignLocal x decl
-        --assert_statements_syntax_error([[
-        --    local x  3
-        --]], "AssignLocal")
+        assert_statements_syntax_error([[
+            local x  3
+        ]], "AssignLocal")
 
-        -- LabelRecovery: ExpLocal x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    local x =
-        --]], "ExpLocal")
+        assert_statements_syntax_error([[
+            local x =
+        ]], "ExpLocal")
 
-        -- LabelRecovery: AssignAssign x varlist (Err_118)
-        --assert_statements_syntax_error([[
-        --    x
-        --]], "AssignAssign")
+        assert_statements_syntax_error([[
+            x
+        ]], "AssignAssign")
 
-        -- LabelRecovery: ExpAssign x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    x =
-        --]], "ExpAssign")
+        assert_statements_syntax_error([[
+            x =
+        ]], "ExpAssign")
 
-        -- LabelRecovery: ExpElseIf x e11 (Err_105)
-        --assert_statements_syntax_error([[
-        --    if x > 1 then
-        --        x = x - 1
-        --    elseif then
-        --    end
-        --]], "ExpElseIf")
+        assert_statements_syntax_error([[
+            if x > 1 then
+                x = x - 1
+            elseif then
+            end
+        ]], "ExpElseIf")
 
         assert_statements_syntax_error([[
             if x > 1 then
@@ -1090,35 +1059,29 @@ describe("Titan parser", function()
             end
         ]], "ThenElseIf")
 
-        -- LabelRecovery: OpExp x e11 (Err_105)
-        --assert_expression_syntax_error([[ 1 + ]], "OpExp")
+        assert_expression_syntax_error([[ 1 + ]], "OpExp")
 
         assert_expression_syntax_error([[ obj:() ]], "NameColonExpSuf")
 
         assert_expression_syntax_error([[ obj:f + 1 ]], "FuncArgsExpSuf")
 
-        -- LabelRecovery: ExpExpSuf x e11 (Err_105)
-        --assert_expression_syntax_error([[ y[] ]], "ExpExpSuf")
+        assert_expression_syntax_error([[ y[] ]], "ExpExpSuf")
 
         assert_expression_syntax_error([[ y[1 ]], "RBracketExpSuf")
 
         assert_expression_syntax_error([[ y.() ]], "NameDotExpSuf")
 
-        -- LabelRecovery: ExpSimpleExp x e11 (Err_105)
-        --assert_expression_syntax_error([[ () ]], "ExpSimpleExp")
+        assert_expression_syntax_error([[ () ]], "ExpSimpleExp")
 
         assert_expression_syntax_error([[ (42 ]], "RParSimpleExp")
 
         assert_expression_syntax_error([[ f(42 ]], "RParFuncArgs")
 
-        -- LabelRecovery: ExpExpList x e11 (Err_105)
-        --assert_expression_syntax_error([[ f(42,) ]], "ExpExpList")
+        assert_expression_syntax_error([[ f(42,) ]], "ExpExpList")
 
-        -- LabelRecovery: RParList x fieldlist (Err_125)
-        --assert_expression_syntax_error([[ y{42 ]], "RCurlyInitList")
+        assert_expression_syntax_error([[ y{42 ]], "RCurlyInitList")
 
-        -- LabelRecovery: ExpFieldList x fieldlist (Err_125)
-        --assert_expression_syntax_error([[ y{42,,} ]], "ExpFieldList")
+        assert_expression_syntax_error([[ y{42,,} ]], "ExpFieldList")
 
         assert_expression_syntax_error([[ foo as ]], "CastMissingType")
     end)

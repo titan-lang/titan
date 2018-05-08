@@ -206,12 +206,12 @@ end
 
 local grammar = re.compile([[
 
-    program         <-  (!Err_001_Flw SKIP^Err_001)*
-                        {| (!Err_002_Flw (toplevelfunc
+    program         <-  SKIP*
+                        {| ( toplevelfunc
                            / toplevelvar
                            / toplevelrecord
                            / import
-                           / foreign)^Err_002 )* |} !.
+                           / foreign )* |} !.
 
     toplevelfunc    <- (P  localopt FUNCTION NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
@@ -236,16 +236,16 @@ local grammar = re.compile([[
                           (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
                            STRINGLIT^StringImport))              -> TopLevelForeignImport
 
-    rettypeopt      <- (P  (!Err_026_Flw (COLON rettype^TypeFunc)^Err_026) ?)            -> rettypeopt
+    rettypeopt      <- (P  (COLON rettype^TypeFunc)?)            -> rettypeopt
 
-    paramlist       <- {| (!Err_029_Flw (param (!Err_028_Flw (COMMA param^DeclParList)^Err_028)*)^Err_029)? |} -- produces {Decl}
+    paramlist       <- {| (param (COMMA param^DeclParList)*)? |} -- produces {Decl}
 
     param           <- (P  NAME COLON^ParamSemicolon
                            type^TypeDecl)                        -> Decl
 
-    decl            <- (P  NAME (!Err_033_Flw (COLON type^TypeDecl)^Err_033)? -> opt)   -> Decl
+    decl            <- (P  NAME (COLON type^TypeDecl)? -> opt)   -> Decl
 
-    decllist        <- {| decl (!Err_035_Flw (COMMA decl^DeclParList)^Err_035)* |}      -- produces {Decl}
+    decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
 
     simpletype      <- (P  NIL)                                  -> TypeNil
                      / (P  BOOLEAN)                              -> TypeBoolean
@@ -258,7 +258,7 @@ local grammar = re.compile([[
                            RCURLY^RCurlyType)                    -> TypeArray
 
     typelist        <- ( LPAREN
-                         {| (!Err_040_Flw (type (!Err_039_Flw (COMMA type^TypelistType)^Err_039)*)^Err_040)? |}
+                         {| (type (COMMA type^TypelistType)*)? |}
                          RPAREN^RParenTypelist )                 -- produces {Type}
 
     rettype         <- {| (P  typelist RARROW
@@ -268,18 +268,18 @@ local grammar = re.compile([[
                      / typelist
                      / {| simpletype |}
 
-    type            <- (P  typelist RARROW^Err_046
+    type            <- (P  typelist RARROW^Err_036
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / (P  {| simpletype |} RARROW
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / simpletype
 
-    recordfields    <- {| (!Err_050_Flw recordfield^Err_050)+ |}                        -- produces {Decl}
+    recordfields    <- {| recordfield+ |}                        -- produces {Decl}
 
     recordfield     <- (P  NAME COLON^ColonRecordField
-                           type^TypeRecordField (!Err_053_Flw SEMICOLON^Err_053)?)      -> Decl
+                           type^TypeRecordField SEMICOLON?)      -> Decl
 
-    block           <- (P  {| (!Err_054_Flw statement^Err_054)* (!Err_055_Flw returnstat^Err_055)? |})         -> StatBlock
+    block           <- (P  {| statement* returnstat? |})         -> StatBlock
 
     statement       <- (SEMICOLON)                               -- ignore
                      / (DO block END^EndBlock)                   -- produces StatBlock
@@ -292,7 +292,7 @@ local grammar = re.compile([[
                      / (P  FOR decl^DeclFor
                            ASSIGN^AssignFor exp^Exp1For
                            COMMA^CommaFor exp^Exp2For
-                           (!Err_071_Flw (COMMA exp^Exp3For)^Err_071)?                  -> opt
+                           (COMMA exp^Exp3For)?                  -> opt
                            DO^DoFor block END^EndFor)            -> StatFor
                      / (P  LOCAL decllist^DeclLocal ASSIGN^AssignLocal
                                  explist^ExpLocal)                   -> StatDecl
@@ -302,14 +302,14 @@ local grammar = re.compile([[
                      / (P  (suffixedexp => exp_is_call))         -> StatCall
                      / &exp %{ExpStat}
 
-    elseifstats     <- {| (!Err_079_Flw elseifstat^Err_079)* |}                         -- produces {Then}
+    elseifstats     <- {| elseifstat* |}                         -- produces {Then}
 
     elseifstat      <- (P  ELSEIF exp^ExpElseIf
                            THEN^ThenElseIf block)                -> Then
 
-    elseopt         <- (!Err_082_Flw (ELSE block)^Err_082)?                             -> opt
+    elseopt         <- (ELSE block)?                             -> opt
 
-    returnstat      <- (P  RETURN ((!Err_083_Flw explist^Err_083)? -> listopt) (!Err_084_Flw SEMICOLON^Err_084)?)      -> StatReturn
+    returnstat      <- (P  RETURN (explist? -> listopt) SEMICOLON?)      -> StatReturn
 
     op1             <- ( OR -> 'or' )
     op2             <- ( AND -> 'and' )
@@ -326,19 +326,18 @@ local grammar = re.compile([[
     op12            <- ( POW -> '^' )
 
     exp             <- e1
-    e1              <- (P  {| e2  (!Err_086_Flw (op1  e2^OpExp)^Err_086)* |})           -> fold_binop_left
-    e2              <- (P  {| e3  (!Err_088_Flw (op2  e3^OpExp)^Err_088)* |})           -> fold_binop_left
-    e3              <- (P  {| e4  (!Err_090_Flw (op3  e4^OpExp)^Err_090)* |})           -> fold_binop_left
-    e4              <- (P  {| e5  (!Err_092_Flw (op4  e5^OpExp)^Err_092)* |})           -> fold_binop_left
-    e5              <- (P  {| e6  (!Err_094_Flw (op5  e6^OpExp)^Err_094)* |})           -> fold_binop_left
-    e6              <- (P  {| e7  (!Err_096_Flw (op6  e7^OpExp)^Err_096)* |})           -> fold_binop_left
-    e7              <- (P  {| e8  (!Err_098_Flw (op7  e8^OpExp)^Err_098)* |})           -> fold_binop_left
-    e8              <- (P     e9  (!Err_100_Flw (op8  e8^OpExp)^Err_100)?)              -> binop_concat
-    e9              <- (P  {| e10 (!Err_102_Flw (op9  e10^OpExp)^Err_102)* |})          -> fold_binop_left
-    e10             <- (P  {| e11 (!Err_104_Flw (op10 e11^OpExp)^Err_104)* |})          -> fold_binop_left
-    e11             <- (P  {| (!Err_105_Flw unop^Err_105)* |}  e12)                     -> fold_unops
-    --e11             <- (P  {| unop* |}  e12)                     -> fold_unops
-    e12             <- (P  castexp (!Err_107_Flw (op12 e11^OpExp)^Err_107)?)            -> binop_right
+    e1              <- (P  {| e2  (op1  e2^OpExp)* |})           -> fold_binop_left
+    e2              <- (P  {| e3  (op2  e3^OpExp)* |})           -> fold_binop_left
+    e3              <- (P  {| e4  (op3  e4^OpExp)* |})           -> fold_binop_left
+    e4              <- (P  {| e5  (op4  e5^OpExp)* |})           -> fold_binop_left
+    e5              <- (P  {| e6  (op5  e6^OpExp)* |})           -> fold_binop_left
+    e6              <- (P  {| e7  (op6  e7^OpExp)* |})           -> fold_binop_left
+    e7              <- (P  {| e8  (op7  e8^OpExp)* |})           -> fold_binop_left
+    e8              <- (P     e9  (op8  e8^OpExp)?)              -> binop_concat
+    e9              <- (P  {| e10 (op9  e10^OpExp)* |})          -> fold_binop_left
+    e10             <- (P  {| e11 (op10 e11^OpExp)* |})          -> fold_binop_left
+    e11             <- (P  {| unop* |}  e12)                     -> fold_unops
+    e12             <- (P  castexp (op12 e11^OpExp)?)            -> binop_right
 
     suffixedexp     <- (prefixexp {| expsuffix+ |})              -> fold_suffixes
 
@@ -369,22 +368,22 @@ local grammar = re.compile([[
     var             <- (suffixedexp => exp_is_var)               -> exp2var
                      / (P  NAME !expsuffix)                      -> name_exp -> exp2var
 
-    varlist         <- {| var (!Err_118_Flw (COMMA var^ExpVarList)^Err_118)* |}            -- produces {Var}
+    varlist         <- {| var (COMMA var^ExpVarList)* |}            -- produces {Var}
 
-    funcargs        <- (LPAREN ((!Err_119_Flw explist^Err_119)? -> listopt) RPAREN^RParFuncArgs)      -- produces {Exp}
+    funcargs        <- (LPAREN (explist? -> listopt) RPAREN^RParFuncArgs)      -- produces {Exp}
                      / {| initlist |}                            -- produces {Exp}
                      / {| (P  STRINGLIT) -> ExpString |}         -- produces {Exp}
 
-    explist         <- {| exp (!Err_122_Flw (COMMA exp^ExpExpList)^Err_122)* |}      -- produces {Exp}
+    explist         <- {| exp (COMMA exp^ExpExpList)* |}      -- produces {Exp}
 
-    initlist        <- (P  LCURLY {| (!Err_123_Flw fieldlist^Err_123)? |}
+    initlist        <- (P  LCURLY {| fieldlist? |}
                                   RCURLY^RCurlyInitList)         -> ExpInitList
 
     fieldlist       <- (field
                         (fieldsep
                          (field /
                           !RCURLY %{ExpFieldList}))*
-                        (!Err_125_Flw fieldsep^Err_125)?)                          -- produces Field...
+                        fieldsep?)                          -- produces Field...
 
     field           <- (P  (NAME ASSIGN)? -> opt exp)       -> Field
 
@@ -478,46 +477,6 @@ local grammar = re.compile([[
 
     NEG             <- SUB
     BNEG            <- BXOR
-
-    -- Error reporting/recovery
-    Err_001_Flw	    <- 'function'  /  !.  /  'local'  /  'record'  /  NAME
-    Err_002_Flw     <- !.
-    Err_026_Flw	<-	'while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '('
-    Err_028_Flw	<-	')'
-    Err_029_Flw	<-	')'
-    Err_033_Flw	<-	NAME  /  '='  /  ','
-    Err_035_Flw	<-	'='
-    Err_039_Flw	<-	')'
-    Err_040_Flw	<-	')'
-    Err_050_Flw	<-	'end'
-    Err_053_Flw	<-	'end' / NAME
-    Err_054_Flw	<-	'until'  /  'return'  /  'end'  /  'elseif'  /  'else'
-    Err_055_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'
-    Err_071_Flw	<-	'do'
-    Err_079_Flw	<-	'end'  /  ELSE
-    Err_082_Flw	<-	'end'
-    Err_083_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'  /  ';'
-    Err_084_Flw	<-	'until'  /  'end'  /  'elseif'  /  'else'
-    Err_086_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
-    Err_088_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
-    Err_090_Flw	<-	'}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.
-    Err_092_Flw	<-	'~='  /  '}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
-    Err_094_Flw	<-	'~='  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
-    Err_096_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
-    Err_098_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  GT  /  '=='  /  '<='  /  LT  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.
-    Err_100_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.
-    Err_102_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  ','  /  ')'  /  '('  /  '&'  /  !. 
-    Err_104_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  '-'  /  ','  /  '+'  /  ')'  /  '('  /  '&'  /  !.
-    Err_105_Flw	<-	'{'  /  'true'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '('  /  STRINGLIT
-    Err_107_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  MOD  /  !.
-   --Erro em 107 quando tava '%%', coloquei MOD
-    Err_118_Flw	<-	'='
-    Err_119_Flw	<-	')'
-    Err_122_Flw	<-	'while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  ')'  /  '('
-    Err_123_Flw	<-	'}'
-    Err_125_Flw	<-	'}'
-
-
 
 ]], defs)
 
