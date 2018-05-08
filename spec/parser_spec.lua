@@ -323,7 +323,7 @@ describe("Titan parser", function()
                 { exp = { value = 20 } },
                 { exp = { value = 30 } }, }})
 
-        --LabelRecovery: annotated rule e11 (Err_103) fails on this test  
+        --LabelRecovery: annotated rule e11 (Err_105) fails on this test
         assert_expression_ast("{40;50;60;}", -- (semicolons)
             { _tag = "Ast.ExpInitList", fields = {
                 { exp = { value = 40 } },
@@ -420,11 +420,11 @@ describe("Titan parser", function()
         assert_statements_syntax_error([[
             local x, = 10, 20
         ]], "DeclParList")
-        -- LabelRecovery: ExpLocal x e11 (Err_103)
+        -- LabelRecovery: ExpLocal x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    local x =
         --]], "ExpLocal")
-        -- LabelRecovery: ExpExpList x fieldlist (Err_123)
+        -- LabelRecovery: ExpExpList x fieldlist (Err_125)
         --assert_statements_syntax_error([[
         --    local x, y = 10,
         --]], "ExpExpList")
@@ -824,7 +824,7 @@ describe("Titan parser", function()
         ]], "DeclLocal")
     end)
 
-    -- LabelRecovery: ExpAssign x e11 (Err_103)
+    -- LabelRecovery: ExpAssign x e11 (Err_105)
     --it("doesn't allow using a primitive type as a record", function()
     --    assert_expression_syntax_error("integer.new(10)", "ExpAssign")
     --end)
@@ -870,7 +870,7 @@ describe("Titan parser", function()
        --     x 3
        -- ]], "AssignVar")
 
-        -- LabelRecovery: ExpVarDec x e11 (Err_103)
+        -- LabelRecovery: ExpVarDec x e11 (Err_105)
         --assert_program_syntax_error([[
         --    x =
         --]], "ExpVarDec")
@@ -948,7 +948,7 @@ describe("Titan parser", function()
         --        return "42"
         --]], "EndBlock")
 
-        -- LabelRecovery: ExpWhile x e11 (Err_103)
+        -- LabelRecovery: ExpWhile x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    while do
         --        x = x - 1
@@ -976,14 +976,14 @@ describe("Titan parser", function()
             end
         ]], "UntilRepeat")
 
-        -- LabelRecovery: ExpRepeat x e11 (Err_103)
+        -- LabelRecovery: ExpRepeat x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    repeat
         --        x = x - 1
         --    until
         --]], "ExpRepeat")
 
-        -- LabelRecovery: ExpIf x e11 (Err_103)
+        -- LabelRecovery: ExpIf x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    if then
         --        x = x - 1
@@ -1015,7 +1015,7 @@ describe("Titan parser", function()
         --    end
         --]], "AssignFor")
 
-        -- LabelRecovery: Exp1For x e11 (Err_103)
+        -- LabelRecovery: Exp1For x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    for x = , 10 do
         --    end
@@ -1027,13 +1027,13 @@ describe("Titan parser", function()
         --    end
         --]], "CommaFor")
 
-        -- LabelRecovery: Exp2For x e11 (Err_103)
+        -- LabelRecovery: Exp2For x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    for x = 1, do
         --    end
         --]], "Exp2For")
 
-        -- LabelRecovery: Exp3For x e11 (Err_103)
+        -- LabelRecovery: Exp3For x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    for x = 1, 10, do
         --    end
@@ -1060,22 +1060,22 @@ describe("Titan parser", function()
         --    local x  3
         --]], "AssignLocal")
 
-        -- LabelRecovery: ExpLocal x e11 (Err_103)
+        -- LabelRecovery: ExpLocal x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    local x =
         --]], "ExpLocal")
 
-        -- LabelRecovery: AssignAssign x varlist (Err_116)
+        -- LabelRecovery: AssignAssign x varlist (Err_118)
         --assert_statements_syntax_error([[
         --    x
         --]], "AssignAssign")
 
-        -- LabelRecovery: ExpAssign x e11 (Err_103)
+        -- LabelRecovery: ExpAssign x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    x =
         --]], "ExpAssign")
 
-        -- LabelRecovery: ExpElseIf x e11 (Err_103)
+        -- LabelRecovery: ExpElseIf x e11 (Err_105)
         --assert_statements_syntax_error([[
         --    if x > 1 then
         --        x = x - 1
@@ -1090,34 +1090,34 @@ describe("Titan parser", function()
             end
         ]], "ThenElseIf")
 
-        -- LabelRecovery: OpExp x e11 (Err_103)
+        -- LabelRecovery: OpExp x e11 (Err_105)
         --assert_expression_syntax_error([[ 1 + ]], "OpExp")
 
         assert_expression_syntax_error([[ obj:() ]], "NameColonExpSuf")
 
         assert_expression_syntax_error([[ obj:f + 1 ]], "FuncArgsExpSuf")
 
-        -- LabelRecovery: ExpExpSuf x e11 (Err_103)
+        -- LabelRecovery: ExpExpSuf x e11 (Err_105)
         --assert_expression_syntax_error([[ y[] ]], "ExpExpSuf")
 
         assert_expression_syntax_error([[ y[1 ]], "RBracketExpSuf")
 
         assert_expression_syntax_error([[ y.() ]], "NameDotExpSuf")
 
-        -- LabelRecovery: ExpSimpleExp x e11 (Err_103)
+        -- LabelRecovery: ExpSimpleExp x e11 (Err_105)
         --assert_expression_syntax_error([[ () ]], "ExpSimpleExp")
 
         assert_expression_syntax_error([[ (42 ]], "RParSimpleExp")
 
         assert_expression_syntax_error([[ f(42 ]], "RParFuncArgs")
 
-        -- LabelRecovery: ExpExpList x e11 (Err_103)
+        -- LabelRecovery: ExpExpList x e11 (Err_105)
         --assert_expression_syntax_error([[ f(42,) ]], "ExpExpList")
 
-        -- LabelRecovery: RParList x fieldlist (Err_123)
+        -- LabelRecovery: RParList x fieldlist (Err_125)
         --assert_expression_syntax_error([[ y{42 ]], "RCurlyInitList")
 
-        -- LabelRecovery: ExpFieldList x fieldlist (Err_123)
+        -- LabelRecovery: ExpFieldList x fieldlist (Err_125)
         --assert_expression_syntax_error([[ y{42,,} ]], "ExpFieldList")
 
         assert_expression_syntax_error([[ foo as ]], "CastMissingType")

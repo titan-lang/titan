@@ -333,12 +333,12 @@ local grammar = re.compile([[
     e5              <- (P  {| e6  (!Err_094_Flw (op5  e6^OpExp)^Err_094)* |})           -> fold_binop_left
     e6              <- (P  {| e7  (!Err_096_Flw (op6  e7^OpExp)^Err_096)* |})           -> fold_binop_left
     e7              <- (P  {| e8  (!Err_098_Flw (op7  e8^OpExp)^Err_098)* |})           -> fold_binop_left
-    e8              <- (P     e9  (op8  e8^OpExp)?)              -> binop_concat
-    e9              <- (P  {| e10 (!Err_100_Flw (op9  e10^OpExp)^Err_100)* |})          -> fold_binop_left
-    e10             <- (P  {| e11 (!Err_102_Flw (op10 e11^OpExp)^Err_102)* |})          -> fold_binop_left
-    e11             <- (P  {| (!Err_103_Flw unop^Err_103)* |}  e12)                     -> fold_unops
+    e8              <- (P     e9  (!Err_100_Flw (op8  e8^OpExp)^Err_100)?)              -> binop_concat
+    e9              <- (P  {| e10 (!Err_102_Flw (op9  e10^OpExp)^Err_102)* |})          -> fold_binop_left
+    e10             <- (P  {| e11 (!Err_104_Flw (op10 e11^OpExp)^Err_104)* |})          -> fold_binop_left
+    e11             <- (P  {| (!Err_105_Flw unop^Err_105)* |}  e12)                     -> fold_unops
     --e11             <- (P  {| unop* |}  e12)                     -> fold_unops
-    e12             <- (P  castexp (!Err_105_Flw (op12 e11^OpExp)^Err_105)?)            -> binop_right
+    e12             <- (P  castexp (!Err_107_Flw (op12 e11^OpExp)^Err_107)?)            -> binop_right
 
     suffixedexp     <- (prefixexp {| expsuffix+ |})              -> fold_suffixes
 
@@ -369,22 +369,22 @@ local grammar = re.compile([[
     var             <- (suffixedexp => exp_is_var)               -> exp2var
                      / (P  NAME !expsuffix)                      -> name_exp -> exp2var
 
-    varlist         <- {| var (!Err_116_Flw (COMMA var^ExpVarList)^Err_116)* |}            -- produces {Var}
+    varlist         <- {| var (!Err_118_Flw (COMMA var^ExpVarList)^Err_118)* |}            -- produces {Var}
 
-    funcargs        <- (LPAREN ((!Err_117_Flw explist^Err_117)? -> listopt) RPAREN^RParFuncArgs)      -- produces {Exp}
+    funcargs        <- (LPAREN ((!Err_119_Flw explist^Err_119)? -> listopt) RPAREN^RParFuncArgs)      -- produces {Exp}
                      / {| initlist |}                            -- produces {Exp}
                      / {| (P  STRINGLIT) -> ExpString |}         -- produces {Exp}
 
-    explist         <- {| exp (!Err_120_Flw (COMMA exp^ExpExpList)^Err_120)* |}      -- produces {Exp}
+    explist         <- {| exp (!Err_122_Flw (COMMA exp^ExpExpList)^Err_122)* |}      -- produces {Exp}
 
-    initlist        <- (P  LCURLY {| (!Err_121_Flw fieldlist^Err_121)? |}
+    initlist        <- (P  LCURLY {| (!Err_123_Flw fieldlist^Err_123)? |}
                                   RCURLY^RCurlyInitList)         -> ExpInitList
 
     fieldlist       <- (field
                         (fieldsep
                          (field /
                           !RCURLY %{ExpFieldList}))*
-                        (!Err_123_Flw fieldsep^Err_123)?)                          -- produces Field...
+                        (!Err_125_Flw fieldsep^Err_125)?)                          -- produces Field...
 
     field           <- (P  (NAME ASSIGN)? -> opt exp)       -> Field
 
@@ -505,16 +505,17 @@ local grammar = re.compile([[
     Err_094_Flw	<-	'~='  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
     Err_096_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.
     Err_098_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  GT  /  '=='  /  '<='  /  LT  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.
-    Err_100_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  ','  /  ')'  /  '('  /  '&'  /  !.
-    Err_102_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  '-'  /  ','  /  '+'  /  ')'  /  '('  /  '&'  /  !.
-    Err_103_Flw	<-	'{'  /  'true'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '('  /  STRINGLIT
-    Err_105_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  MOD  /  !.
-    --Erro em 105 quando tava '%%', coloquei MOD
-    Err_116_Flw	<-	'='
-    Err_117_Flw	<-	')'
-    Err_120_Flw	<-	'while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  ')'  /  '('
-    Err_121_Flw	<-	'}'
+    Err_100_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.
+    Err_102_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  ','  /  ')'  /  '('  /  '&'  /  !. 
+    Err_104_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  '-'  /  ','  /  '+'  /  ')'  /  '('  /  '&'  /  !.
+    Err_105_Flw	<-	'{'  /  'true'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '('  /  STRINGLIT
+    Err_107_Flw	<-	'~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  MOD  /  !.
+   --Erro em 107 quando tava '%%', coloquei MOD
+    Err_118_Flw	<-	'='
+    Err_119_Flw	<-	')'
+    Err_122_Flw	<-	'while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  ')'  /  '('
     Err_123_Flw	<-	'}'
+    Err_125_Flw	<-	'}'
 
 
 
