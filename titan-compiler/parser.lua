@@ -41,6 +41,7 @@ defs['defaultRecName'] = 'rec42'
 defs['defaultFieldRec'] = function() return 'field42'  end
 defs['defaultImportName'] = 'imp42'
 defs['defaultStringImportName'] = 'mod42'
+defs['defaultForeignName'] = 'foreign42'
 
 function defs.get_loc(s, pos)
     return true, location.from_pos(THIS_FILENAME, s, pos)
@@ -555,13 +556,20 @@ local grammar = re.compile([[
     StringLParImportRec  <- (!')' eatTk)* 
 
     --Err_014: 
-    RParImport     <- ({} '' -> 'RParImport') -> adderror  RParImportRec
-    RParImportRec  <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
+    RParImport      <- ({} '' -> 'RParImport') -> adderror  RParImportRec
+    RParImportRec   <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
     --Err_015
     StringImport     <- ({} '' -> 'StringImport') -> adderror  StringImportRec  ('' -> defaultStringImportName)
     StringImportRec  <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
+    --Err_016, Err_017, Err_018, Err_019, Err_020, Err_021: not in parser_spec
+    --There are no specific labels for 'foreign'. The same errors from 'import' are used
+ 
+    --Err_022: TypeFunc
+    TypeFunc        <- ({} '' -> 'TypeFunc') -> adderror  TypeFuncRec  (P '') -> TypeInteger
+    TypeFuncRec     <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+ 
 ]], defs)
 
 function parser.parse(filename, input)
