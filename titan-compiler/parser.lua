@@ -589,6 +589,18 @@ local grammar = re.compile([[
     TypeDecl        <- ({} '' -> 'TypeDecl') -> adderror  TypeDeclRec  (P '') -> TypeInteger
     TypeDeclRec     <-  (!('='  /  ',') eatTk)*
 
+    --Err_027:
+    DeclParList     <- ({} '' -> 'DeclParList') -> adderror  DeclParListRec
+    DeclParListRec  <- (!'=' eatTk)*
+
+    --Err_028:
+    TypeType        <- ({} '' -> 'TypeType') -> adderror  TypeTypeRec (P '') -> TypeInteger
+    TypeTypeRec     <- (!'}' eatTk)*
+
+    --Err_029:
+    RCurlyType      <- ({} '' -> 'RCurlyType') -> adderror  RCurlyTypeRec
+    RCurlyTypeRec   <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '->'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
+
 
 
  
