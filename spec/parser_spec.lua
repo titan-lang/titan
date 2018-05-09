@@ -898,7 +898,7 @@ describe("Titan parser", function()
         assert_program_syntax_error([[
             function foo (a:int, ) : int
             end
-        ]], "DeclParList")
+        ]], "ParamList")
 
         assert_program_syntax_error([[
             function foo (a: ) : int

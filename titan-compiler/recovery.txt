@@ -5,3 +5,8 @@
    it is the same pattern (NAME) that failed to match in the regular grammar.
 
 *  The original grammar uses the same set of labels (six in total) for 'import' and 'foreign' rules 
+
+*  The label DeclParList is used by rules 'declist' and 'paramlist', but each rule has a different
+   recovery expression associated with this labels. I am using two distinct labels: DeclList and ParamList
+   In 'first.lua', I need to check the computatation of FOLLOW in case of an expression p*.
+   It seems that ',' should be in the recovery expression of DeclParList.

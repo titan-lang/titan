@@ -257,7 +257,7 @@ local grammar = re.compile([[
 
     rettypeopt      <- (P  (COLON rettype^TypeFunc)?)            -> rettypeopt
 
-    paramlist       <- {| (param (COMMA param^DeclParList)*)? |} -- produces {Decl}
+    paramlist       <- {| (param (COMMA param^ParamList)*)? |} -- produces {Decl}
 
     param           <- (P  NAME COLON^ParamSemicolon
                            type^TypeDecl)                        -> Decl
@@ -569,6 +569,13 @@ local grammar = re.compile([[
     --Err_022: TypeFunc
     TypeFunc        <- ({} '' -> 'TypeFunc') -> adderror  TypeFuncRec  (P '') -> TypeInteger
     TypeFuncRec     <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_023: DeclParList -> ParamList
+    --The label DeclParList was used by rules decllist and paramlist. I am using distinct labels for each now,
+    --because they have different recovery expressions. (It seems ',' should be in both recovery expressions. TODO: check 'first.lua')
+    ParamList       <- ({} '' -> 'ParamList') -> adderror  ParamListRec
+    ParamListRec    <- (!')' eatTk)*
+
  
 ]], defs)
 
