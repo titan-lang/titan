@@ -497,7 +497,9 @@ local grammar = re.compile([[
     --ExpVarDec         <- (P '' -> '52')                   -> number_exp
     --ExpVarDec         <- (P '' -> defaultInt)                   -> number_exp
     --ExpVarDec         <-  (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)                   -> number_exp
-    ExpVarDec         <- (({} '' -> 'ExpVarDec') -> adderror) (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)  -> number_exp
+    --Err_006
+    ExpVarDec         <- ({} '' -> 'ExpVarDec') -> adderror  ExpVarDecRec  (P '' -> defaultInt2)  -> number_exp
+    ExpVarDecRec      <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* 
 
 
 ]], defs)
