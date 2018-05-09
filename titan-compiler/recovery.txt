@@ -1,0 +1,7 @@
+*  To do recovery properly, the grammar needs a rule to consume a token. This rule will
+   be used while trying to reach a synchronization token
+
+*  The recovery pattern associated with label NameRecord (Err_007) will not work, because
+   it is the same pattern (NAME) that failed to match in the regular grammar.
+
+* 
