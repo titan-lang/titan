@@ -903,7 +903,7 @@ describe("Titan parser", function()
         assert_program_syntax_error([[
             function foo (a: ) : int
             end
-        ]], "TypeDecl")
+        ]], "TypeParam")
 
 
         assert_type_syntax_error([[ {} ]], "TypeType")

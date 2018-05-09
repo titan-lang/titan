@@ -10,3 +10,6 @@
    recovery expression associated with this labels. I am using two distinct labels: DeclList and ParamList
    In 'first.lua', I need to check the computatation of FOLLOW in case of an expression p*.
    It seems that ',' should be in the recovery expression of DeclParList.
+
+*  The label TypeDecl is also used by two rules, 'param' and 'decl', but has different recovery expressions
+   in each rule. I will use TypeParam for 'param' and TypeDecl for 'decl'.

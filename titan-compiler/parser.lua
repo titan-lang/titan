@@ -260,7 +260,7 @@ local grammar = re.compile([[
     paramlist       <- {| (param (COMMA param^ParamList)*)? |} -- produces {Decl}
 
     param           <- (P  NAME COLON^ParamSemicolon
-                           type^TypeDecl)                        -> Decl
+                           type^TypeParam)                        -> Decl
 
     decl            <- (P  NAME (COLON type^TypeDecl)? -> opt)   -> Decl
 
@@ -575,6 +575,21 @@ local grammar = re.compile([[
     --because they have different recovery expressions. (It seems ',' should be in both recovery expressions. TODO: check 'first.lua')
     ParamList       <- ({} '' -> 'ParamList') -> adderror  ParamListRec
     ParamListRec    <- (!')' eatTk)*
+
+     --Err_024:
+    ParamSemicolon    <- ({} '' -> 'ParamSemicolon') -> adderror  ParamSemicolonRec
+    ParamSemicolonRec <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
+
+    --Err_025: TypeDecl -> TypeParam
+    --Same reasoning of DeclParList
+    TypeParam       <- ({} '' -> 'TypeParam') -> adderror  TypeParamRec  (P '') -> TypeInteger
+    TypeParamRec    <- (!(','  /  ')') eatTk)*
+
+    --Err_026: not in parser_spec
+    TypeDecl        <- ({} '' -> 'TypeDecl') -> adderror  TypeDeclRec  (P '') -> TypeInteger
+    TypeDeclRec     <-  (!('='  /  ',') eatTk)*
+
+
 
  
 ]], defs)
