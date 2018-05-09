@@ -36,7 +36,7 @@ end
 
 defs['defaultInt'] = 52
 defs['defaultInt2'] = function () return 52 end
-defs['defaultName'] = 'f42'
+defs['defaultFuncName'] = 'f42'
 
 function defs.get_loc(s, pos)
     return true, location.from_pos(THIS_FILENAME, s, pos)
@@ -492,8 +492,11 @@ local grammar = re.compile([[
     NEG             <- SUB
     BNEG            <- BXOR
 
+     
+    --Err_001
+    NameFunc        <- ({} '' -> 'NameFunc') -> adderror  NameFuncRec  ('' -> defaultFuncName)
+    NameFuncRec     <- (!'(' .)*
 
-    --NameFunc        <- (P ((!'(' .)* -> defaultName))
     --ExpVarDec         <- (P '' -> '52')                   -> number_exp
     --ExpVarDec         <- (P '' -> defaultInt)                   -> number_exp
     --ExpVarDec         <-  (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)                   -> number_exp
