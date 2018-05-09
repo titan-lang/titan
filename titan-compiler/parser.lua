@@ -39,6 +39,8 @@ defs['defaultInt2'] = function () return 52 end
 defs['defaultFuncName'] = 'f42'
 defs['defaultRecName'] = 'rec42'
 defs['defaultFieldRec'] = function() return 'field42'  end
+defs['defaultImportName'] = 'imp42'
+defs['defaultStringImportName'] = 'mod42'
 
 function defs.get_loc(s, pos)
     return true, location.from_pos(THIS_FILENAME, s, pos)
@@ -536,7 +538,29 @@ local grammar = re.compile([[
     EndRecord       <- ({} '' -> 'EndRecord') -> adderror  EndRecordRec
     EndRecordRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
+    --Err_010
+    NameImport      <- ({} '' -> 'NameImport') -> adderror  NameImportRec  ('' -> defaultImportName)
+    NameImportRec   <- (!'=' eatTk)*
+ 
+    --Err_011: not in parser_spec
+    AssignImport     <- ({} '' -> 'AssignImport') -> adderror  AssignImportRec
+    AssignImportRec  <- (!'import' eatTk)*
+ 
+    --Err_012: not in parser_spec
+    ImportImport     <- ({} '' -> 'ImportImport') -> adderror  ImportImportRec
+    ImportImportRec  <- (!('(' / STRINGLIT) eatTk)* 
 
+    --Err_013
+    StringLParImport     <- ({} '' -> 'StringLParImport') -> adderror  StringLParImportRec  ('' -> defaultStringImportName)
+    StringLParImportRec  <- (!')' eatTk)* 
+
+    --Err_014: 
+    RParImport     <- ({} '' -> 'RParImport') -> adderror  RParImportRec
+    RParImportRec  <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
+
+    --Err_015
+    StringImport     <- ({} '' -> 'StringImport') -> adderror  StringImportRec  ('' -> defaultStringImportName)
+    StringImportRec  <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
 ]], defs)
 
