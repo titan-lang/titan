@@ -37,6 +37,8 @@ end
 defs['defaultInt'] = 52
 defs['defaultInt2'] = function () return 52 end
 defs['defaultFuncName'] = 'f42'
+defs['defaultRecName'] = 'rec42'
+defs['defaultFieldRec'] = function() return 'field42'  end
 
 function defs.get_loc(s, pos)
     return true, location.from_pos(THIS_FILENAME, s, pos)
@@ -511,15 +513,30 @@ local grammar = re.compile([[
     EndFunc         <- ({} '' -> 'EndFunc') -> adderror  EndFuncRec
     EndFuncRec      <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
-
-    --ExpVarDec         <- (P '' -> '52')                   -> number_exp
-    --ExpVarDec         <- (P '' -> defaultInt)                   -> number_exp
-    --ExpVarDec         <-  (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)                   -> number_exp
+    --Err_005:
+    AssignVar       <- ({} '' -> 'AssignVar') -> adderror  AssignVarRec
+    AssignVarRec    <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT)  eatTk)*
+ 
+    --ExpVarDec     <- (P '' -> '52')                   -> number_exp
+    --ExpVarDec     <- (P '' -> defaultInt)                   -> number_exp
+    --ExpVarDec     <-  (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)                   -> number_exp
     --Err_006
-    ExpVarDec         <- ({} '' -> 'ExpVarDec') -> adderror  ExpVarDecRec  (P '' -> defaultInt2)  -> number_exp
-    ExpVarDecRec      <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* 
+    ExpVarDec       <- ({} '' -> 'ExpVarDec') -> adderror  ExpVarDecRec  (P '' -> defaultInt2)  -> number_exp
+    ExpVarDecRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* 
 
-    
+    --Err_007: Problem: the recovery pattern will not work, because we reach this label when 'NAME' fails to match
+    --NameRecord     <- ({} '' -> 'NameRecord') -> adderror  NameRecordRec  ('' -> defaultRecName)
+    --NameRecordRec  <- (!NAME eatTk)*
+ 
+    --Err_008:
+    FieldRecord     <- ({} '' -> 'FieldRecord') -> adderror  FieldRecordRec  ('' -> defaultFieldRec)
+    FieldRecordRec  <- (!END eatTk)*
+
+    --Err_009:
+    EndRecord       <- ({} '' -> 'EndRecord') -> adderror  EndRecordRec
+    EndRecordRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
+
+
 
 ]], defs)
 
