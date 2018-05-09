@@ -18,6 +18,7 @@ local THIS_FILENAME = nil
 --
 
 local defs = {}
+local synerr 
 
 for tokname, tokpat in pairs(lexer) do
     defs[tokname] = tokpat
@@ -26,6 +27,16 @@ end
 for tag, cons in pairs(ast) do
     defs[tag] = cons
 end
+
+defs['adderror'] = function (pos, lab)
+  print("chamou adderror", pos, lab)
+	table.insert(synerr, { pos = pos, lab = lab })
+	return
+end
+
+defs['defaultInt'] = 52
+defs['defaultInt2'] = function () return 52 end
+defs['defaultName'] = 'f42'
 
 function defs.get_loc(s, pos)
     return true, location.from_pos(THIS_FILENAME, s, pos)
@@ -76,6 +87,9 @@ function defs.nil_exp(pos--[[, s ]])
 end
 
 function defs.number_exp(pos, n)
+    --print("number_exp", pos, n, math.type(n))
+    --assert(n ~= 52)
+    --assert(n ~= '52')
     if math.type(n) == "integer" then
         return ast.ExpInteger(pos, n)
     elseif math.type(n) == "float" then
@@ -478,6 +492,14 @@ local grammar = re.compile([[
     NEG             <- SUB
     BNEG            <- BXOR
 
+
+    --NameFunc        <- (P ((!'(' .)* -> defaultName))
+    --ExpVarDec         <- (P '' -> '52')                   -> number_exp
+    --ExpVarDec         <- (P '' -> defaultInt)                   -> number_exp
+    --ExpVarDec         <-  (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)                   -> number_exp
+    ExpVarDec         <- (({} '' -> 'ExpVarDec') -> adderror) (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)  -> number_exp
+
+
 ]], defs)
 
 function parser.parse(filename, input)
@@ -486,13 +508,23 @@ function parser.parse(filename, input)
     assert(THIS_FILENAME == nil)
 
     THIS_FILENAME = filename
+    synerr = {}
     local ast, err, errpos = grammar:match(input)
+    print("ast, err, errpos, synerr", ast, err, errpos, #synerr)
     THIS_FILENAME = nil
 
-    if ast then
+    if ast and #synerr == 0 then
         return ast
     else
-        local loc = location.from_pos(filename, input, errpos)
+        local loc
+        if ast then
+            print(parser.pretty_print_ast(ast))
+            loc = synerr[1].pos
+            err = synerr[1].lab
+            print("loc = ", loc, "err = ", err)
+        else            
+            loc = location.from_pos(filename, input, errpos)
+        end
         return false, { label = err, loc = loc }
     end
 end

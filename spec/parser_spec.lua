@@ -52,7 +52,7 @@ local function assert_program_syntax_error(program_str, expected_error_label)
     if ast then
         error(string.format("Expected Titan syntax error %s but parsed successfuly", expected_error_label))
     end
-    assert.are.same(expected_error_label, err.label)
+    assert.are.same(expected_error_label, err.label, expected_error_label .. tostring(err.label))
 end
 
 
@@ -861,7 +861,8 @@ describe("Titan parser", function()
         ]], "AssignVar")
 
         assert_program_syntax_error([[
-            x =
+            x = 
+            local y = 3
         ]], "ExpVarDec")
 
         assert_program_syntax_error([[
