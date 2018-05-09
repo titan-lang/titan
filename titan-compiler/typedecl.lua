@@ -9,7 +9,7 @@ return function(prefix, types)
             constructors[consname] = function(...)
                 local args = table.pack(...)
                 if args.n ~= #fields then
-                    error("missing arguments for " .. consname)
+                    error("missing arguments for " .. consname .. tostring(args.n) .. tostring(#fields))
                 end
                 local node = { _tag = tag }
                 for i, field in ipairs(fields) do

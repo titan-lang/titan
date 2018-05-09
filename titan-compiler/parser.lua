@@ -492,10 +492,25 @@ local grammar = re.compile([[
     NEG             <- SUB
     BNEG            <- BXOR
 
-     
+
+    eatTk           <- NAME  /  AND  /  BREAK  /  DO  /  ELSEIF  /  END  /  FALSE  /  FOR  /  FUNCTION  /  GOTO  /  IF  /  IN  /  LOCAL  /  RETURN  / .
+
     --Err_001
     NameFunc        <- ({} '' -> 'NameFunc') -> adderror  NameFuncRec  ('' -> defaultFuncName)
     NameFuncRec     <- (!'(' .)*
+   
+    --Err_002: not in parser_spec
+    LParList        <- ({} '' -> 'LParList') -> adderror  LParListRec
+    LParListRec     <- (!(NAME  /  ')') .)*
+    
+    --Err_003: not in parser_spec
+    RParList        <- ({} '' -> 'RParList') -> adderror  RParListRec
+    RParListRec     <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  ':'  /  '(') .)*
+   
+    --Err_004:
+    EndFunc         <- ({} '' -> 'EndFunc') -> adderror  EndFuncRec
+    EndFuncRec      <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
+
 
     --ExpVarDec         <- (P '' -> '52')                   -> number_exp
     --ExpVarDec         <- (P '' -> defaultInt)                   -> number_exp
@@ -504,6 +519,7 @@ local grammar = re.compile([[
     ExpVarDec         <- ({} '' -> 'ExpVarDec') -> adderror  ExpVarDecRec  (P '' -> defaultInt2)  -> number_exp
     ExpVarDecRec      <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* 
 
+    
 
 ]], defs)
 
