@@ -498,7 +498,7 @@ local grammar = re.compile([[
     BNEG            <- BXOR
 
 
-    eatTk           <- NAME  /  AND  /  BREAK  /  DO  /  ELSEIF  /  END  /  FALSE  /  FOR  /  FUNCTION  /  GOTO  /  IF  /  IN  /  LOCAL  /  RETURN  / .
+    eatTk           <- NAME  /  AND  /  BREAK  /  DO  /  ELSEIF  /  END  /  FALSE  /  FOR  /  FUNCTION  /  GOTO  /  IF  /  IN  /  LOCAL  /  NIL  /  NOT  /  OR  /  RECORD  /  REPEAT  /  RETURN  /  THEN  /  TRUE  /  UNTIL  /  WHILE  /  IMPORT  /  AS  /  FOREIGN  /  BOOLEAN  /  INTEGER  /  FLOAT  /  STRING  /  VALUE  /  .
 
     --Err_001
     NameFunc        <- ({} '' -> 'NameFunc') -> adderror  NameFuncRec  ('' -> defaultFuncName)
@@ -601,8 +601,19 @@ local grammar = re.compile([[
     RCurlyType      <- ({} '' -> 'RCurlyType') -> adderror  RCurlyTypeRec
     RCurlyTypeRec   <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '->'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
+    --Err_030:
+    TypelistType    <- ({} '' -> 'TypelistType') -> adderror  TypelistTypeRec
+    TypelistTypeRec <- (!')' eatTk)*
 
+    --Err_031: TODO: see why recovery does not work here
+    --RParenTypelist    <- ({} '' -> 'RParenTypelist') -> adderror  RParenTypelistRec
+    --RParenTypelistRec <- (!(NAME / '->') .)*
 
+	  --Err_XXX: the algorithm did not insert the two labels corresponding to TypeReturnTypes
+    TypeReturnTypes    <- ({} '' -> 'TypeReturnTypes') -> adderror  TypeReturnTypesRec  (P '') -> TypeInteger
+    --TypeReturnTypesRec <- (!('/' / '==' / '-' / ',' / '<=' / '%%' / 'function' / '^' / ']' / 'if' / '*' / ')' / 'and' / '&' / 'end' / 'local' / 'record' / 'then' / '>>' / '<<' /  '~=' / 'repeat' / NAME / '+' / '>=' / 'or' / 'return' / !. / 'while' / '>' / '}' / '<' / '~' / '=' / '|' / ';' / '(' / 'for' / 'elseif' / '..' / 'until' / '//' / 'do' / 'else') eatTk)*
+    TypeReturnTypesRec <- (!('/' / '==' / '-' / ',' / '<=' / '%%' / 'function' / '^' / ']' / 'if' / '*' / ')' / 'and' / '&' / 'end' / 'local' / 'record' / 'then' / '>>' / '<<' /  '~=' / 'repeat' / NAME / '+' / '>=' / 'or' / 'return' / !. / 'while' / '>' / '}' / '<' / '~'  / '|' / ';' / '(' / 'for' / 'elseif' / '..' / 'until' / '//' / 'do' / 'else') eatTk)*
+    	
  
 ]], defs)
 
