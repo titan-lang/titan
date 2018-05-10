@@ -916,6 +916,7 @@ describe("Titan parser", function()
 
         assert_type_syntax_error([[ (a, b) -> = nil ]], "TypeReturnTypes")
 
+        assert_type_syntax_error([[ (a, b) b ]], "Err_032")
 
         assert_program_syntax_error([[
             record A

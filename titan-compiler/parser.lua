@@ -287,7 +287,7 @@ local grammar = re.compile([[
                      / typelist
                      / {| simpletype |}
 
-    type            <- (P  typelist RARROW^Err_036
+    type            <- (P  typelist RARROW^Err_032
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / (P  {| simpletype |} RARROW
                            rettype^TypeReturnTypes)              -> TypeFunction
@@ -614,7 +614,11 @@ local grammar = re.compile([[
     --TypeReturnTypesRec <- (!('/' / '==' / '-' / ',' / '<=' / '%%' / 'function' / '^' / ']' / 'if' / '*' / ')' / 'and' / '&' / 'end' / 'local' / 'record' / 'then' / '>>' / '<<' /  '~=' / 'repeat' / NAME / '+' / '>=' / 'or' / 'return' / !. / 'while' / '>' / '}' / '<' / '~' / '=' / '|' / ';' / '(' / 'for' / 'elseif' / '..' / 'until' / '//' / 'do' / 'else') eatTk)*
     TypeReturnTypesRec <- (!('/' / '==' / '-' / ',' / '<=' / '%%' / 'function' / '^' / ']' / 'if' / '*' / ')' / 'and' / '&' / 'end' / 'local' / 'record' / 'then' / '>>' / '<<' /  '~=' / 'repeat' / NAME / '+' / '>=' / 'or' / 'return' / !. / 'while' / '>' / '}' / '<' / '~'  / '|' / ';' / '(' / 'for' / 'elseif' / '..' / 'until' / '//' / 'do' / 'else') eatTk)*
     	
- 
+    --Err_032: The original grammar does not have this label
+    Err_032         <- ({} '' -> 'Err_032') -> adderror  Err_032Rec
+    Err_032Rec      <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
+
+
 ]], defs)
 
 function parser.parse(filename, input)
