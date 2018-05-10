@@ -14,6 +14,8 @@
 *  The label TypeDecl is also used by two rules, 'param' and 'decl', but has different recovery expressions
    in each rule. I will use TypeParam for 'param' and TypeDecl for 'decl'.
 
+*  Check why the recovery did not work for label RParenTypelist.
+
 *  The algorithm did not insert the two labels corresponding to TypeReturnTypes. The recovery fails
    in example "local x: (a, b) -> = nil = nil", because 'TypeReturnTypes' syncs with the first '='
    and the rest of the input '= nil' is not matched by the statement rule.
