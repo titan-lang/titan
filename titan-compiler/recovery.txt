@@ -16,10 +16,15 @@
 
 *  Check why the recovery did not work for label RParenTypelist.
 
-*  The algorithm did not insert the two labels corresponding to TypeReturnTypes. The recovery fails
-   in example "local x: (a, b) -> = nil = nil", because 'TypeReturnTypes' syncs with the first '='
-   and the rest of the input '= nil' is not matched by the statement rule.
+*  In rule 'rettype', the algorithm did not insert the two labels corresponding to TypeReturnTypes. 
+   I did not see a specific test for this label in 'parser_spec'. Label 'TypeReturnTypes' was thrown
+   by a test related to rule 'type'.
+
+*  As rule 'rettype', rule 'type' also uses 'TypeReturnTypes'. The first occurrence of this label in rule 'type'
+   corresponds to label Err_033. I am using the recovery set of Err_033 for all occurrences of TypeReturnTypes,
+   since the recovery set of Err_033 is equal to the FOLLOW set of 'rettype'.
+   The second occurrence of 'TypeReturnTypes' in 'type' was not annotated by the algorithm.
+   The recovery fails in example "local x: (a, b) -> = nil = nil", because 'TypeReturnTypes' syncs
+   with the first '=' and the rest of the input '= nil' is not matched by the statement rule.
    I removed '=' from the recovery expression and the recovery worked.
 
-
- 
