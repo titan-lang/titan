@@ -646,6 +646,27 @@ local grammar = re.compile([[
     --Err_039:
     EndWhile        <- ({} '' -> 'EndWhile') -> adderror  EndWhileRec
     EndWhileRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_040:
+    UntilRepeat     <- ({} '' -> 'UntilRepeat') -> adderror  UntilRepeatRec
+    UntilRepeatRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)* 
+
+    --Err_041:
+    ExpRepeat       <- ({} '' -> 'ExpRepeat') -> adderror  ExpRepeatRec  (P '' -> defaultInt2)  -> number_exp
+    ExpRepeatRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_042:
+    ExpIf           <- ({} '' -> 'ExpIf') -> adderror  ExpIfRec  (P '' -> defaultInt2)  -> number_exp
+    ExpIfRec        <- (!'then' eatTk)*
+
+    --Err_043:
+    ThenIf          <- ({} '' -> 'ThenIf') -> adderror  ThenIfRec
+    ThenIfRec       <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_044:
+    EndIf           <- ({} '' -> 'EndIf') -> adderror  EndIfRec
+    EndIfRec        <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
  
 ]], defs)
 
