@@ -32,3 +32,6 @@
    It captures 'xyz', although '(xyz)' is not a valid name, and the recovery set has only '='.
    I commented out this test in 'parser_spec'
 
+*  In a similar way, the recovery rules for ExpAssign and ExpStat also do not work for
+   '(xzy) = 42' and '(f)', respectively
+  

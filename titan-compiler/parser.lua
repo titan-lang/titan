@@ -701,7 +701,7 @@ local grammar = re.compile([[
     EndForRec       <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_053:
-    DeclLocal       <- ({} '' -> 'DeclLocal') -> adderror  DeclLocalRec  ((P) ('' -> defaultDeclName) ((P '') -> TypeInteger)) -> Decl
+    DeclLocal       <- ({} '' -> 'DeclLocal') -> adderror  DeclLocalRec  {| (P ('' -> defaultDeclName) (P '') -> TypeInteger) -> Decl |} 
     DeclLocalRec    <- (!'=' eatTk)* 
 
     --Err_054:
@@ -712,8 +712,17 @@ local grammar = re.compile([[
     ExpLocal        <- ({} '' -> 'ExpLocal') -> adderror  ExpLocalRec  (P '' -> defaultInt2)  -> number_exp
     ExpLocalRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
+    --Err_XXX: the algorithm did not insert the label corresponding to AssignAssign in rule 'statement'
+    AssignAssign    <- ({} '' -> 'AssignAssign') -> adderror  AssignAssignRec
+    AssignAssignRec <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
 
+    --Err_XXX: the algorithm did not insert the two labels corresponding to ExpAssign in rule 'statement'
+    ExpAssign       <- ({} '' -> 'ExpAssign') -> adderror  ExpAssignRec  {| (P '' -> defaultInt2)  -> number_exp |}
+    ExpAssignRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
+    --Err_XXX: the algorithm did not insert the label corresponding to ExpStat in rule 'statement'
+    ExpStat         <- ({} '' -> 'ExpStat') -> adderror  ExpStatRec
+    ExpStatRec      <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
  
 ]], defs)
 
