@@ -36,4 +36,6 @@
 
 *  In a similar way, the recovery rules for ExpAssign and ExpStat also do not work for
    '(xzy) = 42' and '(f)', respectively
-  
+ 
+*  I used just one label OpExp, although each expression has a differente recovery set, because
+   LPeg 1.0.1 imposes a limit of 255 rules in a grammar. LPeg 1.0.0 does have this limit.
