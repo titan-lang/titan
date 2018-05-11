@@ -700,6 +700,20 @@ local grammar = re.compile([[
     EndFor          <- ({} '' -> 'EndFor') -> adderror  EndForRec
     EndForRec       <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
+    --Err_053:
+    DeclLocal       <- ({} '' -> 'DeclLocal') -> adderror  DeclLocalRec  ((P) ('' -> defaultDeclName) ((P '') -> TypeInteger)) -> Decl
+    DeclLocalRec    <- (!'=' eatTk)* 
+
+    --Err_054:
+    AssignLocal     <- ({} '' -> 'AssignLocal') -> adderror  AssignLocalRec
+    AssignLocalRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
+
+    --Err_055:
+    ExpLocal        <- ({} '' -> 'ExpLocal') -> adderror  ExpLocalRec  (P '' -> defaultInt2)  -> number_exp
+    ExpLocalRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+
+
  
 ]], defs)
 
