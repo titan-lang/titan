@@ -43,6 +43,8 @@ defs['defaultImportName'] = 'imp42'
 defs['defaultStringImportName'] = 'mod42'
 defs['defaultForeignName'] = 'foreign42'
 defs['defaultDeclName'] = 'dec42'
+defs['defaultColonName'] = 'col42'
+defs['defaultDotName'] = 'dot42'
 
 function defs.get_loc(s, pos)
     return true, location.from_pos(THIS_FILENAME, s, pos)
@@ -779,8 +781,26 @@ local grammar = re.compile([[
     --Err_068: OpExp rule 'e12'
     --OpExp1112       <- ({} '' -> 'OpExp1112') -> adderror  OpExp1112Rec  (P '' -> defaultInt2)  -> number_exp
     --OpExp1112Rec    <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
- 
 
+    --Err_069:
+    NameColonExpSuf    <- ({} '' -> 'NameColonExpSuf') -> adderror  NameColonExpSufRec  ('' -> defaultColonName)
+    NameColonExpSufRec <- (!('{'  /  '('  /  STRINGLIT) eatTk)*
+
+    --Err_070:
+    FuncArgsExpSuf    <- ({} '' -> 'FuncArgsExpSuf') -> adderror  FuncArgsExpSufRec  {| (P '' -> defaultInt2)  -> number_exp |}
+    FuncArgsExpSufRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  '{'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'as'  /  'and'  /  '^'  /  ']'  /  '['  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '.'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.  /  '"') eatTk)*
+
+    --Err_071:
+    ExpExpSuf       <- ({} '' -> 'ExpExpSuf') -> adderror  ExpExpSufRec  (P '' -> defaultInt2)  -> number_exp
+    ExpExpSufRec    <- (!']' eatTk)*
+
+    --Err_072:
+    RBracketExpSuf    <- ({} '' -> 'RBracketExpSuf') -> adderror  FuncArgsExpSufRec
+    --RBracketExpSufRec <- uses FuncArgsExpSufRec
+
+    --Err_073:
+    NameDotExpSuf    <- ({} '' -> 'NameDotExpSuf') -> adderror  FuncArgsExpSufRec  ('' -> defaultDotName)
+    --NameDotExpSufRec: uses FuncArgsExpSufRec
 ]], defs)
 
 function parser.parse(filename, input)
