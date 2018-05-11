@@ -42,6 +42,7 @@ defs['defaultFieldRec'] = function() return 'field42'  end
 defs['defaultImportName'] = 'imp42'
 defs['defaultStringImportName'] = 'mod42'
 defs['defaultForeignName'] = 'foreign42'
+defs['defaultDeclName'] = 'dec42'
 
 function defs.get_loc(s, pos)
     return true, location.from_pos(THIS_FILENAME, s, pos)
@@ -666,6 +667,38 @@ local grammar = re.compile([[
     --Err_044:
     EndIf           <- ({} '' -> 'EndIf') -> adderror  EndIfRec
     EndIfRec        <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_045:
+    DeclFor         <- ({} '' -> 'DeclFor') -> adderror  DeclForRec  (P '' -> defaultDeclName (P '') -> TypeInteger) -> Decl
+    DeclForRec      <- (!'=' eatTk)*
+
+    --Err_046:
+    AssignFor       <- ({} '' -> 'AssignFor') -> adderror  AssignForRec
+    AssignForRec    <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
+
+    --Err_047:
+    Exp1For         <- ({} '' -> 'Exp1For') -> adderror  Exp1ForRec  (P '' -> defaultInt2)  -> number_exp
+    Exp1ForRec      <- (!',' eatTk)*
+
+    --Err_048:
+    CommaFor        <- ({} '' -> 'CommaFor') -> adderror  CommaForRec
+    CommaForRec     <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
+
+    --Err_049:
+    Exp2For         <- ({} '' -> 'Exp2For') -> adderror  Exp2ForRec  (P '' -> defaultInt2)  -> number_exp
+    Exp2ForRec      <- (!('do'  /  ',') eatTk)*
+
+    --Err_050:
+    Exp3For         <- ({} '' -> 'Exp3For') -> adderror  Exp3ForRec  (P '' -> defaultInt2)  -> number_exp
+    Exp3ForRec      <- (!'do' eatTk)*
+
+    --Err_051:
+    DoFor           <- ({} '' -> 'DoFor') -> adderror  DoForRec
+    DoForRec        <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_052:
+    EndFor          <- ({} '' -> 'EndFor') -> adderror  EndForRec
+    EndForRec       <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
  
 ]], defs)
