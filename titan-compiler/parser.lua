@@ -631,7 +631,22 @@ local grammar = re.compile([[
     TypeRecordField    <- ({} '' -> 'TypeRecordField') -> adderror  TypeRecordFieldRec  (P '') -> TypeInteger
     TypeRecordFieldRec <- (!('end'  /  NAME  /  ';') eatTk)*
  
+    --Err_036:
+    EndBlock        <- ({} '' -> 'EndBlock') -> adderror  EndBlockRec
+    EndBlockRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
+    --Err_037:
+    ExpWhile        <- ({} '' -> 'ExpWhile') -> adderror  ExpWhileRec  (P '' -> defaultInt2)  -> number_exp
+    ExpWhileRec     <- (!'do' eatTk)*
+
+    --Err_038:
+    DoWhile         <- ({} '' -> 'DoWhile') -> adderror  DoWhileRec
+    DoWhileRec      <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_039:
+    EndWhile        <- ({} '' -> 'EndWhile') -> adderror  EndWhileRec
+    EndWhileRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+ 
 ]], defs)
 
 function parser.parse(filename, input)
