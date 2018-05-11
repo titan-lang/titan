@@ -348,16 +348,16 @@ local grammar = re.compile([[
     exp             <- e1
     e1              <- (P  {| e2  (op1  e2^OpExp2)* |})           -> fold_binop_left
     e2              <- (P  {| e3  (op2  e3^OpExp3)* |})           -> fold_binop_left
-    e3              <- (P  {| e4  (op3  e4^OpExp)* |})           -> fold_binop_left
-    e4              <- (P  {| e5  (op4  e5^OpExp)* |})           -> fold_binop_left
-    e5              <- (P  {| e6  (op5  e6^OpExp)* |})           -> fold_binop_left
-    e6              <- (P  {| e7  (op6  e7^OpExp)* |})           -> fold_binop_left
-    e7              <- (P  {| e8  (op7  e8^OpExp)* |})           -> fold_binop_left
-    e8              <- (P     e9  (op8  e8^OpExp)?)              -> binop_concat
-    e9              <- (P  {| e10 (op9  e10^OpExp)* |})          -> fold_binop_left
-    e10             <- (P  {| e11 (op10 e11^OpExp)* |})          -> fold_binop_left
+    e3              <- (P  {| e4  (op3  e4^OpExp4)* |})           -> fold_binop_left
+    e4              <- (P  {| e5  (op4  e5^OpExp5)* |})           -> fold_binop_left
+    e5              <- (P  {| e6  (op5  e6^OpExp6)* |})           -> fold_binop_left
+    e6              <- (P  {| e7  (op6  e7^OpExp7)* |})           -> fold_binop_left
+    e7              <- (P  {| e8  (op7  e8^OpExp87)* |})          -> fold_binop_left
+    e8              <- (P     e9  (op8  e8^OpExp88)?)             -> binop_concat
+    e9              <- (P  {| e10 (op9  e10^OpExp10)* |})           -> fold_binop_left
+    e10             <- (P  {| e11 (op10 e11^OpExp1110)* |})          -> fold_binop_left
     e11             <- (P  {| unop* |}  e12)                     -> fold_unops
-    e12             <- (P  castexp (op12 e11^OpExp)?)            -> binop_right
+    e12             <- (P  castexp (op12 e11^OpExp1112)?)        -> binop_right
 
     suffixedexp     <- (prefixexp {| expsuffix+ |})              -> fold_suffixes
 
@@ -741,8 +741,46 @@ local grammar = re.compile([[
     --Err_059: OpExp rule 'e2'
     OpExp3          <- ({} '' -> 'OpExp3') -> adderror  OpExp3Rec  (P '' -> defaultInt2)  -> number_exp
     OpExp3Rec       <- (!('}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+
+    --Err_060: OpExp rule 'e3'
+    OpExp4          <- ({} '' -> 'OpExp4') -> adderror  OpExp4Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp4Rec       <- (!('}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
  
  
+    --Err_061: OpExp rule 'e4'
+    OpExp5          <- ({} '' -> 'OpExp5') -> adderror  OpExp5Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp5Rec       <- (!('~='  /  '}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+
+
+    --Err_062: OpExp rule 'e5'
+    OpExp6          <- ({} '' -> 'OpExp6') -> adderror  OpExp6Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp6Rec       <- (!('~='  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+
+    --Err_063: OpExp rule 'e6'
+    OpExp7          <- ({} '' -> 'OpExp7') -> adderror  OpExp7Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp7Rec       <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+ 
+    --Err_064: OpExp rule 'e7'
+    OpExp87         <- ({} '' -> 'OpExp87') -> adderror  OpExp87Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp87Rec      <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
+ 
+    --Err_065: OpExp rule 'e8'
+    OpExp88         <- ({} '' -> 'OpExp88') -> adderror  OpExp88Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp88Rec      <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
+
+    --Err_066: OpExp rule 'e9'
+    --OpExp10         <- ({} '' -> 'OpExp10') -> adderror  OpExp10Rec  (P '' -> defaultInt2)  -> number_exp
+    --OpExp10Rec      <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  ','  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
+ 
+    --Err_067: OpExp rule 'e10'
+    --OpExp1110       <- ({} '' -> 'OpExp1110') -> adderror  OpExp1110Rec  (P '' -> defaultInt2)  -> number_exp
+    --OpExp1110Rec    <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  '-'  /  ','  /  '+'  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
+
+    --Err_068: OpExp rule 'e12'
+    --OpExp1112       <- ({} '' -> 'OpExp1112') -> adderror  OpExp1112Rec  (P '' -> defaultInt2)  -> number_exp
+    --OpExp1112Rec    <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
+ 
+
 ]], defs)
 
 function parser.parse(filename, input)

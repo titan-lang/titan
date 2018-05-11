@@ -1062,7 +1062,7 @@ describe("Titan parser", function()
             end
         ]], "ThenElseIf")
 
-        assert_expression_syntax_error([[ 1 + ]], "OpExp")
+        assert_expression_syntax_error([[ 1 + ]], "OpExp10")
 
         assert_expression_syntax_error([[ obj:() ]], "NameColonExpSuf")
 
