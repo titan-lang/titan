@@ -802,7 +802,7 @@ describe("Titan parser", function()
     end)
 
     it("does not allow parentheses in the LHS of an assignment", function()
-        --assert_statements_syntax_error([[ local (xyz) = 42 ]], "DeclLocal") --TODO: check why this example capture xyz
+        assert_statements_syntax_error([[ local (xyz) = 42 ]], "DeclLocal")
         --assert_statements_syntax_error([[ (xzy) = 42 ]], "ExpAssign") --TODO: check why this example gives "too many results in match-time capture"
     end)
 

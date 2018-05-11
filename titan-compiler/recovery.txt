@@ -30,7 +30,9 @@
 
 *  The recovery rule for DecLocal does not work for input 'local (xyz) = 42'.
    It captures 'xyz', although '(xyz)' is not a valid name, and the recovery set has only '='.
-   I commented out this test in 'parser_spec'
+   I commented out this test in 'parser_spec'. 
+   FIXED: The use of NAME in the recovery rule eatTk was producing captures
+   See also the use of NUMBER and STRINGLIT
 
 *  In a similar way, the recovery rules for ExpAssign and ExpStat also do not work for
    '(xzy) = 42' and '(f)', respectively

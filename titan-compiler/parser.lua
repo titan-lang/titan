@@ -346,8 +346,8 @@ local grammar = re.compile([[
     op12            <- ( POW -> '^' )
 
     exp             <- e1
-    e1              <- (P  {| e2  (op1  e2^OpExp)* |})           -> fold_binop_left
-    e2              <- (P  {| e3  (op2  e3^OpExp)* |})           -> fold_binop_left
+    e1              <- (P  {| e2  (op1  e2^OpExp2)* |})           -> fold_binop_left
+    e2              <- (P  {| e3  (op2  e3^OpExp3)* |})           -> fold_binop_left
     e3              <- (P  {| e4  (op3  e4^OpExp)* |})           -> fold_binop_left
     e4              <- (P  {| e5  (op4  e5^OpExp)* |})           -> fold_binop_left
     e5              <- (P  {| e6  (op5  e6^OpExp)* |})           -> fold_binop_left
@@ -499,7 +499,9 @@ local grammar = re.compile([[
     BNEG            <- BXOR
 
 
-    eatTk           <- NAME  /  AND  /  BREAK  /  DO  /  ELSEIF  /  END  /  FALSE  /  FOR  /  FUNCTION  /  GOTO  /  IF  /  IN  /  LOCAL  /  NIL  /  NOT  /  OR  /  RECORD  /  REPEAT  /  RETURN  /  THEN  /  TRUE  /  UNTIL  /  WHILE  /  IMPORT  /  AS  /  FOREIGN  /  BOOLEAN  /  INTEGER  /  FLOAT  /  STRING  /  VALUE  /  .
+    NAMEREC         <- [a-zA-Z_][a-zA-Z0-9_]*
+
+    eatTk           <- NAMEREC  /  AND  /  BREAK  /  DO  /  ELSEIF  /  END  /  FALSE  /  FOR  /  FUNCTION  /  GOTO  /  IF  /  IN  /  LOCAL  /  NIL  /  NOT  /  OR  /  RECORD  /  REPEAT  /  RETURN  /  THEN  /  TRUE  /  UNTIL  /  WHILE  /  IMPORT  /  AS  /  FOREIGN  /  BOOLEAN  /  INTEGER  /  FLOAT  /  STRING  /  VALUE  /  .
 
     --Err_001
     NameFunc        <- ({} '' -> 'NameFunc') -> adderror  NameFuncRec  ('' -> defaultFuncName)
@@ -723,6 +725,23 @@ local grammar = re.compile([[
     --Err_XXX: the algorithm did not insert the label corresponding to ExpStat in rule 'statement'
     ExpStat         <- ({} '' -> 'ExpStat') -> adderror  ExpStatRec
     ExpStatRec      <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_056:
+    ExpElseIf       <- ({} '' -> 'ExpElseIf') -> adderror  ExpElseIfRec  (P '' -> defaultInt2)  -> number_exp
+    ExpElseIfRec    <- (!'then' eatTk)*
+
+    --Err_057:
+    ThenElseIf      <- ({} '' -> 'ThenElseIf') -> adderror  ThenElseIfRec
+    ThenElseIfRec   <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+
+    --Err_058: OpExp rule 'e1'
+    OpExp2          <- ({} '' -> 'OpExp2') -> adderror  OpExp2Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp2Rec       <- (!('}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+
+    --Err_059: OpExp rule 'e2'
+    OpExp3          <- ({} '' -> 'OpExp3') -> adderror  OpExp3Rec  (P '' -> defaultInt2)  -> number_exp
+    OpExp3Rec       <- (!('}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+ 
  
 ]], defs)
 
