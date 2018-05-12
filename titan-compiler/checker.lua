@@ -481,19 +481,28 @@ checkvar = util.make_visitor({
     end,
 
     ["Ast.VarBracket"] = function(node, st, errors, context)
-        checkexp(node.exp1, st, errors, context and types.Array(context))
-        if node.exp1._type._tag ~= "Type.Array" then
+        checkexp(node.exp1, st, errors) -- FIXME check this: checkexp(node.exp1, st, errors, context and types.Array(context))
+        if node.exp1._type._tag == "Type.Array" then
+            node._type = node.exp1._type.elem
+
+            checkexp(node.exp2, st, errors, types.Integer())
+            -- always try to coerce index to integer
+            node.exp2 = trycoerce(node.exp2, types.Integer(), errors)
+            checkmatch("array indexing", types.Integer(), node.exp2._type, errors, node.exp2.loc)
+
+        elseif node.exp1._type._tag == "Type.Map" then
+            node._type = node.exp1._type.values
+
+            local keystype = node.exp1._type.keys
+            checkexp(node.exp2, st, errors, keystype)
+            checkmatch("map indexing", keystype, node.exp2._type, errors, node.exp2.loc)
+
+        else
             checker.typeerror(errors, node.exp1.loc,
-                "array expression in indexing is not an array but %s",
+                "expression in indexing is not an array or map but %s",
                 types.tostring(node.exp1._type))
             node._type = types.Invalid()
-        else
-            node._type = node.exp1._type.elem
         end
-        checkexp(node.exp2, st, errors, types.Integer())
-        -- always try to coerce index to integer
-        node.exp2 = trycoerce(node.exp2, types.Integer(), errors)
-        checkmatch("array indexing", types.Integer(), node.exp2._type, errors, node.exp2.loc)
     end,
 })
 
@@ -576,7 +585,24 @@ checkexp = util.make_visitor({
     end,
 
     ["Ast.ExpInitList"] = function(node, st, errors, context)
-        if (not context) or context._tag == "Type.Array" then
+        local expected = context and context._tag
+        if not expected then
+            -- try to detect from contents
+            local elem = node.fields[1]
+            if elem then
+                if elem.name and type(elem.name) == "table" then
+                    expected = "Type.Map"
+                elseif elem.name and type(elem.name) == "string" then
+                    expected = "Type.Nominal"
+                end
+            end
+            -- fall back to array if not detected otherwise
+            if not expected then
+                expected = "Type.Array"
+            end
+        end
+
+        if expected == "Type.Array" then
             local econtext = context and context.elem
             local etypes = {}
             for _, field in ipairs(node.fields) do
@@ -590,6 +616,9 @@ checkexp = util.make_visitor({
                     table.insert(etypes, exp._type)
                 end
             end
+
+            -- adjust last entry if it's a function call that expands to multiple values
+            -- e.g. { 1, 2, f() }
             local lastfield = node.fields[#node.fields]
             if lastfield and not lastfield.name and lastfield.exp._types and #lastfield.exp._types > 1 then
                 for i = 2, #lastfield.exp._types do
@@ -599,6 +628,7 @@ checkexp = util.make_visitor({
                                 i, lastfield.exp._types[i])))
                 end
             end
+
             local etype = econtext or etypes[1] or types.Integer()
             node._type = types.Array(etype)
             for i, field in ipairs(node.fields) do
@@ -609,7 +639,44 @@ checkexp = util.make_visitor({
                                exp._type, errors, exp.loc)
                 end
             end
-        elseif context._tag == "Type.Nominal" then
+        elseif expected == "Type.Map" then
+            local kcontext = context and context.keys
+            local vcontext = context and context.values
+            local ktypes = {}
+            local vtypes = {}
+            for _, field in ipairs(node.fields) do
+                if type(field.name) == "string" then
+                    checker.typeerror(errors, field.loc,
+                        "initializing field '%s' when expecting map", field.name)
+                    checkexp(field.exp, st, errors)
+                else
+                    local kexp = field.name
+                    checkexp(kexp, st, errors, kcontext)
+                    table.insert(ktypes, kexp._type)
+
+                    local vexp = field.exp
+                    checkexp(vexp, st, errors, vcontext)
+                    table.insert(vtypes, vexp._type)
+                end
+            end
+
+            local ktype = kcontext or ktypes[1]
+            local vtype = vcontext or vtypes[1]
+            node._type = types.Map(ktype, vtype)
+            for i, field in ipairs(node.fields) do
+                if not field.name then
+                    field.name = trycoerce(field.name, ktype, errors)
+                    local kexp = field.name
+                    checkmatch("map key initializer at position " .. i, ktype,
+                               kexp._type, errors, kexp.loc)
+
+                    field.exp = trycoerce(field.exp, vtype, errors)
+                    local vexp = field.exp
+                    checkmatch("map value initializer at position " .. i, vtype,
+                               vexp._type, errors, vexp.loc)
+                end
+            end
+        elseif expected == "Type.Nominal" then
             if not types.registry[context.fqtn] then
                 checker.typeerror(errors, node.loc,
                     "record type '%s' in context of record constructor does not exist",
@@ -663,14 +730,23 @@ checkexp = util.make_visitor({
             end
         else
             local isarray = true
-            local etype = types.Integer()
+            local ismap = false
+            local ktype = types.Integer()
+            local vtype = types.Integer()
             for _, field in ipairs(node.fields) do
                 checkexp(field.exp, st, errors)
-                etype = field.exp._type
+                vtype = field.exp._type
                 isarray = isarray and not field.name
+                if type(field.name) == "table" then
+                    checkexp(field.name, st, errors)
+                    ktype = field.name._type
+                    ismap = true
+                end
             end
-            if isarray then
-                node._type = types.Array(etype)
+            if ismap then
+                node._type = types.Map(ktype, vtype)
+            elseif isarray then
+                node._type = types.Array(vtype)
             else
                 node._type = types.Invalid()
             end

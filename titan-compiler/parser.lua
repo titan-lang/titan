@@ -412,7 +412,11 @@ local grammar = re.compile([[
                           !RCURLY %{ExpFieldList}))*
                         fieldsep?)                          -- produces Field...
 
-    field           <- (P  (NAME ASSIGN)? -> opt exp)       -> Field
+    field           <- (P  (key ASSIGN)? -> opt exp)       -> Field
+
+    key             <- NAME
+                     / LBRACKET exp^ExpExpSuf
+                                RBRACKET^RBracketExpSuf
 
     fieldsep        <- SEMICOLON / COMMA
 
