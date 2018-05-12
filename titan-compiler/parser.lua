@@ -278,6 +278,10 @@ local grammar = re.compile([[
                      / (P  NAME DOT NAME^QualName)               -> TypeQualName
                      / (P  NAME)                                 -> TypeName
                      / (P  LCURLY type^TypeType
+                           COLON
+                           type^TypeType
+                           RCURLY^RCurlyType)                    -> TypeMap
+                     / (P  LCURLY type^TypeType
                            RCURLY^RCurlyType)                    -> TypeArray
 
     typelist        <- ( LPAREN

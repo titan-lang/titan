@@ -98,6 +98,11 @@ typefromnode = util.make_visitor({
         return types.Array(typefromnode(node.subtype, st, errors))
     end,
 
+    ["Ast.TypeMap"] = function(node, st, errors)
+        return types.Map(typefromnode(node.keystype, st, errors),
+                         typefromnode(node.valuestype, st, errors))
+    end,
+
     ["Ast.TypeFunction"] = function(node, st, errors)
         if #node.argtypes ~= 1 then
             error("functions with 0 or 2+ return values are not yet implemented")
