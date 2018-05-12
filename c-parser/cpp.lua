@@ -168,6 +168,7 @@ local states = {
         single_char = true,
         silent = true,
         ["/"] = { silent = true, next = "any" },
+        ["*"] = { silent = true, next = "try_end_block_comment" },
         default = { silent = true, next = "block_comment" },
         continue_line = "block_comment",
     },
