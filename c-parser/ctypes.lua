@@ -342,7 +342,7 @@ local function is_void(param)
     return #param.type == 1 and param.type[1] == "void"
 end
 
-local function get_params(lst, params_src)
+local get_params = typed("TypeList, array -> array, boolean", function(lst, params_src)
     local params = {}
     local vararg = false
 
@@ -362,20 +362,16 @@ local function get_params(lst, params_src)
         end
     end
     return params, vararg
-end
+end)
 
 local register_many = function(register_item_fn, lst, ids, spec)
-    if #ids > 0 then
-        for _, id in ipairs(ids) do
-            local ok, err = register_item_fn(lst, id, spec)
-            if not ok then
-                return false, err
-            end
+    for _, id in ipairs(ids) do
+        local ok, err = register_item_fn(lst, id, spec)
+        if not ok then
+            return false, err
         end
-        return true, nil
-    else
-        return register_item_fn(lst, ids, spec)
     end
+    return true, nil
 end
 
 local register_decl_item = function(lst, id, spec)
@@ -516,7 +512,7 @@ ctypes.register_types = typed("{Decl} -> TypeList?, string?", function(parsed)
             end
         elseif not item.ids then
             -- forward declaration (e.g. "struct foo;")
-        elseif item.ids.decl then
+        elseif item.ids then
             local ok, err = register_decls(lst, item.ids, item.spec)
             if not ok then
                 return nil, err or "failed declaration"

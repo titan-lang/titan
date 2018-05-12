@@ -329,11 +329,11 @@ local function find_file(ctx, filename, mode, is_next)
     return nil, nil, "file not found"
 end
 
-local parse_expression = typed("{string} -> Exp", function(tokens)
+local parse_expression = typed("{string} -> Exp?", function(tokens)
     local text = table.concat(tokens, " ")
     local exp, err, _, _, fragment = c99.match_preprocessing_expression_grammar(text)
     if not exp then
-        print("Error parsing expression: " .. tostring(err) .. ": " .. fragment)
+        print("Error parsing expression: " .. tostring(err) .. ": " .. text .. " AT " .. fragment)
     end
     return exp
 end)
@@ -345,13 +345,14 @@ eval_exp = typed("Ctx, Exp -> number", function(ctx, exp)
     if not exp.op then
         local val = exp[1]
         typed.check(val, "string")
-
         local defined = ctx.defines[val]
         if defined then
             assert(type(defined) == "table")
-            if #defined == 1 and defined[1] ~= val then
-                return eval_exp(ctx, defined[1])
+            local subexp = parse_expression(defined)
+            if not subexp then
+                return 0 -- FIXME
             end
+            return eval_exp(ctx, subexp)
         end
         val = val:gsub("U*L*$", "")
         if val:match("^0[xX]") then
@@ -491,19 +492,19 @@ end)
 
 local macro_expand
 
-local function mark_noloop(noloop, token, n)
+local mark_noloop = typed("table, string, number -> ()", function(noloop, token, n)
     noloop[token] = math.max(noloop[token] or 0, n)
-end
+end)
 
-local function shift_noloop(noloop, n)
+local shift_noloop = typed("table, number -> ()", function(noloop, n)
     for token, v in pairs(noloop) do
         noloop[token] = v + n
     end
-end
+end)
 
-local function valid_noloop(noloop, token, n)
+local valid_noloop = typed("table, string, number -> boolean", function(noloop, token, n)
     return noloop[token] == nil or noloop[token] < n
-end
+end)
 
 local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", function(ctx, tokens, args, linelist, cur)
     local i = 1
@@ -548,6 +549,7 @@ end)
 
 macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(ctx, tokens, linelist, cur, expr_mode)
     local i = 1
+    -- TODO propagate noloop into replace_args. recurse into macro_expand storing a proper offset internally.
     local noloop = {}
     while true do
         ::continue::
@@ -587,7 +589,7 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(
                         table_replace_n_with(tokens, i, n, expansion)
                     end
                     shift_noloop(noloop, nexpansion - n)
-                    --mark_noloop(noloop, token, i + nexpansion - 1)
+                    mark_noloop(noloop, token, i + nexpansion - 1)
                 else
                     i = i + 1
                 end
@@ -611,8 +613,7 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(
     end
 end)
 
-local run_expression = typed("Ctx, {string}, LineList, number -> boolean", function(ctx, tks, linelist, cur)
-    macro_expand(ctx, tks, linelist, cur, true)
+local run_expression = typed("Ctx, {string} -> boolean", function(ctx, tks)
     local exp = parse_expression(tks)
     return eval_exp(ctx, exp) ~= 0
 end)
@@ -663,19 +664,20 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
     for cur, lineitem in ipairs(linelist) do
         local line = lineitem.line
         local tk = lineitem.tk
-
-        debug(filename, ifmode[#ifmode], #ifmode, line)
+        debug(filename, cur, ifmode[#ifmode], #ifmode, line)
 
         if #ifmode == 1 and (tk.directive == "elif" or tk.directive == "else" or tk.directive == "endif") then
             return nil, "unexpected directive " .. tk.directive
         end
 
-        if ifmode[#ifmode] == true then
+        if tk.exp then
+            macro_expand(ctx, tk.exp, linelist, cur, true)
+        end
 
+        if ifmode[#ifmode] == true then
             if tk.directive then
                 debug(tk)
             end
-
             if tk.directive == "define" then
                 local k = tk.id
                 local v = tk.args and tk or tk.repl
@@ -687,7 +689,7 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
             elseif tk.directive == "ifndef" then
                 table.insert(ifmode, (ctx.defines[tk.id] == nil))
             elseif tk.directive == "if" then
-                table.insert(ifmode, run_expression(ctx, tk.exp, linelist, cur))
+                table.insert(ifmode, run_expression(ctx, tk.exp))
             elseif tk.directive == "elif" then
                 ifmode[#ifmode] = "skip"
             elseif tk.directive == "else" then
@@ -717,7 +719,7 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
             elseif tk.directive == "else" then
                 ifmode[#ifmode] = not ifmode[#ifmode]
             elseif tk.directive == "elif" then
-                ifmode[#ifmode] = run_expression(ctx, tk.exp, linelist, cur)
+                ifmode[#ifmode] = run_expression(ctx, tk.exp)
             elseif tk.directive == "endif" then
                 table.remove(ifmode, #ifmode)
             end

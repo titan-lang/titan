@@ -142,7 +142,7 @@ local lexical_rules = [[--lpeg.re
 
 TRACE <- ({} => trace)
 
-EMPTY_TABLE <- ("" => empty_table)
+empty <- ("" => empty_table)
 
 --------------------------------------------------------------------------------
 -- Identifiers
@@ -359,8 +359,8 @@ ddRec <- "[" _ {| {:idx: typeQualifier* assignmentExpression?          :} |} "]"
        / "[" _ {| {:idx: { "static" } _ typeQualifier* assignmentExpression :} |} "]" _ ddRec
        / "[" _ {| {:idx: typeQualifier+ { "static" } _ assignmentExpression :} |} "]" _ ddRec
        / "[" _ {| {:idx: typeQualifier* { "*" } _                           :} |} "]" _ ddRec
-       / "(" _ {:params: parameterTypeList :} ")" _ ddRec
-       / "(" _ {:params: identifierList? :} ")" _ ddRec
+       / "(" _ {:params: parameterTypeList / empty :} ")" _ ddRec
+       / "(" _ {:params: identifierList / empty :} ")" _ ddRec
        / ""
 
 pointer <- {| ({ "*" } _ typeQualifier*)+ |}
@@ -381,7 +381,7 @@ directAbstractDeclarator <- ("(" _ abstractDeclarator ")" _) directAbstractDecla
                           / directAbstractDeclarator2+
 directAbstractDeclarator2 <- "[" _ assignmentExpression? "]" _
                            / "[" _ "*" _ "]" _
-                           / "(" _ parameterTypeList? ")" _
+                           / "(" _ (parameterTypeList / empty) ")" _
 
 typedefName <- IDENTIFIER => is_typedef
 
@@ -472,7 +472,7 @@ primaryExpression <- {| constant |} => prim_exp
                    / "(" _ expression ")" _
 
 peRec <- {| "[" _ {:idx: expression :} "]" _ peRec |}
-       / {| "(" _ {:args: (argumentExpressionList / EMPTY_TABLE) :} ")"  _ peRec |}
+       / {| "(" _ {:args: argumentExpressionList / empty :} ")"  _ peRec |}
        / {| "." _ {:dot: IDENTIFIER :} peRec |}
        / {| "->" _ {:arrow: IDENTIFIER :} peRec |}
        / {| "++" _ peRec |}
@@ -534,8 +534,9 @@ castExpression <- unaryExpression
 local preprocessing_rules = [[--lpeg.re
 
 preprocessingLine <- _ ( "#" _ directive _
-                       / {| preprocessingTokenList? _ |} => join
                        / "#" _ preprocessingTokenList? {| _ |} -- non-directive, ignore
+                       / preprocessingTokenList
+                       / empty
                        )
 
 preprocessingTokenList <- {| (preprocessingToken _)+ |}
@@ -551,18 +552,19 @@ directive <- {| {:directive: "if"      :} S {:exp: preprocessingTokenList :} |}
            / {| {:directive: "define"  :} S {:id: IDENTIFIER :} _ {:repl: replacementList :} |}
            / {| {:directive: "undef"   :} S {:id: IDENTIFIER :} |}
            / {| {:directive: "line"    :} S {:line: preprocessingTokenList :} |}
-           / {| {:directive: "error"   :} S {:error: preprocessingTokenList? :} |}
+           / {| {:directive: "error"   :} S {:error: preprocessingTokenList / empty :} |}
            / {| {:directive: "error"   :} |}
-           / {| {:directive: "pragma"  :} S {:pragma: preprocessingTokenList? :} |}
+           / {| {:directive: "pragma"  :} S {:pragma: preprocessingTokenList / empty :} |}
            / gccDirective
            / ""
 
 gccDirective <- {| {:directive: "include_next" :} S {:exp: headerName :} |}
-              / {| {:directive: "warning" :} S {:exp: preprocessingTokenList? :} |}
+              / {| {:directive: "warning" :} S {:exp: preprocessingTokenList / empty :} |}
 
 defineArgList <- {| { "..." } |}
-               / {| identifierList _ "," _ { "..." } |} => join
-               / identifierList?
+               / {| identifierList _ "," _ {| { "..." } |} |} => join
+               / identifierList
+               / empty
 
 replacementList <- {| (preprocessingToken _)* |}
 
@@ -574,6 +576,7 @@ preprocessingToken <- preprocessingNumber
 
 headerName <- {| {:mode: "<" -> "system" :} { (![%nl>] .)+ } ">" |}
             / {| {:mode: '"' -> "quote" :} { (![%nl"] .)+ } '"' |}
+            / {| IDENTIFIER |} -- macro
 
 preprocessingNumber <- { ("."? digit) ( digit
                                       / [eEpP] [-+]
@@ -624,7 +627,7 @@ primaryExpression <- {| IDENTIFIER |} => prim_exp
                    / "(" _ expression _ ")" _
 
 postfixExpression <- primaryExpression peRec
-peRec <- "(" _ argumentExpressionList? ")" _ peRec
+peRec <- "(" _ (argumentExpressionList / empty) ")" _ peRec
        / ""
 
 argumentExpressionList <- {| expression ("," _ expression )* |}
