@@ -65,6 +65,7 @@ local function getslot(typ --[[:table]], dst --[[:string?]], src --[[:string]])
     elseif typ._tag == "Type.Nil" then tmpl = "$DST 0"
     elseif typ._tag == "Type.String" then tmpl = "$DST tsvalue($SRC)"
     elseif typ._tag == "Type.Array" then tmpl = "$DST hvalue($SRC)"
+    elseif typ._tag == "Type.Map" then tmpl = "$DST hvalue($SRC)"
     elseif typ._tag == "Type.Value" then tmpl = "$DST *($SRC)"
     elseif typ._tag == "Type.Nominal" then tmpl = "$DST clCvalue($SRC)"
     else error("invalid type " .. types.tostring(typ)) end
@@ -197,6 +198,7 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
     elseif typ._tag == "Type.Nil" then tag = "nil"
     elseif typ._tag == "Type.String" then tag = "string"
     elseif typ._tag == "Type.Array" then tag = "table"
+    elseif typ._tag == "Type.Map" then tag = "table"
     elseif typ._tag == "Type.Value" then
         return render([[
             setobj2t(L, &$VAR, $EXP);
@@ -275,6 +277,7 @@ local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:st
     elseif typ._tag == "Type.Nil" then tag = "nil"
     elseif typ._tag == "Type.String" then tag = "string"
     elseif typ._tag == "Type.Array" then tag = "table"
+    elseif typ._tag == "Type.Map" then tag = "table"
     elseif typ._tag == "Type.Value" then
         return render([[
             setobj2t(L, $DST, $SRC);
@@ -321,6 +324,7 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
     elseif typ._tag == "Type.Nil" then tmpl = "setnilvalue($DST); ((void)$SRC);"
     elseif typ._tag == "Type.String" then tmpl = "setsvalue(L, $DST, $SRC);"
     elseif typ._tag == "Type.Array" then tmpl = "sethvalue(L, $DST, $SRC);"
+    elseif typ._tag == "Type.Map" then tmpl = "sethvalue(L, $DST, $SRC);"
     elseif typ._tag == "Type.Value" then tmpl = "setobj2t(L, $DST, &$SRC);"
     elseif typ._tag == "Type.Nominal" then tmpl = "setclCvalue(L, $DST, $SRC);"
     else
@@ -372,6 +376,7 @@ local function ctype(typ --[[:table]])
     elseif typ._tag == "Type.Nil" then return "int"
     elseif typ._tag == "Type.String" then return "TString*"
     elseif typ._tag == "Type.Array" then return "Table*"
+    elseif typ._tag == "Type.Map" then return "Table*"
     elseif typ._tag == "Type.Value" then return "TValue"
     elseif typ._tag == "Type.Nominal" then return "CClosure*"
     elseif typ._tag == "Type.Pointer" then return foreignctype(typ)
@@ -693,6 +698,49 @@ local function codefor(ctx, node)
     })
 end
 
+local function get_table_key(keytype, t, k, slot)
+    local tgetkey
+    if keytype._tag == "Type.String" then
+        tgetkey = [[
+            if (ttype($K) == LUA_TSHRSTR) {
+                $SLOT = (TValue *) luaH_getshortstr($T, tsvalue($K));
+            } else {
+                $SLOT = (TValue *) getgeneric($T, $K);
+            }
+        ]]
+    elseif keytype._tag == "Type.Integer" then
+        tgetkey = [[
+            $SLOT = (TValue *) luaH_getint($T, ivalue($K));
+        ]]
+    elseif keytype._tag == "Type.Float" then
+        tgetkey = [[
+            {
+                lua_Integer _ik;
+                if (luaV_tointeger($K, &_ik, 0)) {
+                    $SLOT = (TValue *) luaH_getint($T, _ik);
+                } else {
+                    $SLOT = (TValue *) getgeneric($T, $K);
+                }
+            }
+        ]]
+    else
+        tgetkey = [[
+            $SLOT = (TValue *) getgeneric($T, $K);
+        ]]
+    end
+    tgetkey = tgetkey .. [[
+        if ($SLOT == luaO_nilobject) {
+            /* create new entry if no previous one */
+            $SLOT = luaH_newkey(L, $T, $K);
+        }
+    ]]
+    return render(tgetkey, {
+        SLOT = slot,
+        T = t,
+        K = k,
+    })
+end
+
 local function codeassignment(ctx, var, cexp, etype)
     local vtag = var._tag
     if vtag == "Ast.VarName" or (vtag == "Ast.VarDot" and var._decl) then
@@ -740,56 +788,105 @@ local function codeassignment(ctx, var, cexp, etype)
             })
         end
     elseif vtag == "Ast.VarBracket" then
-        local arr = var.exp1
-        local idx = var.exp2
-        local castats, caexp = codeexp(ctx, arr)
-        local cistats, ciexp = codeexp(ctx, idx)
-        local cset
-        if types.is_gc(arr._type.elem) then
-            -- write barrier
-            cset = render([[
-                TValue _vv;
-                $SETSLOT
-                setobj2t(L, _slot, &_vv);
-                luaC_barrierback(L, _t, &_vv);
-            ]], {
-                SETSLOT = setwrapped(etype, "&_vv", cexp)
-            })
-        else
-            cset = setslot(etype, "_slot", cexp)
-        end
-        return render([[
-            {
-                $CASTATS
-                $CISTATS
-                Table *_t = $CAEXP;
-                lua_Integer _k = $CIEXP;
-                unsigned int _actual_i = l_castS2U(_k) - 1;
-                unsigned int _asize = _t->sizearray;
-                TValue *_slot;
-                if (_actual_i < _asize) {
-                    _slot = &_t->array[_actual_i];
-                } else if (_actual_i < 2*_asize) {
-                    unsigned int _hsize = sizenode(_t);
-                    luaH_resize(L, _t, 2*_asize, _hsize);
-                    _slot = &_t->array[_actual_i];
-                } else {
-                    _slot = (TValue *)luaH_getint(_t, _k);
-                    TValue _vk; setivalue(&_vk, _k);
-                    if (_slot == luaO_nilobject) {
-                        /* create new entry if no previous one */
-                        _slot = luaH_newkey(L, _t, &_vk);
+        local exp1type = var.exp1._type._tag
+        if exp1type == "Type.Array" then
+            local arr = var.exp1
+            local idx = var.exp2
+            local castats, caexp = codeexp(ctx, arr)
+            local cistats, ciexp = codeexp(ctx, idx)
+            local cset
+            if types.is_gc(arr._type.elem) then
+                -- write barrier
+                cset = render([[
+                    TValue _vv;
+                    $SETSLOT
+                    setobj2t(L, _slot, &_vv);
+                    luaC_barrierback(L, _t, &_vv);
+                ]], {
+                    SETSLOT = setwrapped(etype, "&_vv", cexp)
+                })
+            else
+                cset = setslot(etype, "_slot", cexp)
+            end
+            return render([[
+                {
+                    $CASTATS
+                    $CISTATS
+                    Table *_t = $CAEXP;
+                    lua_Integer _k = $CIEXP;
+                    unsigned int _actual_i = l_castS2U(_k) - 1;
+                    unsigned int _asize = _t->sizearray;
+                    TValue *_slot;
+                    if (_actual_i < _asize) {
+                        _slot = &_t->array[_actual_i];
+                    } else if (_actual_i < 2*_asize) {
+                        unsigned int _hsize = sizenode(_t);
+                        luaH_resize(L, _t, 2*_asize, _hsize);
+                        _slot = &_t->array[_actual_i];
+                    } else {
+                        _slot = (TValue *)luaH_getint(_t, _k);
+                        TValue _vk; setivalue(&_vk, _k);
+                        if (_slot == luaO_nilobject) {
+                            /* create new entry if no previous one */
+                            _slot = luaH_newkey(L, _t, &_vk);
+                        }
                     }
+                    $CSET
                 }
-                $CSET
-            }
-        ]], {
-            CASTATS = castats,
-            CISTATS = cistats,
-            CAEXP = caexp,
-            CIEXP = ciexp,
-            CSET = cset
-        })
+            ]], {
+                CASTATS = castats,
+                CISTATS = cistats,
+                CAEXP = caexp,
+                CIEXP = ciexp,
+                CSET = cset
+            })
+        elseif exp1type == "Type.Map" then
+            local map = var.exp1
+            local key = var.exp2
+            local cmstats, cmexp = codeexp(ctx, map)
+            local ckstats, ckexp = codeexp(ctx, key)
+            local cset
+            if types.is_gc(map._type.values) then
+                -- write barrier
+                cset = render([[
+                    TValue _vv;
+                    $SETSLOT
+                    setobj2t(L, _slot, &_vv);
+                    luaC_barrierback(L, _t, &_vv);
+                ]], {
+                    SETSLOT = setwrapped(etype, "&_vv", cexp)
+                })
+            else
+                cset = setslot(etype, "_slot", cexp)
+            end
+
+            local ctmpk, tmpkname, tmpkslot = newtmp(ctx, key._type, true)
+
+            return render([[
+                {
+                    $CMSTATS
+                    Table *_t = $CMEXP;
+                    $CKSTATS
+                    $CTMPK
+                    $TMPKNAME = $CKEXP;
+                    $SETSLOTK
+
+                    TValue *_slot;
+                    $CTABLEKEY
+                    $CSET
+                }
+            ]], {
+                CMSTATS = cmstats,
+                CMEXP = cmexp,
+                CKSTATS = ckstats,
+                CTMPK = ctmpk,
+                TMPKNAME = tmpkname,
+                CKEXP = ckexp,
+                SETSLOTK = setwrapped(key._type, tmpkslot, tmpkname),
+                CTABLEKEY = get_table_key(key._type, "_t", tmpkslot, "_slot"),
+                CSET = cset,
+            })
+        end
     else
         error("invalid tag for lvalue of assignment: " .. vtag)
     end
@@ -1257,6 +1354,92 @@ local function codearray(ctx, node, target)
     return table.concat(stats, "\n"), tmpname
 end
 
+local function codemap(ctx, node, target)
+    local stats = {}
+    local cinit, ctmp, tmpname, tmpslot
+    if target then
+        ctmp, tmpname, tmpslot = "", target._cvar, target._slot
+    else
+        ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
+    end
+    cinit = render([[
+        $CTMP
+        $TMPNAME = luaH_new(L);
+        sethvalue(L, $TMPSLOT, $TMPNAME);
+    ]], {
+        CTMP = ctmp,
+        TMPNAME = tmpname,
+        TMPSLOT = tmpslot,
+    })
+    table.insert(stats, cinit)
+    local slots = {}
+    for _, field in ipairs(node.fields) do
+        local kexp = field.name
+        local ckstats, ckexp = codeexp(ctx, kexp)
+        local ctmpk, tmpkname, tmpkslot = newtmp(ctx, node._type.keys, true)
+
+        local vexp = field.exp
+        local cvstats, cvexp = codeexp(ctx, vexp)
+        local ctmpv, tmpvname, tmpvslot = newtmp(ctx, node._type.values, true)
+
+        local code = render([[
+            $CKSTATS
+            $CTMPK
+            $TMPKNAME = $CKEXP;
+            $SETSLOTK
+
+            $CVSTATS
+            $CTMPV
+            $TMPVNAME = $CVEXP;
+            $SETSLOTV
+        ]], {
+            CKSTATS = ckstats,
+            CTMPK = ctmpk,
+            TMPKNAME = tmpkname,
+            CKEXP = ckexp,
+            SETSLOTK = setwrapped(node._type.keys, tmpkslot, tmpkname),
+
+            CVSTATS = cvstats,
+            CTMPV = ctmpv,
+            TMPVNAME = tmpvname,
+            CVEXP = cvexp,
+            SETSLOTV = setwrapped(node._type.values, tmpvslot, tmpvname),
+        })
+
+        table.insert(slots, { k = tmpkslot, v = tmpvslot })
+        table.insert(stats, code)
+    end
+    for _, slot in ipairs(slots) do
+        table.insert(stats, render([[
+            {
+                TValue *_slot;
+                $CTABLEKEY
+                setobj2t(L, _slot, $SLOT);
+            }
+        ]], {
+            CTABLEKEY = get_table_key(node._type.keys, tmpname, slot.k, "_slot"),
+            SLOT = slot.v,
+        }))
+        if types.is_gc(node._type.keys) then
+            table.insert(stats, render([[
+                luaC_barrierback(L, $TMPNAME, $SLOTK);
+            ]], {
+                TMPNAME = tmpname,
+                SLOTK = slot.k,
+            }))
+        end
+        if types.is_gc(node._type.values) then
+            table.insert(stats, render([[
+                luaC_barrierback(L, $TMPNAME, $SLOTV);
+            ]], {
+                TMPNAME = tmpname,
+                SLOTV = slot.v,
+            }))
+        end
+    end
+    return table.concat(stats, "\n"), tmpname
+end
+
 local function coderecord(ctx, node, target)
     local stats = {}
     local cinit, ctmp, tmpname, tmpslot
@@ -1629,6 +1812,69 @@ local function codeindexarray(ctx, node, iscondition)
     return stats, tmpname
 end
 
+local function codeindexmap(ctx, node, iscondition)
+    local cmstats, cmexp = codeexp(ctx, node.exp1)
+    local ckstats, ckexp = codeexp(ctx, node.exp2)
+    local typ = node._type
+    local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
+    local cset = ""
+    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc)
+    if types.is_gc(typ) then
+        cset = setslot(typ, tmpslot, tmpname)
+    end
+    local cfinish
+    if iscondition then
+        cfinish = render([[
+          if(ttisnil(_s)) {
+            $TMPNAME = 0;
+          } else {
+            $CCHECK
+            $CSET
+          }
+        ]], {
+            TMPNAME = tmpname,
+            CCHECK = ccheck,
+            CSET = cset,
+        })
+    else
+        cfinish = render([[
+            $CCHECK
+            $CSET
+        ]], {
+            CCHECK = ccheck,
+            CSET = cset,
+        })
+    end
+    local ktyp = node.exp2._type
+    local ctmpk, tmpkname, tmpkslot = newtmp(ctx, ktyp, true)
+    local stats = render([[
+        $CTMP
+        {
+            $CMSTATS
+            $CKSTATS
+            Table *_t = $CMEXP;
+            $CTMPK
+            $TMPKNAME = $CKEXP;
+            $SETSLOTK
+            const TValue* _s;
+            $CTABLEKEY
+
+            $CFINISH
+    }]], {
+        CTMP = ctmp,
+        CMSTATS = cmstats,
+        CKSTATS = ckstats,
+        CMEXP = cmexp,
+        CTMPK = ctmpk,
+        TMPKNAME = tmpkname,
+        CKEXP = ckexp,
+        SETSLOTK = setwrapped(ktyp, tmpkslot, tmpkname),
+        CTABLEKEY = get_table_key(typ, "_t", tmpkslot, "_s"),
+        CFINISH = cfinish
+    })
+    return stats, tmpname
+end
+
 -- Generate code for expression 'node'
 -- 'iscondition' is 'true' if expression is used not for value but for
 --    controlling conditinal execution
@@ -1643,7 +1889,12 @@ function codeexp(ctx, node, iscondition, target)
     elseif tag == "Ast.VarName" or (tag == "Ast.VarDot" and node._decl) then
         return codevar(ctx, node)
     elseif tag == "Ast.VarBracket" then
-        return codeindexarray(ctx, node, iscondition)
+        if node.exp1._type._tag == "Type.Array" then
+            return codeindexarray(ctx, node, iscondition)
+        elseif node.exp1._type._tag == "Type.Map" then
+            return codeindexmap(ctx, node, iscondition)
+        end
+        error("impossible var bracket")
     elseif tag == "Ast.ExpNil" or
                 tag == "Ast.ExpBool" or
                 tag == "Ast.ExpInteger" or
@@ -1653,9 +1904,12 @@ function codeexp(ctx, node, iscondition, target)
     elseif tag == "Ast.ExpInitList" then
         if node._type._tag == "Type.Nominal" then
             return coderecord(ctx, node, target)
+        elseif node._type._tag == "Type.Map" then
+            return codemap(ctx, node, target)
         else
             return codearray(ctx, node, target)
         end
+        error("impossible init list")
     elseif tag == "Ast.ExpVar" then
         return codeexp(ctx, node.var, iscondition)
     elseif tag == "Ast.ExpUnop" then
@@ -2111,6 +2365,8 @@ inline static TString* _float2str (lua_State *L, lua_Number f) {
     len = lua_number2str(_cvtbuff, sizeof(_cvtbuff), f);
     return luaS_newlstr(L, _cvtbuff, len);
 }
+
+const TValue* getgeneric(Table* t, const TValue* key);
 
 $INCLUDES
 

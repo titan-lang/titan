@@ -538,7 +538,7 @@ const TValue *luaH_getshortstr (Table *t, TString *key) {
 ** "Generic" get version. (Not that generic: not valid for integers,
 ** which may be in array part, nor for floats with integral values.)
 */
-static const TValue *getgeneric (Table *t, const TValue *key) {
+const TValue *getgeneric (Table *t, const TValue *key) {
   Node *n = mainposition(t, key);
   for (;;) {  /* check whether 'key' is somewhere in the chain */
     if (luaV_rawequalobj(gkey(n), key))

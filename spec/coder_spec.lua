@@ -1964,7 +1964,157 @@ describe("Titan code generator", function()
                 assert(0 == test.f(0xdead, math.mininteger))
             ]])
         end)
-end)
+    end)
+
+    describe("#maps", function()
+
+        local types = {
+            { t = "boolean", v1 = "true", v2 = "false" },
+            { t = "integer", v1 = "1984", v2 = "2112" },
+            { t = "float", v1 = "2.5", v2 = "3.14" },
+            { t = "string", v1 = "'hello'", v2 = "'world'" },
+            { t = "{integer}", l1 = "{10, 20}", l2 = "{}" },
+            { t = "{string:integer}", l1 = "{x = 10, y = 20}", l2 = "{}"  },
+--            { t = "Point", l1 = "titan_test.Point.new(10, 20)", l2 = "titan_test.Point.new(30, 40)" },
+        }
+
+        for _, t1 in ipairs(types) do
+            for _, t2 in ipairs(types) do
+                local map = "{" .. t1.t .. " : " .. t2.t .. "}"
+
+                it("declares a map " .. map, function()
+                    local code = util.render([[
+--                        record Point
+--                            x: integer
+--                            y: integer
+--                        end
+                        function new_map(k1: $TK, k2: $TK, v1: $TV, v2: $TV): $MAP
+                            local m = { [$K1] = $V1, [$K2] = $V2 }
+                            return m
+                        end
+                    ]], {
+                        MAP = map,
+                        K1 = t1.v1 or "k1",
+                        K2 = t1.v2 or "k2",
+                        V1 = t2.v1 or "v1",
+                        V2 = t2.v2 or "v2",
+                        TK = t1.t,
+                        TV = t2.t,
+                    })
+                    local ast, err = parse(code)
+                    assert.truthy(ast, err)
+                    local ok, err = checker.check("test", ast, code, "test.titan")
+                    assert.equal(0, #err, table.concat(err, "\n"))
+                    local ok, err = driver.compile("titan_test", ast)
+                    assert.truthy(ok, err)
+                    local ok, err = call("titan_test", util.render([[
+                        local k1, k2, v1, v2 = $LK1, $LK2, $LV1, $LV2
+                        local m = titan_test.new_map(k1, k2, v1, v2)
+                        assert(m[$K1] == $V1 and m[$K2] == $V2)
+                    ]], {
+                        K1 = t1.v1 or "k1",
+                        K2 = t1.v2 or "k2",
+                        V1 = t2.v1 or "v1",
+                        V2 = t2.v2 or "v2",
+                        LK1 = t1.l1 or t1.v1,
+                        LK2 = t1.l2 or t1.v2,
+                        LV1 = t2.l1 or t2.v1,
+                        LV2 = t2.l2 or t2.v2,
+                    }))
+                    assert.truthy(ok, err)
+                end)
+
+                it("assigns to a map " .. map, function()
+                    local code = util.render([[
+--                        record Point
+--                            x: integer
+--                            y: integer
+--                        end
+                        function new_map(k1: $TK, k2: $TK, v1: $TV, v2: $TV): $MAP
+                            local m: $MAP = {}
+                            m[$K1] = $V1
+                            m[$K2] = $V2
+                            return m
+                        end
+                    ]], {
+                        MAP = map,
+                        K1 = t1.v1 or "k1",
+                        K2 = t1.v2 or "k2",
+                        V1 = t2.v1 or "v1",
+                        V2 = t2.v2 or "v2",
+                        TK = t1.t,
+                        TV = t2.t,
+                    })
+                    local ast, err = parse(code)
+                    assert.truthy(ast, err)
+                    local ok, err = checker.check("test", ast, code, "test.titan")
+                    assert.equal(0, #err, table.concat(err, "\n"))
+                    local ok, err = driver.compile("titan_test", ast)
+                    assert.truthy(ok, err)
+                    local ok, err = call("titan_test", util.render([[
+                        local k1, k2, v1, v2 = $LK1, $LK2, $LV1, $LV2
+                        local m = titan_test.new_map(k1, k2, v1, v2)
+                        assert(m[$K1] == $V1 and m[$K2] == $V2)
+                    ]], {
+                        K1 = t1.v1 or "k1",
+                        K2 = t1.v2 or "k2",
+                        V1 = t2.v1 or "v1",
+                        V2 = t2.v2 or "v2",
+                        LK1 = t1.l1 or t1.v1,
+                        LK2 = t1.l2 or t1.v2,
+                        LV1 = t2.l1 or t2.v1,
+                        LV2 = t2.l2 or t2.v2,
+                    }))
+                    assert.truthy(ok, err)
+                end)
+
+                it("indexes a map " .. map, function()
+                    local code = util.render([[
+--                        record Point
+--                            x: integer
+--                            y: integer
+--                        end
+                        function get_map_value(k1: $TK, k2: $TK, v1: $TV, v2: $TV): $TV
+                            local m: $MAP = {}
+                            m[$K1] = $V1
+                            m[$K2] = $V2
+                            return m[$K1]
+                        end
+                    ]], {
+                        MAP = map,
+                        K1 = t1.v1 or "k1",
+                        K2 = t1.v2 or "k2",
+                        V1 = t2.v1 or "v1",
+                        V2 = t2.v2 or "v2",
+                        TK = t1.t,
+                        TV = t2.t,
+                    })
+                    local ast, err = parse(code)
+                    assert.truthy(ast, err)
+                    local ok, err = checker.check("test", ast, code, "test.titan")
+                    assert.equal(0, #err, table.concat(err, "\n"))
+                    local ok, err = driver.compile("titan_test", ast)
+                    assert.truthy(ok, err)
+                    local ok, err = call("titan_test", "v = titan_test.get_map_value(); assert(v == 1984)")
+                    local ok, err = call("titan_test", util.render([[
+                        local k1, k2, v1, v2 = $LK1, $LK2, $LV1, $LV2
+                        local v = titan_test.get_map_value(k1, k2, v1, v2)
+                        assert(v == $V1)
+                    ]], {
+                        K1 = t1.v1 or "k1",
+                        K2 = t1.v2 or "k2",
+                        V1 = t2.v1 or "v1",
+                        V2 = t2.v2 or "v2",
+                        LK1 = t1.l1 or t1.v1,
+                        LK2 = t1.l2 or t1.v2,
+                        LV1 = t2.l1 or t2.v1,
+                        LV2 = t2.l2 or t2.v2,
+                    }))
+                    assert.truthy(ok, err)
+                end)
+            end
+        end
+    end)
 
 end)
 
