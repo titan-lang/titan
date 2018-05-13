@@ -122,7 +122,7 @@ end
 
 function driver.compile(modname, ast, sourcef, link, is_static, verbose)
     sourcef = sourcef or modname:gsub("[.]", "/") .. ".titan"
-    local code = coder.generate(modname, ast)
+    local code = coder.generate(modname, ast, not is_static)
     code = pretty.reindent_c(code)
     local filename = sourcef:gsub("[.]titan$", "") .. ".c"
 

@@ -384,7 +384,8 @@ local function initval(typ --[[:table]])
     else return "0" end
 end
 
-local function funpointer(fname, ftype)
+
+local function function_sig(fname, ftype, is_pointer)
     local params = { "lua_State *L" }
     if ftype._tag == "Type.Method" then
         table.insert(params, "CClosure*")
@@ -396,15 +397,14 @@ local function funpointer(fname, ftype)
         table.insert(params, ctype(ftype.rettypes[i]) .. "*")
     end
     local rettype = ftype.rettypes[1]
-    return render("$RETTYPE (*$FNAME)($PARAMS)", {
+    local template = is_pointer
+                     and "$RETTYPE (*$FNAME)($PARAMS)"
+                     or  "$RETTYPE $FNAME($PARAMS)"
+    return render(template, {
         RETTYPE = ctype(rettype),
         FNAME = fname,
         PARAMS = table.concat(params, ", ")
     })
-end
-
-local function externalsig(fname, ftype)
-    return "static " .. funpointer(fname, ftype) .. ";"
 end
 
 -- creates a new code generation context for a function
@@ -2289,7 +2289,54 @@ local function prefix(initmods, mprefixes, modname)
     return mprefix
 end
 
-function coder.generate(modname, ast)
+local function init_data_from_other_modules(tlcontext, includes, initmods, mprefixes, is_dynamic)
+    -- When linking dynamically, we need to make 'static' variables and load the values
+    -- from the other module's dynamic library
+    -- When linking statically, we only need to make 'extern' forward declarations.
+    local storage_class = is_dynamic and "static" or "extern"
+
+    for name, var in pairs(tlcontext.variables) do
+        table.insert(includes, storage_class .. " TValue *" .. var.slot .. ";")
+        if is_dynamic then
+            table.insert(initmods, render([[
+                $SLOT = *((TValue**)(loadsym(L, $HANDLE, "$SLOT")));
+            ]], { SLOT = var.slot, HANDLE = mprefixes[var.module] .. "handle" }))
+        end
+    end
+
+    for name, func in pairs(tlcontext.functions) do
+        local fname = func.mangled
+        table.insert(includes, storage_class .. " " .. function_sig(fname, func.type, is_dynamic) .. ";")
+        if is_dynamic then
+            local mprefix = prefix(initmods, mprefixes, func.module)
+            table.insert(initmods, render([[
+                $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
+            ]], { NAME = fname, TYPE = function_sig("", func.type, true), HANDLE = mprefix .. "handle" }))
+        end
+    end
+
+    for name, tag in pairs(tlcontext.tags) do
+        table.insert(includes, storage_class .. " ptrdiff_t " .. tag.mangled .. ";")
+        if is_dynamic then
+            local mprefix = prefix(initmods, mprefixes, tag.module)
+            table.insert(initmods, render([[
+                $TAG = ((ptrdiff_t)(loadsym(L, $HANDLE, "$TAG")));
+            ]], { TAG = tag.mangled, HANDLE = mprefix .. "handle" }))
+        end
+    end
+
+    for name, meta in pairs(tlcontext.metatables) do
+        table.insert(includes, storage_class .. " Table *" .. meta.mangled .. ";")
+        if is_dynamic then
+            local mprefix = prefix(initmods, mprefixes, meta.module)
+            table.insert(initmods, render([[
+                $META = *((Table**)(loadsym(L, $HANDLE, "$META")));
+            ]], { META = meta.mangled, HANDLE = mprefix .. "handle" }))
+        end
+    end
+end
+
+function coder.generate(modname, ast, is_dynamic)
     local tlcontext = {
         module = modname,
         prefix = mangle_qn(modname) .. "_",
@@ -2316,7 +2363,9 @@ function coder.generate(modname, ast)
         if not node._ignore then
             local tag = node._tag
             if tag == "Ast.TopLevelImport" then
-                local mprefix = prefix(initmods, mprefixes, node.modname)
+                if is_dynamic then
+                    prefix(initmods, mprefixes, node.modname)
+                end
                 for name, member in pairs(node._type.members) do
                     if not member._slot and member.type._tag ~= "Type.Function"
                       and member.type._tag ~= "Type.Record" then
@@ -2672,37 +2721,7 @@ function coder.generate(modname, ast)
         TYPES = string.format("%q", types.serialize(ast._type))
     }))
 
-    for name, var in pairs(tlcontext.variables) do
-        table.insert(includes, "static TValue *" .. var.slot .. ";")
-        table.insert(initmods, render([[
-            $SLOT = *((TValue**)(loadsym(L, $HANDLE, "$SLOT")));
-        ]], { SLOT = var.slot, HANDLE = mprefixes[var.module] .. "handle" }))
-    end
-
-    for name, func in pairs(tlcontext.functions) do
-        local mprefix = prefix(initmods, mprefixes, func.module)
-        local fname = func.mangled
-        table.insert(includes, externalsig(fname, func.type))
-        table.insert(initmods, render([[
-            $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
-        ]], { NAME = fname, TYPE = funpointer("", func.type), HANDLE = mprefix .. "handle" }))
-    end
-
-    for name, tag in pairs(tlcontext.tags) do
-        local mprefix = prefix(initmods, mprefixes, tag.module)
-        table.insert(includes, "static ptrdiff_t " .. tag.mangled .. ";")
-        table.insert(initmods, render([[
-            $TAG = ((ptrdiff_t)(loadsym(L, $HANDLE, "$TAG")));
-        ]], { TAG = tag.mangled, HANDLE = mprefix .. "handle" }))
-    end
-
-    for name, meta in pairs(tlcontext.metatables) do
-        local mprefix = prefix(initmods, mprefixes, meta.module)
-        table.insert(includes, "static Table *" .. meta.mangled .. ";")
-        table.insert(initmods, render([[
-            $META = *((Table**)(loadsym(L, $HANDLE, "$META")));
-        ]], { META = meta.mangled, HANDLE = mprefix .. "handle" }))
-    end
+    init_data_from_other_modules(tlcontext, includes, initmods, mprefixes, is_dynamic)
 
     table.insert(code, render(init, {
         INITNAME = tlcontext.prefix .. 'init',
@@ -2722,7 +2741,7 @@ function coder.generate(modname, ast)
         INCLUDES = table.concat(includes, "\n"),
         SIGS = table.concat(sigs, "\n"),
         FOREIGNIMPORTS = table.concat(foreignimports, "\n"),
-        LIBOPEN = #includes > 0 and libopen or ""
+        LIBOPEN = (#includes > 0 and is_dynamic) and libopen or ""
     })
 
     return preamble .. "\n\n" .. table.concat(code, "\n\n")

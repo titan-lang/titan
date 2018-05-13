@@ -4,22 +4,14 @@
 -- Run with:
 --    ./examples/sdl_demo
 
-local stdio = foreign import "stdio.h"
 local SDL = foreign import "SDL2/SDL.h"
-local stdlib = foreign import "stdlib.h"
 
-local function quit(sdlquit: boolean, msg: string)
-    stdio.printf(msg .. ": %s\n", SDL.SDL_GetError())
-    if sdlquit then
-        SDL.SDL_Quit()
-    end
-    stdlib.exit(1)
-end
+local sdl_quit = import "examples.sdl_quit"
 
 function main(args: {string}): integer
 
     if SDL.SDL_Init(SDL.SDL_INIT_VIDEO) ~= 0 then
-        quit(false, "SDL_init error")
+        sdl_quit.quit(false, "SDL_init error")
     end
 
     local SDL_WINDOW_SHOWN = 0x04
@@ -30,7 +22,7 @@ function main(args: {string}): integer
     end
     local win = SDL.SDL_CreateWindow(title, 100, 100, 640, 480, SDL_WINDOW_SHOWN)
     if not win then
-        quit(true, "SDL_CreateWindow error")
+        sdl_quit.quit(true, "SDL_CreateWindow error")
     end
 
     local SDL_RENDERER_ACCELERATED = 0x02
@@ -39,7 +31,7 @@ function main(args: {string}): integer
     local ren = SDL.SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC)
     if not ren then
         SDL.SDL_DestroyWindow(win)
-        quit(true, "SDL_CreateRenderer error")
+        sdl_quit.quit(true, "SDL_CreateRenderer error")
     end
 
     local bmp = SDL.SDL_LoadBMP_RW(SDL.SDL_RWFromFile("examples/hello.bmp", "rb"), 1)
@@ -47,7 +39,7 @@ function main(args: {string}): integer
     if not bmp then
         SDL.SDL_DestroyRenderer(ren)
         SDL.SDL_DestroyWindow(win)
-        quit(true, "SDL_LoadBMP error")
+        sdl_quit.quit(true, "SDL_LoadBMP error")
     end
 
     local tex = SDL.SDL_CreateTextureFromSurface(ren, bmp)
@@ -55,7 +47,7 @@ function main(args: {string}): integer
     if not tex then
         SDL.SDL_DestroyRenderer(ren)
         SDL.SDL_DestroyWindow(win)
-        quit(true, "SDL_CreateTextureFromSurface error")
+        sdl_quit.quit(true, "SDL_CreateTextureFromSurface error")
     end
 
     for i = 1, 3 do
