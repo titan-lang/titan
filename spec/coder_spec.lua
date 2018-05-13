@@ -1968,7 +1968,7 @@ describe("Titan code generator", function()
 
     describe("#maps", function()
 
-        it("Lua can break a map", function ()
+        it("adding a value of the wrong type in Lua can trigger a runtime error later in Titan", function ()
             local code = [[
                 function f(m: {string:integer}): {string:integer}
                     m["foo"] = m["foo"] + 10
