@@ -1968,18 +1968,48 @@ describe("Titan code generator", function()
 
     describe("#maps", function()
 
-        local types = {
+        -- FIXME
+        pending("Lua can break a map", function ()
+            local code = [[
+                function f(m: {string:integer}): {string:integer}
+                    m["foo"] = m["foo"] + 10
+                    return m
+                end
+            ]]
+            local ast, err = parse(code)
+            assert.truthy(ast, err)
+            local ok, err = checker.check("test", ast, code, "test.titan")
+            assert.equal(0, #err, table.concat(err, "\n"))
+            local ok, err = driver.compile("titan_test", ast)
+            assert.truthy(ok, err)
+            local ok, err = call("titan_test", [[
+                local m = { foo = 10 }
+                local m2 = titan_test.f(m)
+                assert(m2 == m)
+                assert(m.foo == 20)
+                titan_test.f(m)              -- FIXME this is failing here, why?
+                assert(m.foo == 30)
+                m.foo = "wat"
+                titan_test.f(m) -- supposed to give an error here
+            ]])
+            assert.falsy(ok)
+            assert.match("expected integer but found string", err)
+        end)
+
+        local test_types = {
+            { t = "value", l1 = "'hello'", l2 = "123" },
             { t = "boolean", v1 = "true", v2 = "false" },
             { t = "integer", v1 = "1984", v2 = "2112" },
             { t = "float", v1 = "2.5", v2 = "3.14" },
             { t = "string", v1 = "'hello'", v2 = "'world'" },
             { t = "{integer}", l1 = "{10, 20}", l2 = "{}" },
             { t = "{string:integer}", l1 = "{x = 10, y = 20}", l2 = "{}"  },
+--FIXME record declarations are failing, am I doing it right?
 --            { t = "Point", l1 = "titan_test.Point.new(10, 20)", l2 = "titan_test.Point.new(30, 40)" },
         }
 
-        for _, t1 in ipairs(types) do
-            for _, t2 in ipairs(types) do
+        for _, t1 in ipairs(test_types) do
+            for _, t2 in ipairs(test_types) do
                 local map = "{" .. t1.t .. " : " .. t2.t .. "}"
 
                 it("declares a map " .. map, function()
