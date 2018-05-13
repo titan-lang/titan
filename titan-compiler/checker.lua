@@ -482,27 +482,27 @@ checkvar = util.make_visitor({
 
     ["Ast.VarBracket"] = function(node, st, errors, context)
         checkexp(node.exp1, st, errors) -- FIXME check this: checkexp(node.exp1, st, errors, context and types.Array(context))
+        local keystype, term
         if node.exp1._type._tag == "Type.Array" then
             node._type = node.exp1._type.elem
-
-            checkexp(node.exp2, st, errors, types.Integer())
-            -- always try to coerce index to integer
-            node.exp2 = trycoerce(node.exp2, types.Integer(), errors)
-            checkmatch("array indexing", types.Integer(), node.exp2._type, errors, node.exp2.loc)
-
+            keystype = types.Integer()
+            term = "array indexing"
         elseif node.exp1._type._tag == "Type.Map" then
             node._type = node.exp1._type.values
-
-            local keystype = node.exp1._type.keys
-            checkexp(node.exp2, st, errors, keystype)
-            checkmatch("map indexing", keystype, node.exp2._type, errors, node.exp2.loc)
-
+            keystype = node.exp1._type.keys
+            term = "map indexing"
         else
             checker.typeerror(errors, node.exp1.loc,
                 "expression in indexing is not an array or map but %s",
                 types.tostring(node.exp1._type))
             node._type = types.Invalid()
+            return
         end
+
+        checkexp(node.exp2, st, errors, keystype)
+        -- always try to coerce index key to key type
+        node.exp2 = trycoerce(node.exp2, keystype, errors)
+        checkmatch(term, keystype, node.exp2._type, errors, node.exp2.loc)
     end,
 })
 
