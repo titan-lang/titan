@@ -1968,8 +1968,7 @@ describe("Titan code generator", function()
 
     describe("#maps", function()
 
-        -- FIXME
-        pending("Lua can break a map", function ()
+        it("Lua can break a map", function ()
             local code = [[
                 function f(m: {string:integer}): {string:integer}
                     m["foo"] = m["foo"] + 10
@@ -1987,9 +1986,9 @@ describe("Titan code generator", function()
                 local m2 = titan_test.f(m)
                 assert(m2 == m)
                 assert(m.foo == 20)
-                titan_test.f(m)              -- FIXME this is failing here, why?
+                titan_test.f(m)
                 assert(m.foo == 30)
-                m.foo = "wat"
+                m.foo = 'wat'
                 titan_test.f(m) -- supposed to give an error here
             ]])
             assert.falsy(ok)
@@ -2004,8 +2003,7 @@ describe("Titan code generator", function()
             { t = "string", v1 = "'hello'", v2 = "'world'" },
             { t = "{integer}", l1 = "{10, 20}", l2 = "{}" },
             { t = "{string:integer}", l1 = "{x = 10, y = 20}", l2 = "{}"  },
---FIXME record declarations are failing, am I doing it right?
---            { t = "Point", l1 = "titan_test.Point.new(10, 20)", l2 = "titan_test.Point.new(30, 40)" },
+            { t = "Point", l1 = "titan_test.Point.new(10, 20)", l2 = "titan_test.Point.new(30, 40)" },
         }
 
         for _, t1 in ipairs(test_types) do
@@ -2014,10 +2012,10 @@ describe("Titan code generator", function()
 
                 it("declares a map " .. map, function()
                     local code = util.render([[
---                        record Point
---                            x: integer
---                            y: integer
---                        end
+                        record Point
+                            x: integer
+                            y: integer
+                        end
                         function new_map(k1: $TK, k2: $TK, v1: $TV, v2: $TV): $MAP
                             local m = { [$K1] = $V1, [$K2] = $V2 }
                             return m
@@ -2033,7 +2031,7 @@ describe("Titan code generator", function()
                     })
                     local ast, err = parse(code)
                     assert.truthy(ast, err)
-                    local ok, err = checker.check("test", ast, code, "test.titan")
+                    local ok, err = checker.check("titan_test", ast, code, "test.titan")
                     assert.equal(0, #err, table.concat(err, "\n"))
                     local ok, err = driver.compile("titan_test", ast)
                     assert.truthy(ok, err)
@@ -2056,10 +2054,10 @@ describe("Titan code generator", function()
 
                 it("assigns to a map " .. map, function()
                     local code = util.render([[
---                        record Point
---                            x: integer
---                            y: integer
---                        end
+                        record Point
+                            x: integer
+                            y: integer
+                        end
                         function new_map(k1: $TK, k2: $TK, v1: $TV, v2: $TV): $MAP
                             local m: $MAP = {}
                             m[$K1] = $V1
@@ -2077,7 +2075,7 @@ describe("Titan code generator", function()
                     })
                     local ast, err = parse(code)
                     assert.truthy(ast, err)
-                    local ok, err = checker.check("test", ast, code, "test.titan")
+                    local ok, err = checker.check("titan_test", ast, code, "test.titan")
                     assert.equal(0, #err, table.concat(err, "\n"))
                     local ok, err = driver.compile("titan_test", ast)
                     assert.truthy(ok, err)
@@ -2100,10 +2098,10 @@ describe("Titan code generator", function()
 
                 it("indexes a map " .. map, function()
                     local code = util.render([[
---                        record Point
---                            x: integer
---                            y: integer
---                        end
+                        record Point
+                            x: integer
+                            y: integer
+                        end
                         function get_map_value(k1: $TK, k2: $TK, v1: $TV, v2: $TV): $TV
                             local m: $MAP = {}
                             m[$K1] = $V1
@@ -2121,7 +2119,7 @@ describe("Titan code generator", function()
                     })
                     local ast, err = parse(code)
                     assert.truthy(ast, err)
-                    local ok, err = checker.check("test", ast, code, "test.titan")
+                    local ok, err = checker.check("titan_test", ast, code, "test.titan")
                     assert.equal(0, #err, table.concat(err, "\n"))
                     local ok, err = driver.compile("titan_test", ast)
                     assert.truthy(ok, err)

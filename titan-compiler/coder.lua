@@ -698,7 +698,7 @@ local function codefor(ctx, node)
     })
 end
 
-local function get_table_key(keytype, t, k, slot)
+local function get_table_key(keytype, t, k, slot, newkey)
     local tgetkey
     if keytype._tag == "Type.String" then
         tgetkey = [[
@@ -728,12 +728,14 @@ local function get_table_key(keytype, t, k, slot)
             $SLOT = (TValue *) getgeneric($T, $K);
         ]]
     end
-    tgetkey = tgetkey .. [[
-        if ($SLOT == luaO_nilobject) {
-            /* create new entry if no previous one */
-            $SLOT = luaH_newkey(L, $T, $K);
-        }
-    ]]
+    if newkey then
+        tgetkey = tgetkey .. [[
+            if ($SLOT == luaO_nilobject) {
+                /* create new entry if no previous one */
+                $SLOT = luaH_newkey(L, $T, $K);
+            }
+        ]]
+    end
     return render(tgetkey, {
         SLOT = slot,
         T = t,
@@ -883,7 +885,7 @@ local function codeassignment(ctx, var, cexp, etype)
                 TMPKNAME = tmpkname,
                 CKEXP = ckexp,
                 SETSLOTK = setwrapped(key._type, tmpkslot, tmpkname),
-                CTABLEKEY = get_table_key(key._type, "_t", tmpkslot, "_slot"),
+                CTABLEKEY = get_table_key(key._type, "_t", tmpkslot, "_slot", true),
                 CSET = cset,
             })
         end
@@ -1417,7 +1419,7 @@ local function codemap(ctx, node, target)
                 setobj2t(L, _slot, $SLOT);
             }
         ]], {
-            CTABLEKEY = get_table_key(node._type.keys, tmpname, slot.k, "_slot"),
+            CTABLEKEY = get_table_key(node._type.keys, tmpname, slot.k, "_slot", true),
             SLOT = slot.v,
         }))
         if types.is_gc(node._type.keys) then
@@ -1858,7 +1860,6 @@ local function codeindexmap(ctx, node, iscondition)
             $SETSLOTK
             const TValue* _s;
             $CTABLEKEY
-
             $CFINISH
     }]], {
         CTMP = ctmp,
@@ -1869,7 +1870,7 @@ local function codeindexmap(ctx, node, iscondition)
         TMPKNAME = tmpkname,
         CKEXP = ckexp,
         SETSLOTK = setwrapped(ktyp, tmpkslot, tmpkname),
-        CTABLEKEY = get_table_key(typ, "_t", tmpkslot, "_s"),
+        CTABLEKEY = get_table_key(ktyp, "_t", tmpkslot, "_s", false),
         CFINISH = cfinish
     })
     return stats, tmpname
