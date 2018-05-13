@@ -2,7 +2,7 @@
 -- Compile with:
 --    titanc examples.sdl_demo -lSDL2
 -- Run with:
---    lua/src/lua -e 'require("examples.sdl_demo").main()'
+--    ./examples/sdl_demo
 
 local stdio = foreign import "stdio.h"
 local SDL = foreign import "SDL2/SDL.h"
@@ -16,7 +16,7 @@ local function quit(sdlquit: boolean, msg: string)
     stdlib.exit(1)
 end
 
-function main()
+function main(args: {string}): integer
 
     if SDL.SDL_Init(SDL.SDL_INIT_VIDEO) ~= 0 then
         quit(false, "SDL_init error")
@@ -24,7 +24,11 @@ function main()
 
     local SDL_WINDOW_SHOWN = 0x04
 
-    local win = SDL.SDL_CreateWindow("Hello World!", 100, 100, 640, 480, SDL_WINDOW_SHOWN)
+    local title = "Hello World!"
+    if #args > 0 then
+        title = title .. " " .. args[1]
+    end
+    local win = SDL.SDL_CreateWindow(title, 100, 100, 640, 480, SDL_WINDOW_SHOWN)
     if not win then
         quit(true, "SDL_CreateWindow error")
     end
@@ -66,4 +70,5 @@ function main()
     SDL.SDL_DestroyWindow(win)
     SDL.SDL_Quit()
 
+    return 42
 end

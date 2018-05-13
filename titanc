@@ -9,6 +9,7 @@ local driver = require 'titan-compiler.driver'
 local p = argparse('titan', 'Titan compiler')
 p:argument('module', 'Names of the modules to compile.'):args("+")
 p:flag('--print-ast', 'Print the AST.')
+p:flag('-v --verbose', 'Be verbose about compiler invocations.')
 p:option('-u --lua', 'Path to Lua source tree (to find Lua headers, defaults to "lua/src").')
 p:option('-t --tree', 'Root of the source tree, used for looking for source modules (defaults to ".").')
 p:option('-l --link', 'Comma-separated list of additional libraries to link into module.')
@@ -24,6 +25,7 @@ driver.TITAN_SOURCE_PATH = args.tree or driver.TITAN_SOURCE_PATH
 driver.LUA_SOURCE_PATH = args.lua or driver.LUA_SOURCE_PATH
 
 local errors = {}
+local main_module = nil
 
 for _, modname in ipairs(args.module) do
     local ok, errs = checker.checkimport(modname, driver.defaultloader)
@@ -32,6 +34,13 @@ for _, modname in ipairs(args.module) do
     else
         if #errs > 0 then table.insert(errors, table.concat(errs, "\n")) end
         local ast = driver.imported[modname].ast
+        if checker.has_main(ast) then
+            if main_module then
+                table.insert(errors, modname .. ": multiple main functions found (already declared in " .. main_module ..")")
+            else
+                main_module = modname
+            end
+        end
         if args.print_ast and ast then
             print(parser.pretty_print_ast(ast))
         end
@@ -40,9 +49,18 @@ end
 
 if #errors > 0 then exit(table.concat(errors, "\n")) end
 
+local libnames = {}
 for name, mod in pairs(driver.imported) do
-    local ok, err = driver.compile_module(name, mod, args.link)
-    if not ok then table.insert(errors, err) end
+    local ok, err, libname = driver.compile_module(name, mod, args.link, main_module ~= nil, args.verbose)
+    if not ok then
+        table.insert(errors, err)
+    else
+        table.insert(libnames, libname)
+    end
+end
+
+if main_module then
+    driver.compile_program(main_module, libnames, args.link, args.verbose)
 end
 
 if #errors > 0 then exit(table.concat(errors, "\n")) end
