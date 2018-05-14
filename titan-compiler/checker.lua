@@ -481,7 +481,7 @@ checkvar = util.make_visitor({
     end,
 
     ["Ast.VarBracket"] = function(node, st, errors, context)
-        checkexp(node.exp1, st, errors) -- FIXME check this: checkexp(node.exp1, st, errors, context and types.Array(context))
+        checkexp(node.exp1, st, errors)
         local keystype, term
         if node.exp1._type._tag == "Type.Array" then
             node._type = node.exp1._type.elem
@@ -677,7 +677,14 @@ checkexp = util.make_visitor({
                 end
             end
         elseif expected == "Type.Nominal" then
-            if not types.registry[context.fqtn] then
+            if not context then
+                checker.typeerror(errors, node.loc,
+                    "no context to provide type for record constructor")
+                    for _, field in ipairs(node.fields) do
+                        checkexp(field.exp, st, errors)
+                    end
+                    node._type = types.Invalid()
+            elseif not types.registry[context.fqtn] then
                 checker.typeerror(errors, node.loc,
                     "record type '%s' in context of record constructor does not exist",
                     types.tostring(context))

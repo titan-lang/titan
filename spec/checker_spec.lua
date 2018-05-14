@@ -1959,6 +1959,9 @@ describe("Titan typecheck of records", function()
 
             p = Point.new(1, 2)
         ]])
+        assert_type_error("no context", [[
+            p = { foo = 2 }
+        ]])
     end)
 
     it("doesn't typecheck invalid dot operation in record", function()
