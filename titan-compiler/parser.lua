@@ -648,17 +648,17 @@ local grammar = re.compile([[
     DoWhile         <- ({} '' -> 'DoWhile') -> adderror  DoWhileRec
     DoWhileRec      <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_039:
-    EndWhile        <- ({} '' -> 'EndWhile') -> adderror  EndWhileRec
-    EndWhileRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_039: uses EndBlockRec
+    EndWhile        <- ({} '' -> 'EndWhile') -> adderror  EndBlockRec
+    --EndWhileRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_040:
     UntilRepeat     <- ({} '' -> 'UntilRepeat') -> adderror  UntilRepeatRec
     UntilRepeatRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)* 
 
-    --Err_041:
-    ExpRepeat       <- ({} '' -> 'ExpRepeat') -> adderror  ExpRepeatRec  (P '' -> defaultInt2)  -> number_exp
-    ExpRepeatRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_041: uses EndBlockRec
+    ExpRepeat       <- ({} '' -> 'ExpRepeat') -> adderror  EndBlockRec  (P '' -> defaultInt2)  -> number_exp
+    --ExpRepeatRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_042:
     ExpIf           <- ({} '' -> 'ExpIf') -> adderror  ExpIfRec  (P '' -> defaultInt2)  -> number_exp
@@ -668,9 +668,9 @@ local grammar = re.compile([[
     ThenIf          <- ({} '' -> 'ThenIf') -> adderror  ThenIfRec
     ThenIfRec       <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_044:
-    EndIf           <- ({} '' -> 'EndIf') -> adderror  EndIfRec
-    EndIfRec        <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_044: -- uses EndBlockRec
+    EndIf           <- ({} '' -> 'EndIf') -> adderror  EndBlockRec
+    --EndIfRec        <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_045:
     DeclFor         <- ({} '' -> 'DeclFor') -> adderror  DeclForRec  (P '' -> defaultDeclName (P '') -> TypeInteger) -> Decl
@@ -700,9 +700,9 @@ local grammar = re.compile([[
     DoFor           <- ({} '' -> 'DoFor') -> adderror  DoForRec
     DoForRec        <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_052:
-    EndFor          <- ({} '' -> 'EndFor') -> adderror  EndForRec
-    EndForRec       <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_052: uses EndBlockRec
+    EndFor          <- ({} '' -> 'EndFor') -> adderror  EndBlockRec
+    --EndForRec       <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_053:
     DeclLocal       <- ({} '' -> 'DeclLocal') -> adderror  DeclLocalRec  {| (P ('' -> defaultDeclName) (P '') -> TypeInteger) -> Decl |} 
@@ -712,9 +712,9 @@ local grammar = re.compile([[
     AssignLocal     <- ({} '' -> 'AssignLocal') -> adderror  AssignLocalRec
     AssignLocalRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
 
-    --Err_055:
-    ExpLocal        <- ({} '' -> 'ExpLocal') -> adderror  ExpLocalRec  (P '' -> defaultInt2)  -> number_exp
-    ExpLocalRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_055: uses EndBlockRec
+    ExpLocal        <- ({} '' -> 'ExpLocal') -> adderror  EndBlockRec  (P '' -> defaultInt2)  -> number_exp
+    --ExpLocalRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_XXX: the algorithm did not insert the label corresponding to AssignAssign in rule 'statement'
     AssignAssign    <- ({} '' -> 'AssignAssign') -> adderror  AssignAssignRec
