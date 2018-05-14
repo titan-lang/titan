@@ -610,9 +610,8 @@ local grammar = re.compile([[
     TypelistType    <- ({} '' -> 'TypelistType') -> adderror  (!')' eatTk)*
     --TypelistTypeRec <- (!')' eatTk)*
 
-    --Err_031: TODO: see why recovery does not work here
-    --RParenTypelist    <- ({} '' -> 'RParenTypelist') -> adderror  RParenTypelistRec
-    --RParenTypelistRec <- (!(NAME / '->') .)*
+    RParenTypelist    <- ({} '' -> 'RParenTypelist') -> adderror  RParenTypelistRec
+    RParenTypelistRec <- (!(NAME / '->') eatTk)*
 
     --Err_XXX: the algorithm did not insert the two labels corresponding to TypeReturnTypes in rule 'rettype'
     --Label TypeReturnTypes is also used in rule 'rettype' and its first occurrence in this rule corresponds to Err_033
@@ -622,7 +621,7 @@ local grammar = re.compile([[
     Err_032         <- ({} '' -> 'Err_032') -> adderror  Err_032Rec
     Err_032Rec      <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
 
-    --Err_033: The original grammar used TypeReturnTypes here, but was the recovery set is different I introduced label TypeReturnTypes
+    --Err_033: The original grammar used TypeReturnTypes here, but the recovery set is different I introduced label TypeReturnTypes
     --TODO: see why the recovery sets were different
     TypeReturnTypes      <- ({} '' -> 'TypeReturnTypes') -> adderror  TypeReturnTypesRec  (P '') -> TypeInteger
     --TypeReturnTypesRec <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
