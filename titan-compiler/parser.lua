@@ -788,7 +788,7 @@ local grammar = re.compile([[
 
     --Err_070:
     FuncArgsExpSuf    <- ({} '' -> 'FuncArgsExpSuf') -> adderror  FuncArgsExpSufRec  {| (P '' -> defaultInt2)  -> number_exp |}
-    FuncArgsExpSufRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  '{'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'as'  /  'and'  /  '^'  /  ']'  /  '['  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '.'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.  /  '"') eatTk)*
+    FuncArgsExpSufRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  '{'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'as'  /  'and'  /  '^'  /  ']'  /  '['  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '.'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.  /  STRINGLIT) eatTk)*
 
     --Err_071:
     ExpExpSuf       <- ({} '' -> 'ExpExpSuf') -> adderror  ExpExpSufRec  (P '' -> defaultInt2)  -> number_exp
@@ -801,6 +801,16 @@ local grammar = re.compile([[
     --Err_073:
     NameDotExpSuf    <- ({} '' -> 'NameDotExpSuf') -> adderror  FuncArgsExpSufRec  ('' -> defaultDotName)
     --NameDotExpSufRec: uses FuncArgsExpSufRec
+
+    --Err_074:
+    ExpSimpleExp     <- ({} '' -> 'ExpSimpleExp') -> adderror  ExpSimpleExpRec  (P '' -> defaultInt2)  -> number_exp
+    ExpSimpleExpRec  <- (!')' eatTk)*
+
+    --Err_075:
+    RParSimpleExp    <- ({} '' -> 'RParSimpleExp') -> adderror  RParSimpleExpRec
+    RParSimpleExpRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  '{'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'as'  /  'and'  /  '^'  /  ']'  /  '['  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '.'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.  /  STRINGLIT) eatTk)*
+
+
 ]], defs)
 
 function parser.parse(filename, input)
