@@ -2142,6 +2142,26 @@ describe("Titan code generator", function()
                 end)
             end
         end
+
+        it("coerces map key", function ()
+            run_coder([[
+                function fn1(): string
+                    local a: { float: string } = {}
+                    a[1] = 'foo'
+                    return a[1.0]
+                end
+
+                function fn2(): string
+                    local a: { float: string } = {}
+                    a[1.0] = 'foo'
+                    return a[1]
+                end
+            ]], [[
+                assert(test.fn1() == 'foo')
+                assert(test.fn2() == 'foo')
+            ]])
+        end)
+
     end)
 
 end)

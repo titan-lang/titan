@@ -302,6 +302,16 @@ describe("Titan type checker", function()
         assert.truthy(ok, err)
     end)
 
+    it("coerces map key", function ()
+        assert_type_check([[
+            function fn()
+                local a: { float: string } = {}
+                local s = a[1]
+                a[1] = s
+            end
+        ]])
+    end)
+
     it("typechecks multiple return values in array initialization", function ()
         local code = [[
             function f(): (integer, integer)
