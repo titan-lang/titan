@@ -47,6 +47,16 @@ dynamically-typed Lua function from Titan, Titan will check whether the Lua
 function returned the correct types and number of arguments and it will raise a
 run-time error if it does not receive what it expected.
 
+If a module contains a function called `main` with the type signature
+`function({string): integer`, then the Titan module will be compiled as a
+stand-alone program, and the Titan compiler will attempt to link all its
+imported Titan modules statically. This main function will act as the entry
+point to the program: the input argument is an array of strings containing the
+command-line arguments, and the integer return value is the exit code of the
+program. Only one of the modules given to the Titan compiler may contain a
+main function. Any other functions called `main` with different type
+signatures do not qualify as main functions.
+
 #### Rules for function arity
 
 Arity rules for calling functions are strict: if you call a Titan function with

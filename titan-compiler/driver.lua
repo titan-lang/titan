@@ -100,7 +100,7 @@ function driver.tableloader(modtable, imported)
     return loader
 end
 
-function driver.shared()
+local function shared_flag()
     local shared = "-shared"
     if string.match(driver.UNAME, "Darwin") then
         shared = shared .. " -undefined dynamic_lookup"
@@ -108,26 +108,174 @@ function driver.shared()
     return shared
 end
 
-function driver.compile_module(modname, mod, link)
-    if mod.compiled then return true end
-    local ok, err = driver.compile(modname, mod.ast, mod.filename, link)
-    if not ok then return nil, err end
-    mod.compiled = true
-    return true
+local function static_flag()
+    return "-c"
 end
 
-function driver.compile(modname, ast, sourcef, link)
+function driver.compile_module(modname, mod, link, is_static, verbose)
+    if mod.compiled then return true, mod.compiled end
+    local ok, err, libname = driver.compile(modname, mod.ast, mod.filename, link, is_static, verbose)
+    if not ok then return nil, err end
+    mod.compiled = libname
+    return true, nil, libname
+end
+
+function driver.compile(modname, ast, sourcef, link, is_static, verbose)
     sourcef = sourcef or modname:gsub("[.]", "/") .. ".titan"
-    local code = coder.generate(modname, ast)
+    local code = coder.generate(modname, ast, not is_static)
     code = pretty.reindent_c(code)
     local filename = sourcef:gsub("[.]titan$", "") .. ".c"
-    local soname = sourcef:gsub("[.]titan$", "") .. ".so"
+
+    local libname = sourcef:gsub("[.]titan$", "") .. (is_static and ".o" or ".so")
     os.remove(filename)
-    os.remove(soname)
+    os.remove(libname)
     local ok, err = util.set_file_contents(filename, code)
     if not ok then return nil, err end
-    local args = {driver.CC, driver.CFLAGS, driver.shared(), filename,
-                  "-I", driver.LUA_SOURCE_PATH, "-o", soname}
+    local libflag = is_static and static_flag() or shared_flag()
+    local args = {driver.CC, driver.CFLAGS, libflag, filename,
+                  "-I", driver.LUA_SOURCE_PATH, "-o", libname}
+    if link and not is_static then
+        local libs = util.split_string(link, ",")
+        for _, lib in ipairs(libs) do
+            table.insert(args, "-l" .. lib)
+        end
+    end
+    local cmd = table.concat(args, " ")
+    if verbose then
+        print(cmd)
+    end
+    ok, err = os.execute(cmd)
+    if ok then
+        return ok, nil, libname
+    else
+        return nil, err
+    end
+end
+
+local entrypoint_template = [[
+
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+/* portable alerts, from srlua */
+#ifdef _WIN32
+#include <windows.h>
+#define alert(message)  MessageBox(NULL, message, progname, MB_ICONERROR | MB_OK)
+#define getprogname()   char name[MAX_PATH]; argv[0]= GetModuleFileName(NULL,name,sizeof(name)) ? name : NULL;
+#else
+#define alert(message)  fprintf(stderr,"%s: %s\n", "$PROGNAME", message)
+#define getprogname()
+#endif
+
+/* fatal error, from srlua */
+static void fatal(const char* message) {
+    alert(message);
+    exit(EXIT_FAILURE);
+}
+
+/* main script launcher, based on srlua */
+static int pmain(lua_State *L) {
+    int argc = lua_tointeger(L, 1);
+    char** argv = lua_touserdata(L, 2);
+    int i;
+    const char code[] = "local arg = ...;\nreturn\nrequire('$MODNAME').main(arg);";
+    luaL_loadstring(L, code);
+    if (lua_type(L, lua_gettop(L)) == LUA_TSTRING) {
+        fatal(lua_tostring(L, -1));
+    }
+    lua_createtable(L, argc, 0);
+    for (i = 0; i < argc; i++) {
+        lua_pushstring(L, argv[i]);
+        lua_rawseti(L, -2, i);
+    }
+    lua_call(L, 1, 1);
+    return 1;
+}
+
+/* error handler, from luac */
+static int msghandler (lua_State *L) {
+    /* is error object not a string? */
+    const char *msg = lua_tostring(L, 1);
+    if (msg == NULL) {
+        /* does it have a metamethod that produces a string */
+        if (luaL_callmeta(L, 1, "__tostring") && lua_type(L, -1) == LUA_TSTRING) {
+            /* then that is the message */
+            return 1;
+        } else {
+            msg = lua_pushfstring(L, "(error object is a %s value)", luaL_typename(L, 1));
+        }
+    }
+    /* append a standard traceback */
+    luaL_traceback(L, L, msg, 1);
+    return 1;
+}
+
+int $LUAOPEN_FN(lua_State* L);
+
+/* main function, based on srlua */
+int main(int argc, char** argv) {
+    int ret;
+    lua_State* L;
+    getprogname();
+    if (argv[0] == NULL) {
+        fatal("cannot locate this executable");
+    }
+    L = luaL_newstate();
+    if (L == NULL) {
+        fatal("not enough memory for state");
+    }
+    luaL_openlibs(L);
+    lua_getglobal(L, "package");
+    lua_getfield(L, -1, "preload");
+    lua_pushcfunction(L, $LUAOPEN_FN);
+    lua_setfield(L, -2, "$MODNAME");
+    lua_pushcfunction(L, msghandler);
+    lua_pushcfunction(L, pmain);
+    lua_pushinteger(L, argc);
+    lua_pushlightuserdata(L, argv);
+    if (lua_pcall(L, 2, 1, -4) != 0) {
+        fatal(lua_tostring(L, -1));
+    }
+    ret = lua_tointeger(L, -1);
+    lua_close(L);
+    return ret;
+}
+
+]]
+
+local function write_entrypoint(modname)
+    local entrypoint_c = modname:gsub("[.]", "/") .. "__entrypoint.c"
+    local fd, err = io.open(entrypoint_c, "w")
+    if not fd then return nil, err end
+    local ok, err = fd:write(util.render(entrypoint_template, {
+        PROGNAME = modname:gsub(".*[.]", ""),
+        LUAOPEN_FN = "luaopen_" .. modname:gsub("[.]", "_"),
+        MODNAME = modname,
+    }))
+    if err then return nil, err end
+    fd:close()
+    return entrypoint_c
+end
+
+function driver.compile_program(modname, libnames, link, verbose)
+    local execname = modname:gsub("[.]", "/")
+    os.remove(execname)
+
+    local entrypoint_c, err = write_entrypoint(modname)
+    if err then return nil, err end
+
+    local args = {driver.CC, driver.CFLAGS, "-o", execname,
+                  entrypoint_c}
+    for _, libname in ipairs(libnames) do
+        table.insert(args, libname)
+    end
+    table.insert(args, driver.LUA_SOURCE_PATH .. "/liblua.a")
+    table.insert(args, "-ldl")
+    table.insert(args, "-lm")
     if link then
         local libs = util.split_string(link, ",")
         for _, lib in ipairs(libs) do
@@ -135,6 +283,9 @@ function driver.compile(modname, ast, sourcef, link)
         end
     end
     local cmd = table.concat(args, " ")
+    if verbose then
+        print(cmd)
+    end
     return os.execute(cmd)
 end
 

@@ -1398,6 +1398,22 @@ local function checktoplevel(ast, st, errors, loader)
     end
 end
 
+function checker.has_main(ast)
+    for _, node in ipairs(ast) do
+        local name = toplevel_name(node)
+        if name == "main"
+           and node._tag == "Ast.TopLevelFunc"
+           and #node.params == 1
+           and node.params[1]._type._tag == "Type.Array"
+           and node.params[1]._type.elem._tag == "Type.String"
+           and #node.rettypes == 1
+           and node.rettypes[1]._tag == "Ast.TypeInteger" then
+            return true
+        end
+    end
+    return false
+end
+
 function checker.checkimport(modname, loader)
     local ok, type_or_error, errors = loader(modname)
     if not ok then return nil, type_or_error end

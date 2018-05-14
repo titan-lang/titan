@@ -45,9 +45,16 @@ binary path, a semicolon-separated list of paths
 or `TITAN_PATH` environment variable). A module gets compiled if its `.titan` file
 is newer than its binary, or a binary does not exist.
 
-If everything is all right with your modules this will generate shared libraries
-(in the same path as the module source) that you can `require` from Lua, and
-call any exported functions/access exported variables.
+If everything is all right with your modules, you will get the result of
+your compilation as a native binary:
+
+* if one of your Titan modules has a `main` function, with signature
+  `function({string}):integer`, then `titanc` will bundle all modules
+  given in the command-line as a stand-alone executable program.
+* Otherwise, it will compile each module into a shared library
+  (in the same path as the module source) that you can `import` from
+  Titan as well as `require` from Lua, and call any exported
+  functions/access exported variables.
 
 # Running the test suite
 
