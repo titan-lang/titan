@@ -35,7 +35,10 @@
    See also the use of NUMBER and STRINGLIT
 
 *  In a similar way, the recovery rules for ExpAssign and ExpStat also do not work for
-   '(xzy) = 42' and '(f)', respectively
+   '(xzy) = 42' and '(f)', respectively, we get the error message 'too many captures'
+   FIXED: The error was caused because these labels are used in predicates to test whether
+   the input is invalid. Their recovery expression should then consume at least the part
+   of the input that was matched by the predicate
  
 *  I used just one label OpExp, although each expression has a differente recovery set, because
    LPeg 1.0.1 imposes a limit of 255 rules in a grammar. LPeg 1.0.0 does have this limit.

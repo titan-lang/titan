@@ -320,7 +320,7 @@ local grammar = re.compile([[
                                  explist^ExpLocal)                   -> StatDecl
                      / (P  varlist ASSIGN^AssignAssign
                                explist^ExpAssign)                    -> StatAssign
-                     / &(exp ASSIGN) %{ExpAssign}
+                     / &(exp ASSIGN) %{ExpAssignPred}
                      / (P  (suffixedexp => exp_is_call))         -> StatCall
                      / &exp %{ExpStat}
 
@@ -606,9 +606,9 @@ local grammar = re.compile([[
     RCurlyType      <- ({} '' -> 'RCurlyType') -> adderror  RCurlyTypeRec
     RCurlyTypeRec   <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '->'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
-    --Err_030:
-    TypelistType    <- ({} '' -> 'TypelistType') -> adderror  TypelistTypeRec
-    TypelistTypeRec <- (!')' eatTk)*
+    --Err_030: do not use TypelistTypeRec
+    TypelistType    <- ({} '' -> 'TypelistType') -> adderror  (!')' eatTk)*
+    --TypelistTypeRec <- (!')' eatTk)*
 
     --Err_031: TODO: see why recovery does not work here
     --RParenTypelist    <- ({} '' -> 'RParenTypelist') -> adderror  RParenTypelistRec
@@ -640,9 +640,9 @@ local grammar = re.compile([[
     EndBlock        <- ({} '' -> 'EndBlock') -> adderror  EndBlockRec
     EndBlockRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_037:
-    ExpWhile        <- ({} '' -> 'ExpWhile') -> adderror  ExpWhileRec  (P '' -> defaultInt2)  -> number_exp
-    ExpWhileRec     <- (!'do' eatTk)*
+    --Err_037: does not use ExpWhileRec
+    ExpWhile        <- ({} '' -> 'ExpWhile') -> adderror (!'do' eatTk)*  (P '' -> defaultInt2)  -> number_exp
+    --ExpWhileRec     <- (!'do' eatTk)*
 
     --Err_038:
     DoWhile         <- ({} '' -> 'DoWhile') -> adderror  DoWhileRec
@@ -722,12 +722,16 @@ local grammar = re.compile([[
 
     --Err_XXX: the algorithm did not insert the two labels corresponding to ExpAssign in rule 'statement'
     -- uses EndBlockRec
-    ExpAssign       <- ({} '' -> 'ExpAssign') -> adderror  EndBlockRec  {| (P '' -> defaultInt2)  -> number_exp |}
+    ExpAssign       <- ({} '' -> 'ExpAssign') -> adderror EndBlockRec  {| (P '' -> defaultInt2)  -> number_exp |}
     --ExpAssignRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
+    --Err_XXX: I renamed the label ExpAssign used in the predicate to ExpAssignPred, since its recovery rule is different
+    ExpAssignPred       <- ({} '' -> 'ExpAssignPred') -> adderror (exp ASSIGN) EndBlockRec
+
     --Err_XXX: the algorithm did not insert the label corresponding to ExpStat in rule 'statement'
-    ExpStat         <- ({} '' -> 'ExpStat') -> adderror  ExpStatRec
-    ExpStatRec      <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    -- uses EndBlockRec
+    ExpStat         <- ({} '' -> 'ExpStat') -> adderror (exp) EndBlockRec
+    --ExpStatRec      <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_056: does not use ExpElseIfRec
     ExpElseIf       <- ({} '' -> 'ExpElseIf') -> adderror  (!'then' eatTk)*  (P '' -> defaultInt2)  -> number_exp
