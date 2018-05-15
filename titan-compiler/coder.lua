@@ -2317,192 +2317,32 @@ end
 local preamble = [[
 #include <stdlib.h>
 #include <string.h>
-#include "luaconf.h"
+#include <math.h>
 
+#include "luaconf.h"
 #include "lauxlib.h"
 #include "lualib.h"
-
 #include "lapi.h"
 #include "lgc.h"
 #include "ltable.h"
 #include "lfunc.h"
 #include "lstring.h"
 #include "lvm.h"
-
 #include "lobject.h"
 
-#include <math.h>
-
-#ifdef __GNUC__
-#define TITAN_LIKELY(x)   __builtin_expect((x), 1)
-#define TITAN_UNLIKELY(x) __builtin_expect((x), 0)
-#else
-#define TITAN_LIKELY(x)   (x)
-#define TITAN_UNLIKELY(x) (x)
-#endif
-
-#define TITAN_LUAINTEGER_NBITS cast_int(sizeof(lua_Integer) * CHAR_BIT)
+#include "titan.h"
 
 $FOREIGNIMPORTS
-$LIBOPEN
-
-#define MAXNUMBER2STR 50
 
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wunused-function"
 #pragma clang diagnostic ignored "-Wparentheses-equality"
 #endif
 
-static char _cvtbuff[MAXNUMBER2STR];
-
-inline static TString* _integer2str (lua_State *L, lua_Integer i) {
-    size_t len;
-    len = lua_integer2str(_cvtbuff, sizeof(_cvtbuff), i);
-    return luaS_newlstr(L, _cvtbuff, len);
-}
-
-inline static TString* _float2str (lua_State *L, lua_Number f) {
-    size_t len;
-    len = lua_number2str(_cvtbuff, sizeof(_cvtbuff), f);
-    return luaS_newlstr(L, _cvtbuff, len);
-}
-
-const TValue* getgeneric(Table* t, const TValue* key);
-
 $INCLUDES
 
 $SIGS
 
-]]
-
-local libopen = [[
-    #include <dlfcn.h>
-
-    #define TITAN_VER          "0.5"
-    #define TITAN_VER_SUFFIX   "_0_5"
-    #define TITAN_PATH_VAR     "TITAN_PATH"
-    #define TITAN_PATH_SEP     "/"
-    #define TITAN_PATH_DEFAULT ".;/usr/local/lib/titan/" TITAN_VER
-    #define TITAN_PATH_KEY     "ec10e486-d8fd-11e7-87f4-e7e9581a929c"
-    #define TITAN_LIBS_KEY     "ecfc9174-d8fd-11e7-8be2-abbaa3ded45f"
-
-    static void pushpath (lua_State *L) {
-        lua_pushliteral(L, TITAN_PATH_KEY);
-        lua_rawget(L, LUA_REGISTRYINDEX);
-        if(lua_isnil(L, -1)) {
-            lua_pop(L, 1);
-
-            /* Try the versioned name for the Titan Path variable */
-            const char *path = getenv(TITAN_PATH_VAR TITAN_VER_SUFFIX);
-            if (path == NULL) {
-                /* Try the unversioned name for the Titan Path variable */
-                path = getenv(TITAN_PATH_VAR);
-            }
-            if (path == NULL) {
-                /* No Titan Path environment variable */
-                path = TITAN_PATH_DEFAULT;
-                lua_pushstring(L, path);
-            } else {
-                path = luaL_gsub(L, path, ";;", ";\1;");
-                path = luaL_gsub(L, path, "\1", TITAN_PATH_DEFAULT);
-                lua_remove(L, -2); /* remove result from 1st 'gsub' */
-            }
-            lua_pushliteral(L, TITAN_PATH_KEY);
-            lua_pushvalue(L, -2);
-            lua_rawset(L, LUA_REGISTRYINDEX);
-        }
-    }
-
-    static const char *pushnextdir (lua_State *L, const char *path) {
-        const char *l;
-        while (*path == ';') path++;  /* skip separators */
-        if (*path == '\0') return NULL;  /* no more templates */
-        l = strchr(path, ';');  /* find next separator */
-        if (l == NULL) l = path + strlen(path);
-        lua_pushlstring(L, path, l - path);  /* template */
-        return l;
-    }
-
-    /*
-    ** Macro to convert pointer-to-void* to pointer-to-function. This cast
-    ** is undefined according to ISO C, but POSIX assumes that it works.
-    ** (The '__extension__' in gnu compilers is only to avoid warnings.)
-    */
-    #if defined(__GNUC__)
-    #define cast_func(t,p) (__extension__ (t)(p))
-    #else
-    #define cast_func(t,p) ((t)(p))
-    #endif
-
-    static int gctm (lua_State *L) {
-      lua_Integer n = luaL_len(L, 1);
-      /* for each handle, in reverse order */
-      for (; n >= 1; n--) {
-        lua_rawgeti(L, 1, n);  /* get handle LIBS[n] */
-        dlclose(lua_touserdata(L, -1));
-        lua_pop(L, 1);  /* pop handle */
-      }
-      return 0;
-    }
-
-    static void createlibstable (lua_State *L) {
-      lua_newtable(L);
-      lua_createtable(L, 0, 1);  /* create metatable */
-      lua_pushcfunction(L, gctm);
-      lua_setfield(L, -2, "__gc");  /* set finalizer */
-      lua_setmetatable(L, -2);
-      lua_pushliteral(L, TITAN_LIBS_KEY);
-      lua_pushvalue(L, -2);
-      lua_rawset(L, LUA_REGISTRYINDEX);
-    }
-
-    static void pushlibs(lua_State *L) {
-      lua_pushliteral(L, TITAN_LIBS_KEY);
-      lua_rawget(L, LUA_REGISTRYINDEX);
-      if(lua_isnil(L, -1)) {
-        lua_pop(L, 1);
-        createlibstable(L);
-      }
-    }
-
-    static void *loadlib (lua_State *L, const char *file) {
-      pushlibs(L);
-      lua_pushstring(L, file);
-      lua_rawget(L, -2); // try to get lib
-      if(!lua_isnil(L, -1)) {
-        void *lib = lua_touserdata(L, -1);
-        lua_pop(L, 2); // pop lib and libs table
-        return lib;
-      } else {
-        lua_pop(L, 1); // pop nil
-        pushpath(L);
-        const char *path = lua_tostring(L, -1);
-        while((path = pushnextdir(L, path)) != NULL) {
-          const char *dir = lua_tostring(L, -1);
-          lua_pushfstring(L, "%s" TITAN_PATH_SEP "%s", dir, file);
-          const char *filename = lua_tostring(L, -1);
-          void *lib = dlopen(filename, RTLD_NOW | RTLD_LOCAL);
-          if(lib != NULL) {
-            lua_pop(L, 3); // pop path, filename, and dir
-            lua_pushstring(L, file);
-            lua_pushlightuserdata(L, lib);
-            lua_rawset(L, -3); // add to libs table
-            lua_pop(L, 1); // pop libs table
-            return lib;
-          }
-          lua_pop(L, 2); // pop filename and dir
-        }
-        lua_pop(L, 2); // pop path and libs table
-        luaL_error(L, dlerror());
-        return NULL;
-      }
-    }
-
-    static void *loadsym (lua_State *L, void *lib, const char *sym) {
-      void *f = dlsym(lib, sym);
-      if(f == NULL) luaL_error(L, dlerror());
-      return f;
-    }
 ]]
 
 local postamble = [[
@@ -2998,7 +2838,6 @@ function coder.generate(modname, ast, is_dynamic)
         INCLUDES = table.concat(includes, "\n"),
         SIGS = table.concat(sigs, "\n"),
         FOREIGNIMPORTS = table.concat(foreignimports, "\n"),
-        LIBOPEN = (#includes > 0 and is_dynamic) and libopen or ""
     })
 
     return preamble .. "\n\n" .. table.concat(code, "\n\n")

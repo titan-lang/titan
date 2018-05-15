@@ -13,7 +13,8 @@ driver.imported = {}
 
 driver.TITAN_BIN_PATH = os.getenv("TITAN_PATH_0_5") or os.getenv("TITAN_PATH") or ".;/usr/local/lib/titan/0.5"
 driver.TITAN_SOURCE_PATH = "."
-driver.LUA_SOURCE_PATH = "lua/src/"
+driver.LUA_SOURCE_PATH = "lua-5.3.4/src/"
+driver.TITAN_RUNTIME_PATH = "titan-runtime/"
 driver.CFLAGS = "--std=c99 -O2 -Wall -fPIC"
 driver.CC = "cc"
 
@@ -126,7 +127,19 @@ function driver.compile_module(modname, mod, link, is_static, verbose)
     return true, nil, libname
 end
 
+local function check_runtime()
+    local runtime_c = driver.TITAN_RUNTIME_PATH .. "titan.c"
+    local runtime_o = driver.TITAN_RUNTIME_PATH .. "titan.o"
+    if not lfs.attributes(runtime_o, "size") then
+        local args = {driver.CC, driver.CFLAGS, "-c", runtime_c,
+            "-I", driver.TITAN_RUNTIME_PATH, "-I", driver.LUA_SOURCE_PATH,
+            "-o", runtime_o }
+        os.execute(table.concat(args, " "))
+    end
+end
+
 function driver.compile(modname, ast, sourcef, link, is_static, verbose)
+    check_runtime()
     sourcef = sourcef or modname:gsub("[.]", "/") .. ".titan"
     local code = coder.generate(modname, ast, not is_static)
     code = pretty.reindent_c(code)
@@ -140,9 +153,11 @@ function driver.compile(modname, ast, sourcef, link, is_static, verbose)
     local libflag = is_static and static_flag() or shared_flag()
     local ofiles = ""
     if not is_static then
-        ofiles = "lua/src/" .. table.concat(LUA_OFILES, " lua/src/")
+        ofiles = driver.LUA_SOURCE_PATH ..
+            table.concat(LUA_OFILES, " " .. driver.LUA_SOURCE_PATH)
     end
     local args = {driver.CC, driver.CFLAGS, libflag, filename, ofiles,
+                  "titan-runtime/titan.o", "-I", "titan-runtime",
                   "-I", driver.LUA_SOURCE_PATH, "-o", libname}
     if link and not is_static then
         local libs = util.split_string(link, ",")
