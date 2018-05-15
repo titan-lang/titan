@@ -400,6 +400,58 @@ Casts from `float` to `integer` fail if it is not an integral value, and if
 this value is outside the allowable range for integers. Casts from `value`
 fail if the value does not have the target type, or cannot be converted to it.
 
+## The standard library
+
+### Basic functions
+
+You can call these functions directly from anywhere in a Titan module,
+without needing to import anything.
+
+#### assert(v: value, msg: string): string
+
+Returns `v` if it is truthy, otherwise throws an error with message `msg`.
+
+#### dofile(filename: string, ...: value): { value }
+
+Executes the Lua chunk inside the file named `filename`, passing any extra
+arguments (you can access these arguments inside the Lua code with `...`).
+Returns an array containing all the values that the Lua chunk returned.
+
+The Lua code can load (using `require`) any Titan module that is part of
+a Titan application, if you are running in the context of an application.
+
+#### dostring(chunk: string, ...: value): { value }
+
+Executes the Lua chunk inside `chunk`, passing any extra
+arguments (you can access these arguments inside the Lua code with `...`).
+Returns an array containing all the values that the Lua chunk returned.
+
+The Lua code can load (using `require`) any Titan module that is part of
+a Titan application, if you are running in the context of an application.
+
+#### error(msg: string)
+
+Throws an error with error message `msg`.
+
+#### print(...: value)
+
+Prints its arguments to the standard output, separated by tabs and ending in a newline
+(`print()` prints just a newline).
+
+#### tostring(v: value): string
+
+Returns the string representation for the Titan value `v`.
+
+#### tofloat(s: string): float
+
+If `s` has a numeric literal returns the corresponding number as a floating
+point value, otherwise returns `0.0`.
+
+#### tointeger(s: string): integer
+
+If `s` has an integer literal or an integral floating point literal
+returns the corresponding integer value, otherwise returns `0`.
+
 ## The Complete Syntax of Titan
 
 Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, {A} means 0 or more As, and \[A\] means an optional A.
