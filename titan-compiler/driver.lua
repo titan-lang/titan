@@ -156,8 +156,9 @@ function driver.compile(modname, ast, sourcef, link, is_static, verbose)
         ofiles = driver.LUA_SOURCE_PATH ..
             table.concat(LUA_OFILES, " " .. driver.LUA_SOURCE_PATH)
     end
+    local runtime = not is_static and driver.TITAN_RUNTIME_PATH .. "titan.o" or ""
     local args = {driver.CC, driver.CFLAGS, libflag, filename, ofiles,
-                  "titan-runtime/titan.o", "-I", "titan-runtime",
+                  runtime, "-I", "titan-runtime",
                   "-I", driver.LUA_SOURCE_PATH, "-o", libname}
     if link and not is_static then
         local libs = util.split_string(link, ",")
@@ -298,6 +299,9 @@ function driver.compile_program(modname, libnames, link, verbose)
     for _, libname in ipairs(libnames) do
         table.insert(args, libname)
     end
+
+    table.insert(args, driver.TITAN_RUNTIME_PATH .. "titan.o")
+
     table.insert(args, driver.LUA_SOURCE_PATH .. "/liblua.a")
     table.insert(args, "-ldl")
     table.insert(args, "-lm")

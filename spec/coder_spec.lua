@@ -6,11 +6,13 @@ local util = require 'titan-compiler.util'
 local pretty = require 'titan-compiler.pretty'
 local driver = require 'titan-compiler.driver'
 
+local verbose = false
+
 local function parse(code)
     return parser.parse("(parser_spec)", code)
 end
 
-local function generate_modules(modules, main)
+local function generate_modules(modules, main, forapp)
     types.registry = {}
     local imported = {}
     local loader = driver.tableloader(modules, imported)
@@ -18,7 +20,7 @@ local function generate_modules(modules, main)
     if not type then return nil, err end
     if #err ~= 0 then return nil, table.concat(err, "\n") end
     for name, mod in pairs(imported) do
-        local ok, err = driver.compile_module(name, mod)
+        local ok, err = driver.compile_module(name, mod, nil, forapp, verbose)
         if not ok then return nil, err end
     end
     return true
@@ -46,7 +48,7 @@ local function run_coder(titan_code, lua_test, errmsg)
     assert.truthy(ast, err)
     local ok, err = checker.check("test", ast, titan_code, "test.titan")
     assert.equal(0, #err, table.concat(err, "\n"))
-    local ok, err = driver.compile("test", ast)
+    local ok, err = driver.compile("test", ast, nil, nil, verbose)
     assert.truthy(ok, err)
     local ok, err = call("test", lua_test)
     if errmsg then
@@ -57,10 +59,46 @@ local function run_coder(titan_code, lua_test, errmsg)
     end
 end
 
+local function call_app(appname, ...)
+    local cmd = table.concat({ appname, ... }, " ")
+    local f = io.popen(cmd)
+    local out = f:read()
+    local ok, err, status = f:close()
+    return ok, err, status, out
+end
+
+local function run_coder_app(titan_code, main, estatus, eout)
+    types.registry = {}
+    local code = string.format([[
+        %s
+        function main(args: {string}): integer
+            %s
+        end
+    ]], titan_code, main)
+    local ast, err = parse(code)
+    assert.truthy(ast, err)
+    local ok, err = checker.check("test", ast, code, "test.titan")
+    assert.equal(0, #err, table.concat(err, "\n"))
+    local ok, err = driver.compile("test", ast, nil, nil, true, verbose)
+    assert.truthy(ok, err)
+    local ok, err = driver.compile_program("test", { "test.o" }, nil, verbose)
+    assert.truthy(ok, err)
+    local ok, err, status, output = call_app("./test")
+    os.remove("./test")
+    assert.truthy(ok, err)
+    assert.equal(estatus, status)
+    if eout then
+        assert.match(eout, output)
+    end
+end
+
 describe("Titan code generator", function()
     after_each(function ()
+        os.execute("rm -f *.o")
         os.execute("rm -f *.so")
-        os.execute("rm -f *.c")
+        if not verbose then
+            os.execute("rm -f *.c")
+        end
     end)
 
     it("deletes array element", function()
@@ -2164,6 +2202,18 @@ describe("Titan code generator", function()
 
     end)
 
+    describe("#apps", function()
+        it("compiles and runs a titan application", function ()
+            run_coder_app([[
+                local function fn(m: { string: integer }): integer
+                    return m['foo']
+                end
+            ]], [[
+                local m = { ['foo'] = 0 }
+                return fn(m)
+            ]], 0)
+        end)
+    end)
 end)
 
 
