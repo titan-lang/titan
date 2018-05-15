@@ -240,7 +240,7 @@ static int msghandler (lua_State *L) {
     return 1;
 }
 
-int $LUAOPEN_FN(lua_State* L);
+$OPENFN_SIGS
 
 /* main function, based on srlua */
 int main(int argc, char** argv) {
@@ -257,8 +257,7 @@ int main(int argc, char** argv) {
     luaL_openlibs(L);
     lua_getglobal(L, "package");
     lua_getfield(L, -1, "preload");
-    lua_pushcfunction(L, $LUAOPEN_FN);
-    lua_setfield(L, -2, "$MODNAME");
+    $OPENFNS
     lua_pushcfunction(L, msghandler);
     lua_pushcfunction(L, pmain);
     lua_pushinteger(L, argc);
@@ -273,13 +272,27 @@ int main(int argc, char** argv) {
 
 ]]
 
-local function write_entrypoint(modname)
+local function write_entrypoint(modname, modules)
     local entrypoint_c = modname:gsub("[.]", "/") .. "__entrypoint.c"
     local fd, err = io.open(entrypoint_c, "w")
     if not fd then return nil, err end
+    local openfns, openfn_sigs = {}, {}
+    for _, mod in ipairs(modules) do
+        table.insert(openfns, util.render([[
+            lua_pushcfunction(L, $LUAOPEN_FN);
+            lua_setfield(L, -2, "$MODNAME");
+        ]], {
+            LUAOPEN_FN = "luaopen_" .. mod:gsub("[.]", "_"),
+            MODNAME = mod,
+        }))
+        table.insert(openfn_sigs, util.render([[
+            int $LUAOPEN_FN(lua_State* L);
+        ]], { LUAOPEN_FN = "luaopen_" .. mod:gsub("[.]", "_") }))
+    end
     local ok, err = fd:write(util.render(entrypoint_template, {
         PROGNAME = modname:gsub(".*[.]", ""),
-        LUAOPEN_FN = "luaopen_" .. modname:gsub("[.]", "_"),
+        OPENFNS = table.concat(openfns, "\n"),
+        OPENFN_SIGS = table.concat(openfn_sigs, "\n"),
         MODNAME = modname,
     }))
     if err then return nil, err end
@@ -287,18 +300,18 @@ local function write_entrypoint(modname)
     return entrypoint_c
 end
 
-function driver.compile_program(modname, libnames, link, verbose)
+function driver.compile_program(modname, modules, link, verbose)
     local execname = modname:gsub("[.]", "/")
     os.remove(execname)
 
-    local entrypoint_c, err = write_entrypoint(modname)
+    local entrypoint_c, err = write_entrypoint(modname, modules)
     if err then return nil, err end
 
     local args = {driver.CC, driver.CFLAGS, "-o", execname,
                 "-I", driver.TITAN_RUNTIME_PATH, "-I", driver.LUA_SOURCE_PATH,
                 entrypoint_c}
-    for _, libname in ipairs(libnames) do
-        table.insert(args, libname)
+    for _, mod in ipairs(modules) do
+        table.insert(args, mod:gsub("[.]", "/") .. ".o")
     end
 
     table.insert(args, driver.TITAN_RUNTIME_PATH .. "titan.o")

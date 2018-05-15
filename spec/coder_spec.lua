@@ -16,17 +16,19 @@ local function generate_modules(modules, main, forapp)
     types.registry = {}
     local imported = {}
     local loader = driver.tableloader(modules, imported)
-    local type, err = checker.checkimport(main, loader)
-    if not type then return nil, err end
-    if #err ~= 0 then return nil, table.concat(err, "\n") end
-    local ofiles = {}
+    for name, _ in pairs(modules) do
+        local type, err = checker.checkimport(name, loader)
+        if not type then return nil, err end
+        if #err ~= 0 then return nil, table.concat(err, "\n") end
+    end
+    local mods = {}
     for name, mod in pairs(imported) do
         local ok, err = driver.compile_module(name, mod, nil, forapp, verbose)
-        table.insert(ofiles, name .. ".o")
+        table.insert(mods, name)
         if not ok then return nil, err end
     end
     if forapp then
-        local ok, err = driver.compile_program(main, ofiles, nil, verbose)
+        local ok, err = driver.compile_program(main, mods, nil, verbose)
         if not ok then return nil, err end
     end
     return true
@@ -89,7 +91,7 @@ local function run_coder_app(titan_code, main, estatus, eout)
     assert.equal(0, #err, table.concat(err, "\n"))
     local ok, err = driver.compile("test", ast, nil, nil, true, verbose)
     assert.truthy(ok, err)
-    local ok, err = driver.compile_program("test", { "test.o" }, nil, verbose)
+    local ok, err = driver.compile_program("test", { "test" }, nil, verbose)
     assert.truthy(ok, err)
     local ok, err, status, output = call_app("./test")
     assert.truthy(ok, err)
@@ -2287,13 +2289,41 @@ describe("Titan code generator", function()
                         foo.resetxs()
                         return 42
                     end
+                    ]]
+                }
+            local ok, err = generate_modules(modules, "bar", true)
+            assert.truthy(ok, err)
+            local ok, err, status = call_app("./bar")
+            assert.truthy(ok, err)
+            assert.equal(42, status)
+        end)
+
+        it("loads titan module from lua code inside application", function ()
+            local modules = {
+                foo = [[
+                    function a(): integer
+                        return 42
+                    end
+                ]],
+                bar = [[
+                    function main(args: {string}): integer
+                        local res = dostring([=[
+                            local m = require 'foo'
+                            return m.a()
+                        ]=])
+                        if res[1] == 42 then
+                            return 0
+                        else
+                            return 1
+                        end
+                    end
                 ]]
             }
             local ok, err = generate_modules(modules, "bar", true)
             assert.truthy(ok, err)
             local ok, err, status = call_app("./bar")
             assert.truthy(ok, err)
-            assert.equal(42, status)
+            assert.equal(0, status)
         end)
 
     end)
