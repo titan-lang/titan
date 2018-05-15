@@ -180,12 +180,12 @@ end
 
 local entrypoint_template = [[
 
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
 
 /* portable alerts, from srlua */
 #ifdef _WIN32
@@ -295,7 +295,8 @@ function driver.compile_program(modname, libnames, link, verbose)
     if err then return nil, err end
 
     local args = {driver.CC, driver.CFLAGS, "-o", execname,
-                  entrypoint_c}
+                "-I", driver.TITAN_RUNTIME_PATH, "-I", driver.LUA_SOURCE_PATH,
+                entrypoint_c}
     for _, libname in ipairs(libnames) do
         table.insert(args, libname)
     end
