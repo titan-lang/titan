@@ -50,7 +50,6 @@ inline static TString* _float2str (lua_State *L, lua_Number f) {
     return luaS_newlstr(L, _cvtbuff, len);
 }
 
-LUAI_FUNC const TValue* getgeneric(Table* t, const TValue* key);
 LUAI_FUNC void *loadlib (lua_State *L, const char *file);
 LUAI_FUNC void *loadsym (lua_State *L, void *lib, const char *sym);
 LUAI_FUNC const TValue *getgeneric (Table *t, const TValue *key);
