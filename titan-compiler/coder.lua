@@ -1064,6 +1064,7 @@ local function codecall(ctx, node)
     local fname
     local fnode = node.exp.var
     local modarg = "_mod"
+    local ftype = fnode._type
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
             if fnode._decl._tag == "Ast.PrimitiveFunction" then
@@ -1112,6 +1113,7 @@ local function codecall(ctx, node)
     else
         assert(node.args._tag == "Ast.ArgsMethod")
         local mtype = node._method
+        ftype = mtype
         fname = method_name(mtype)
         local mod, record = mtype.fqtn:match("^(.*)%.(%a+)$")
         if mod ~= ctx.module then
@@ -1134,7 +1136,7 @@ local function codecall(ctx, node)
         table.insert(caexps, modarg)
         table.insert(caexps, cexp)
     end
-    for i = 1, #fnode._type.params do
+    for i = 1, #ftype.params do
         local arg = node.args.args[i]
         local cstat, cexp = codeexp(ctx, arg)
         table.insert(castats, cstat)
@@ -1150,10 +1152,10 @@ local function codecall(ctx, node)
         table.insert(caexps, "&" .. tmpname)
         retslots[i] = tmpslot
     end
-    if type(fnode._type.vararg) == "table" then
-        table.insert(caexps, c_integer_literal(#node.args.args - #fnode._type.params))
+    if type(ftype.vararg) == "table" then
+        table.insert(caexps, c_integer_literal(#node.args.args - #ftype.params))
     end
-    for i = #fnode._type.params+1, #node.args.args do
+    for i = #ftype.params+1, #node.args.args do
         local arg = node.args.args[i]
         local cstat, cexp = codeexp(ctx, arg)
         table.insert(castats, cstat)
