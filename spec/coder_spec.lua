@@ -36,9 +36,9 @@ local function call(modname, code)
     local cmd = string.format("lua-5.3.4/src/lua -l %s -e \"print(pcall(function () %s end))\"",
         modname, code)
     local f = io.popen(cmd)
-    local out = f:read()
+    local out = f:read("*a")
     local ok, err = f:close()
-    if not ok then return false, err end
+    if not ok then return false, err, out end
     local ok, data = out:match("^(true)%s*(.*)$")
     if not ok then
         local _, error = out:match("^(false)%s*(.*)$")
@@ -56,7 +56,7 @@ local function run_coder(titan_code, lua_test, errmsg)
     assert.equal(0, #err, table.concat(err, "\n"))
     local ok, err = driver.compile("test", ast, nil, nil, nil, verbose)
     assert.truthy(ok, err)
-    local ok, err = call("test", lua_test)
+    local ok, err, out = call("test", lua_test)
     if errmsg then
         assert.falsy(ok)
         assert.match(errmsg, err)
@@ -68,7 +68,7 @@ end
 local function call_app(appname, ...)
     local cmd = table.concat({ appname, ... }, " ")
     local f = io.popen(cmd)
-    local out = f:read()
+    local out = f:read("*a")
     local ok, err, status = f:close()
     if err == "exit" then ok = true end
     if not verbose then os.remove(appname) end
@@ -2297,6 +2297,116 @@ describe("Titan code generator", function()
         end)
 
     end)
+
+    describe("#primitives", function()
+        it("call print", function ()
+            run_coder_app([[
+            ]], [[
+                print(1, 'foo', true, 2.5)
+                print()
+                return 0
+            ]], 0, "1\tfoo\ttrue\t2.5\n\n")
+        end)
+
+        it("call assert", function ()
+            run_coder([[
+                function f(cond: value): value
+                    return assert(cond, 'foo')
+                end
+            ]], [[
+                assert(test.f(42) == 42)
+                local ok, err = pcall(test.f, nil)
+                assert(not ok)
+                assert(err:match('foo'))
+                local ok, err = pcall(test.f, false)
+                assert(not ok)
+                assert(err:match('foo'))
+            ]])
+        end)
+
+        it("call dostring", function ()
+            run_coder([=[
+                function f(): { value }
+                    return dostring([[
+                        return ...
+                    ]], 1, 'foo', 2.5)
+                end
+            ]=], [[
+                local res = test.f()
+                assert(#res == 3)
+                assert(res[1] == 1)
+                assert(res[2] == 'foo')
+                assert(res[3] == 2.5)
+            ]])
+        end)
+
+        it("call dofile", function ()
+            os.execute('echo "return ..." > test_dofile.lua')
+            run_coder([=[
+                function f(): { value }
+                    return dofile('test_dofile.lua', 1, 'foo', 2.5)
+                end
+            ]=], [[
+                local res = test.f()
+                assert(#res == 3)
+                assert(res[1] == 1)
+                assert(res[2] == 'foo')
+                assert(res[3] == 2.5)
+            ]])
+            os.remove("test_dofile.lua")
+        end)
+
+        it("call error", function ()
+            run_coder([[
+                function f(): nil
+                    error('foo')
+                end
+            ]], [[
+                local ok, err = pcall(test.f)
+                assert(not ok)
+                assert(err:match('foo'))
+            ]])
+        end)
+
+        it("call tostring", function ()
+            run_coder([[
+                function f(v: value): string
+                    return tostring(v)
+                end
+            ]], [[
+                assert(test.f(1) == '1')
+                assert(test.f(2.5) == '2.5')
+                assert(test.f('foo') == 'foo')
+                assert(test.f(true) == 'true')
+                assert(test.f(nil) == 'nil')
+            ]])
+        end)
+
+        it("call tofloat", function ()
+            run_coder([[
+                function f(v: string): float
+                    return tofloat(v)
+                end
+            ]], [[
+                assert(test.f('1') == 1.0)
+                assert(test.f('2.5') == 2.5)
+                assert(test.f('foo') == 0.0)
+            ]])
+        end)
+
+        it("call tointeger", function ()
+            run_coder([[
+                function f(v: string): integer
+                    return tointeger(v)
+                end
+            ]], [[
+                assert(test.f('10') == 10)
+                assert(test.f('2.5') == 0)
+                assert(test.f('foo') == 0)
+            ]])
+        end)
+    end)
+
 end)
 
 

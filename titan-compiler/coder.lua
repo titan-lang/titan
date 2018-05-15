@@ -114,6 +114,10 @@ local function func_name(modname, name)
     return modprefix(modname) .. name .. "_titan"
 end
 
+local function primitive_name(name)
+    return "titan_" .. name
+end
+
 local function func_luaname(modname, name)
     return modprefix(modname) .. name .. "_lua"
 end
@@ -1062,7 +1066,12 @@ local function codecall(ctx, node)
     local modarg = "_mod"
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
-            fname = func_name(ctx.module, fnode.name)
+            if fnode._decl._tag == "Ast.PrimitiveFunction" then
+                fname = primitive_name(fnode._decl.name)
+            else
+                assert(fnode._decl._tag == "Ast.TopLevelFunc")
+                fname = func_name(ctx.module, fnode.name)
+            end
         elseif fnode._tag == "Ast.VarDot" then
             if fnode.exp._type._tag == "Type.ForeignModule" then
                 return codeforeigncall(ctx, node)
@@ -1125,7 +1134,8 @@ local function codecall(ctx, node)
         table.insert(caexps, modarg)
         table.insert(caexps, cexp)
     end
-    for _, arg in ipairs(node.args.args) do
+    for i = 1, #fnode._type.params do
+        local arg = node.args.args[i]
         local cstat, cexp = codeexp(ctx, arg)
         table.insert(castats, cstat)
         table.insert(caexps, cexp)
@@ -1139,6 +1149,15 @@ local function codecall(ctx, node)
         table.insert(castats, ctmp)
         table.insert(caexps, "&" .. tmpname)
         retslots[i] = tmpslot
+    end
+    if type(fnode._type.vararg) == "table" then
+        table.insert(caexps, c_integer_literal(#node.args.args - #fnode._type.params))
+    end
+    for i = #fnode._type.params+1, #node.args.args do
+        local arg = node.args.args[i]
+        local cstat, cexp = codeexp(ctx, arg)
+        table.insert(castats, cstat)
+        table.insert(caexps, cexp)
     end
     local cstats = table.concat(castats, "\n")
     local ccall = render("$NAME($CAEXPS)", {

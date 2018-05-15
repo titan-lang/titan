@@ -530,11 +530,12 @@ local function checkargs(ftype, args, loc, fname, st, errors)
     local nparams = #ftype.params
     local nargs = #args
     local lastarg = args[nargs]
+    local vatype = (ftype.vararg and type(ftype.vararg) == "table") and ftype.vararg or nil
     for i = 1, nargs do
         local arg = args[i]
         local ptype = ftype.params[i]
         checkexp(arg, st, errors, ptype)
-        ptype = ptype or arg._type
+        ptype = ptype or vatype or arg._type
         args[i] = trycoerce(args[i], ptype, errors)
         local atype = args[i]._type
         checkmatch("argument " .. i .. " of call to " .. fname, ptype, atype, errors, arg.loc)
@@ -1032,7 +1033,8 @@ checkexp = util.make_visitor({
             local ftype = node.exp._type
             local fname = expname(node.exp)
             local var = node.exp.var
-            if not (var and var._decl and (var._decl._tag == "Ast.TopLevelFunc" or
+            if not (var and var._decl and (var._decl._tag == "Ast.PrimitiveFunction" or
+              var._decl._tag == "Ast.TopLevelFunc" or
               var._decl._tag == "Type.ModuleMember" or
               var._decl._tag == "Type.StaticMethod")) then
                 checker.typeerror(errors, node.loc,
@@ -1531,6 +1533,31 @@ local function makemoduletype(modname, modast)
     return types.Module(modname, members)
 end
 
+local function add_primitives(st)
+    st:add_symbol("print",
+        ast.PrimitiveFunction("print", types.Function({}, { types.Nil() }, types.Value())))
+    st:add_symbol("assert",
+        ast.PrimitiveFunction("assert",
+            types.Function({ types.Value(), types.String() }, { types.Value() }, false)))
+    st:add_symbol("dofile",
+        ast.PrimitiveFunction("dofile",
+            types.Function({ types.String() }, { types.Array(types.Value()) }, types.Value())))
+    st:add_symbol("error",
+        ast.PrimitiveFunction("error",
+            types.Function({ types.String() }, { types.Nil() }, false)))
+    st:add_symbol("dostring",
+        ast.PrimitiveFunction("dostring",
+            types.Function({ types.String() }, { types.Array(types.Value()) }, types.Value())))
+    st:add_symbol("tostring",
+        ast.PrimitiveFunction("tostring",
+            types.Function({ types.Value() }, { types.String() }, false)))
+    st:add_symbol("tofloat",
+        ast.PrimitiveFunction("tofloat",
+            types.Function({ types.String() }, { types.Float() }, false)))
+    st:add_symbol("tointeger",
+        ast.PrimitiveFunction("tointeger",
+            types.Function({ types.String() }, { types.Integer() }, false)))
+end
 
 -- Entry point for the typechecker
 --   ast: AST for the whole module
@@ -1548,6 +1575,7 @@ function checker.check(modname, ast, subject, filename, loader)
         return nil, "you must pass a loader to import modules"
     end
     local st = symtab.new(modname)
+    add_primitives(st)
     local errors = {subject = subject, filename = filename}
     checktoplevel(ast, st, errors, loader)
     checkbodies(ast, st, errors)
