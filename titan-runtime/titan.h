@@ -56,7 +56,7 @@ LUAI_FUNC void *loadlib (lua_State *L, const char *file);
 LUAI_FUNC void *loadsym (lua_State *L, void *lib, const char *sym);
 LUAI_FUNC const TValue *getgeneric (Table *t, const TValue *key);
 
-/* Primitives */
+/* Builtins */
 LUAI_FUNC int titan_print(lua_State *L, int nargs, ...);
 LUAI_FUNC TValue titan_assert(lua_State *L, TValue cond, TString *msg);
 LUAI_FUNC Table *titan_dofile(lua_State *L, TString *fname, int nargs, ...);

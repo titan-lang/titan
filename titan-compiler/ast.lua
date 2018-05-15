@@ -77,7 +77,7 @@ return typedecl("Ast", {
         Field           = {"loc", "name", "exp"},
     },
 
-    Primitive = {
-        PrimitiveFunction = { "name", "_type" }
+    Builtin = {
+        BuiltinFunc = { "name", "_type" }
     },
 })

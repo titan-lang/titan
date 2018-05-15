@@ -114,7 +114,7 @@ local function func_name(modname, name)
     return modprefix(modname) .. name .. "_titan"
 end
 
-local function primitive_name(name)
+local function builtin_name(name)
     return "titan_" .. name
 end
 
@@ -1067,8 +1067,8 @@ local function codecall(ctx, node)
     local ftype = fnode._type
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
-            if fnode._decl._tag == "Ast.PrimitiveFunction" then
-                fname = primitive_name(fnode._decl.name)
+            if fnode._decl._tag == "Ast.BuiltinFunc" then
+                fname = builtin_name(fnode._decl.name)
             else
                 assert(fnode._decl._tag == "Ast.TopLevelFunc")
                 fname = func_name(ctx.module, fnode.name)

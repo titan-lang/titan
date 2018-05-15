@@ -1033,7 +1033,7 @@ checkexp = util.make_visitor({
             local ftype = node.exp._type
             local fname = expname(node.exp)
             local var = node.exp.var
-            if not (var and var._decl and (var._decl._tag == "Ast.PrimitiveFunction" or
+            if not (var and var._decl and (var._decl._tag == "Ast.BuiltinFunc" or
               var._decl._tag == "Ast.TopLevelFunc" or
               var._decl._tag == "Type.ModuleMember" or
               var._decl._tag == "Type.StaticMethod")) then
@@ -1533,29 +1533,29 @@ local function makemoduletype(modname, modast)
     return types.Module(modname, members)
 end
 
-local function add_primitives(st)
+local function add_builtins(st)
     st:add_symbol("print",
-        ast.PrimitiveFunction("print", types.Function({}, { types.Nil() }, types.Value())))
+        ast.BuiltinFunc("print", types.Function({}, { types.Nil() }, types.Value())))
     st:add_symbol("assert",
-        ast.PrimitiveFunction("assert",
+        ast.BuiltinFunc("assert",
             types.Function({ types.Value(), types.String() }, { types.Value() }, false)))
     st:add_symbol("dofile",
-        ast.PrimitiveFunction("dofile",
+        ast.BuiltinFunc("dofile",
             types.Function({ types.String() }, { types.Array(types.Value()) }, types.Value())))
     st:add_symbol("error",
-        ast.PrimitiveFunction("error",
+        ast.BuiltinFunc("error",
             types.Function({ types.String() }, { types.Nil() }, false)))
     st:add_symbol("dostring",
-        ast.PrimitiveFunction("dostring",
+        ast.BuiltinFunc("dostring",
             types.Function({ types.String() }, { types.Array(types.Value()) }, types.Value())))
     st:add_symbol("tostring",
-        ast.PrimitiveFunction("tostring",
+        ast.BuiltinFunc("tostring",
             types.Function({ types.Value() }, { types.String() }, false)))
     st:add_symbol("tofloat",
-        ast.PrimitiveFunction("tofloat",
+        ast.BuiltinFunc("tofloat",
             types.Function({ types.String() }, { types.Float() }, false)))
     st:add_symbol("tointeger",
-        ast.PrimitiveFunction("tointeger",
+        ast.BuiltinFunc("tointeger",
             types.Function({ types.String() }, { types.Integer() }, false)))
 end
 
@@ -1575,7 +1575,7 @@ function checker.check(modname, ast, subject, filename, loader)
         return nil, "you must pass a loader to import modules"
     end
     local st = symtab.new(modname)
-    add_primitives(st)
+    add_builtins(st)
     local errors = {subject = subject, filename = filename}
     checktoplevel(ast, st, errors, loader)
     checkbodies(ast, st, errors)

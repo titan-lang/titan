@@ -205,7 +205,7 @@ const TValue *getgeneric (Table *t, const TValue *key) {
   }
 }
 
-/* Primitives */
+/* Builtins */
 LUAI_FUNC int titan_print(lua_State *L, int nargs, ...) {
     if(nargs > 0) {
         lua_checkstack(L, 3);

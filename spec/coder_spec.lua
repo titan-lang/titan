@@ -2328,7 +2328,7 @@ describe("Titan code generator", function()
 
     end)
 
-    describe("#primitives", function()
+    describe("#builtins", function()
         it("call print", function ()
             run_coder_app([[
             ]], [[
