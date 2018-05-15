@@ -7,7 +7,6 @@ matrix:
         - INSTALL_LUA="lua=5.3"
         - LUA="lua"
     - os: osx
-      language: generic
       env:
         - INSTALL_LUA="lua=5.3"
         - LUA="lua"
