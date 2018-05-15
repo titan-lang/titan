@@ -2321,8 +2321,6 @@ local preamble = [[
 
 #include "luaconf.h"
 #include "lauxlib.h"
-#include "lualib.h"
-#include "lapi.h"
 #include "lgc.h"
 #include "ltable.h"
 #include "lfunc.h"
