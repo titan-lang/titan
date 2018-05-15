@@ -6,31 +6,34 @@ matrix:
       env:
         - INSTALL_LUA="lua=5.3"
         - LUA="lua"
+        - LUA_OS="linux"
     - os: osx
+      language: generic
       env:
         - INSTALL_LUA="lua=5.3"
         - LUA="lua"
+        - LUA_OS="macosx"
 
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update; fi
-  - pip install hererocks
-  - hererocks lua_install -rlatest --$INSTALL_LUA
+  - if [ ! -f lua_install/bin/luarocks ]; then pip2 install hererocks; fi
+  - if [ ! -f lua_install/bin/luarocks ]; then hererocks lua_install -r^ --$INSTALL_LUA; fi
   - export PATH=$PATH:$PWD/lua_install/bin # Add directory with all installed binaries to PATH
   - wget http://www.lua.org/ftp/lua-5.3.4.tar.gz
   - tar zxvf lua-5.3.4.tar.gz
-  - cd lua-5.3.4; make $TRAVIS_OS_NAME MYCFLAGS=-fPIC; cd ..
+  - cd lua-5.3.4; make $LUA_OS MYCFLAGS=-fPIC; cd ..
 
 install:
-  - luarocks install busted
-  - luarocks install luacov
-#  - luarocks install luacov-coveralls
+  - if [ ! -f lua_install/bin/busted ]; then luarocks install busted; fi
+  - if [ ! -f lua_install/bin/luacov ]; then luarocks install cluacov; fi
   - luarocks make # This installs necessary runtime dependencies
 
 script:
+  - lua -v
   - busted -c -o gtest -v spec/
 
-#after_success:
+after_success:
   - luacov "titan%-compiler" "/spec/[^/]+.lua" "titanc" && bash <(curl -s https://codecov.io/bash)
+  - grep "Summary" -B1 -A1000 luacov.report.out
 
 notifications:
   email:
@@ -40,3 +43,4 @@ notifications:
 cache:
   directories:
     - $HOME/.luarocks
+    - lua_install
