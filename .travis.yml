@@ -7,12 +7,12 @@ matrix:
         - INSTALL_LUA="lua=5.3"
         - LUA="lua"
         - LUA_OS="linux"
-    - os: osx
-      language: generic
-      env:
-        - INSTALL_LUA="lua=5.3"
-        - LUA="lua"
-        - LUA_OS="macosx"
+#    - os: osx
+#      language: generic
+#      env:
+#        - INSTALL_LUA="lua=5.3"
+#        - LUA="lua"
+#        - LUA_OS="macosx"
 
 before_install:
   - if [ ! -f lua_install/bin/luarocks ]; then pip2 install hererocks; fi
