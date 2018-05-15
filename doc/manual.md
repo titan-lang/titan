@@ -158,6 +158,50 @@ Lua, to instantiate records from the Lua side:
 As nominal types, two records types are incompatible even if they have
 the same structure.
 
+### Maps
+
+Titan supports maps (also known as associative arrays). Map types in Titan are
+structural: you declare a map type by listing the type of keys and values. The
+following example declares a map with float keys and boolean arguments:
+
+    local my_map: {float: boolean} = {}
+
+If a map constructor is given, the type can be inferred:
+
+    local my_map = { [2.5] = true, [3.14] = false }
+
+Map constructors need to use the bracketed syntax for keys, even for string
+types. So a map with string keys can be declared like this:
+
+    local a_map = { ["foo"] = 12, ["bar"] = 13 }
+
+Maps can be indexed and assigned to:
+
+    local fs: {float: string} = {}
+    fs[1.5] = "foo "
+    fs[2.5] = "bar"
+    return fs[1.5] .. fs[2.5]
+
+All types other than `nil` can be used as keys, and all types can be used as
+values.
+
+You can send a map to Lua and then access its keys from Lua normally, where it
+will appear as a Lua table. Lua can send the map back to Titan, as well.
+
+    -- this is Titan code
+    function modify_map(m: {string:boolean}): {string:boolean}
+        m["hello"] = true
+        return m
+    end
+
+    -- this is Lua code
+    local mod = require "titan_module"
+    local t = { ["world"] = false }
+    local t2 = mod.modify_map(t)
+    assert(t == t2)
+    assert(t.hello == true)
+    assert(t.world == false)
+
 ### The `value` type
 
 If you declare that something has type `value` than it can hold values of any
@@ -374,7 +418,11 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
 
     parlist ::= Name ':' type {',' Name ':' type}
 
-    type ::= value | integer | float | boolean | string | '{' type '}'
+    type ::= value | integer | float | boolean | string | array | map
+
+    array ::= '{' type '}'
+
+    map ::= '{' type ':' type '}'
 
     recordfields ::= recordfield {recordfield}
 
@@ -399,18 +447,24 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
     explist ::= exp {',' exp}
 
     exp ::= nil | false | true | Numeral | LiteralString |
-        prefixexp | tableconstructor | exp binop exp | unop exp |
+        prefixexp | arrayconstructor | mapconstructor | exp binop exp | unop exp |
         exp as type
 
     prefixexp ::= var | functioncall | '(' exp ')'
 
     functioncall ::= prefixexp args
 
-    args ::= '(' [explist] ')' | tableconstructor | LiteralString
+    args ::= '(' [explist] ')' | arrayconstructor | mapconstructor | LiteralString
 
-    tableconstructor ::= '{' [fieldlist] '}'
+    arrayconstructor ::= '{' [arrayitemlist] '}'
 
-    fieldlist ::= exp {fieldsep exp} [fieldsep]
+    arrayitemlist ::= exp {fieldsep exp} [fieldsep]
+
+    mapconstructor ::= '{' [mapitemlist] '}'
+
+    mapitemlist ::= keyvalue {fieldsep keyvalue} [fieldsep]
+
+    keyvalue :== '[' exp ']' '=' exp
 
     fieldsep ::= ',' | ';'
 

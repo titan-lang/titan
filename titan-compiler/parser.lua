@@ -278,6 +278,10 @@ local grammar = re.compile([[
                      / (P  NAME DOT NAME^QualName)               -> TypeQualName
                      / (P  NAME)                                 -> TypeName
                      / (P  LCURLY type^TypeType
+                           COLON
+                           type^TypeType
+                           RCURLY^RCurlyType)                    -> TypeMap
+                     / (P  LCURLY type^TypeType
                            RCURLY^RCurlyType)                    -> TypeArray
 
     typelist        <- ( LPAREN
@@ -408,7 +412,11 @@ local grammar = re.compile([[
                           !RCURLY %{ExpFieldList}))*
                         fieldsep?)                          -- produces Field...
 
-    field           <- (P  (NAME ASSIGN)? -> opt exp)       -> Field
+    field           <- (P  (key ASSIGN)? -> opt exp)       -> Field
+
+    key             <- NAME
+                     / LBRACKET exp^ExpExpSuf
+                                RBRACKET^RBracketExpSuf
 
     fieldsep        <- SEMICOLON / COMMA
 

@@ -11,6 +11,7 @@ return typedecl("Ast", {
         TypeQualName    = {"loc", "module", "name"},
         TypeName        = {"loc", "name"},
         TypeArray       = {"loc", "subtype"},
+        TypeMap         = {"loc", "keystype", "valuestype"},
         TypeFunction    = {"loc", "argtypes", "rettypes"},
     },
 

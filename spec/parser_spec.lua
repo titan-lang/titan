@@ -265,6 +265,22 @@ describe("Titan parser", function()
                     {_tag = "Ast.TypeName", name = "int" } } } )
     end)
 
+    it("can parse map types", function()
+        assert_type_ast("{int: string}",
+            { _tag = "Ast.TypeMap",
+              keystype = {_tag = "Ast.TypeName", name = "int" },
+              valuestype = {_tag = "Ast.TypeString" } } )
+
+        assert_type_ast("{{int:string}:{string:int}}",
+            { _tag = "Ast.TypeMap",
+              keystype = { _tag = "Ast.TypeMap",
+                  keystype = {_tag = "Ast.TypeName", name = "int" },
+                  valuestype = {_tag = "Ast.TypeString" } },
+              valuestype = { _tag = "Ast.TypeMap",
+                  keystype = {_tag = "Ast.TypeString" },
+                  valuestype = {_tag = "Ast.TypeName", name = "int" } } } )
+    end)
+
     describe("can parse function types", function()
         it("with parameter lists of length = 0", function()
             assert_type_ast("() -> ()",

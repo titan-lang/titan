@@ -178,7 +178,7 @@ describe("Titan type checker", function()
         assert.match("variable '%w+' not declared", err)
     end)
 
-    it("catches array expression in indexing is not an array", function()
+    it("catches array expression in indexing is not an array or map", function()
         local code = [[
             function fn(x: integer)
                 x[1] = 2
@@ -186,7 +186,7 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("array expression in indexing is not an array", err)
+        assert.match("expression in indexing is not an array or map", err)
     end)
 
     it("accepts correct use of length operator", function()
@@ -202,6 +202,17 @@ describe("Titan type checker", function()
     it("catches wrong use of length operator", function()
         local code = [[
             function fn(x: integer): integer
+                return #x
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("trying to take the length", err)
+    end)
+
+    it("catches wrong use of length operator in maps", function()
+        local code = [[
+            function fn(x: {integer: integer}): integer
                 return #x
             end
         ]]
@@ -280,6 +291,27 @@ describe("Titan type checker", function()
         assert.truthy(ok, err)
     end)
 
+    it("allows setting element of map as nil", function ()
+        local code = [[
+            function fn()
+                local m: {string: integer} = { ["a"] = 10, ["b"] = 20, ["c"] = 30 }
+                m["a"] = nil
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok, err)
+    end)
+
+    it("coerces map key", function ()
+        assert_type_check([[
+            function fn()
+                local a: { float: string } = {}
+                local s = a[1]
+                a[1] = s
+            end
+        ]])
+    end)
+
     it("typechecks multiple return values in array initialization", function ()
         local code = [[
             function f(): (integer, integer)
@@ -291,6 +323,23 @@ describe("Titan type checker", function()
             function fn()
                 local arr: {integer} = { 10, g(), 30, f() }
                 local arr: {integer} = { 10, g(), 30, (g()) }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok, err)
+    end)
+
+    it("typechecks multiple return values in map initialization", function ()
+        local code = [[
+            function f(): (integer, integer)
+                return 10, 20
+            end
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function fn()
+                local m1: {string: integer} = { ["a"] = 10, ["b"] = g(), ["c"] = 30, ["d"] = f() }
+                local m2: {string: integer} = { ["a"] = 10, ["b"] = g(), ["c"] = 30, ["d"] = (g()) }
             end
         ]]
         local ok, err = run_checker(code)
@@ -311,7 +360,20 @@ describe("Titan type checker", function()
         assert.match("expected integer but found string", err)
     end)
 
-    it("catches wrong type in multiple return values for array initialization", function ()
+    it("drops extra values in multiple return values for map initialization", function ()
+        local code = [[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function fn()
+                local m: {string: integer} = { ["a"] = 10, ["b"] = g() }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok, err)
+    end)
+
+    it("catches wrong type in multiple return values for multiple assignment", function ()
         local code = [[
             function f(x: integer): (integer, string)
                 return x * 2, "foo"
@@ -337,6 +399,29 @@ describe("Titan type checker", function()
         local ok, err = run_checker(code)
         assert.falsy(ok)
         assert.match("initializing field 'x' when expecting array", err)
+    end)
+
+    it("catches named init list assigned to a map", function()
+        local code = [[
+            function fn(x: integer)
+                local m: {integer: string} = { x = 10 }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("initializing field 'x' when expecting map", err)
+    end)
+
+    -- FIXME should this be allowed?
+    it("catches named init list assigned to a string-keyed map", function()
+        local code = [[
+            function fn(x: integer)
+                local m: {string: integer} = { x = 10 }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("initializing field 'x' when expecting map", err)
     end)
 
     it("type-checks numeric 'for' (integer, implicit step)", function()
@@ -827,6 +912,17 @@ describe("Titan type checker", function()
         assert.match("cannot concatenate with { integer } value", err)
     end)
 
+    it("cannot concatenate with map", function()
+        local code = [[
+            function fn()
+                local s = "foo" .. { [false] = 2 }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("cannot concatenate with { boolean : integer } value", err)
+    end)
+
     it("cannot concatenate with type value", function()
         local code = [[
             function fn()
@@ -853,6 +949,16 @@ describe("Titan type checker", function()
         it("can compare arrays of same type using " .. op, function()
             local code = [[
                 function fn(a1: {integer}, a2: {integer}): boolean
+                    return a1 ]] .. op .. [[ a2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.truthy(ok)
+        end)
+
+        it("can compare maps of same type using " .. op, function()
+            local code = [[
+                function fn(a1: {string: integer}, a2: {string: integer}): boolean
                     return a1 ]] .. op .. [[ a2
                 end
             ]]
@@ -970,6 +1076,28 @@ describe("Titan type checker", function()
         it("cannot compare arrays of different types using " .. op, function()
             local code = [[
                 function fn(a1: {integer}, a2: {float}): boolean
+                    return a1 ]] .. op .. [[ a2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.falsy(ok)
+            assert.match("trying to compare values of different types", err)
+        end)
+
+        it("cannot compare maps of different value types using " .. op, function()
+            local code = [[
+                function fn(a1: {string: integer}, a2: {string: float}): boolean
+                    return a1 ]] .. op .. [[ a2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.falsy(ok)
+            assert.match("trying to compare values of different types", err)
+        end)
+
+        it("cannot compare maps of different key types using " .. op, function()
+            local code = [[
+                function fn(a1: {integer: string}, a2: {float: string}): boolean
                     return a1 ]] .. op .. [[ a2
                 end
             ]]
@@ -1840,6 +1968,9 @@ describe("Titan typecheck of records", function()
             record Point x: float; y:float end
 
             p = Point.new(1, 2)
+        ]])
+        assert_type_error("no context", [[
+            p = { foo = 2 }
         ]])
     end)
 

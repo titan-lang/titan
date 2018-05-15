@@ -98,6 +98,7 @@ they are in the roadmap:
 * multiple assignment/multiple returns
 * FFI with C (C pointers, call C functions)
 * records (structs) with methods
+* maps
 
 ## In progress
 
@@ -105,7 +106,6 @@ they are in the roadmap:
 
 ## Next
 
-* maps
 * FFI with C, continued (C arrays, C structs)
 * standard library that is a subset of Lua's standard library, built using the C FFI
 * tagged variants (unions of structs with some syntax for switch/case on the tag)

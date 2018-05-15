@@ -11,6 +11,7 @@ local types = typedecl("Type", {
         Value       = {},
         Function    = {"params", "rettypes", "vararg"},
         Array       = {"elem"},
+        Map         = {"keys", "values"},
         Record      = {"name", "fields", "functions", "methods"},
         Nominal     = {"fqtn"},
         Field       = {"fqtn", "name", "type", "index"},
@@ -42,6 +43,7 @@ function types.is_gc(t)
            tag == "Type.Value" or
            tag == "Type.Function" or
            tag == "Type.Array" or
+           tag == "Type.Map" or
            tag == "Type.Record" or
            tag == "Type.Interface" or
            tag == "Type.Nominal"
@@ -122,6 +124,9 @@ function types.compatible(t1, t2)
         return true
     elseif t1._tag == "Type.Array" and t2._tag == "Type.Array" then
         return types.compatible(t1.elem, t2.elem)
+    elseif t1._tag == "Type.Map" and t2._tag == "Type.Map" then
+        return types.compatible(t1.keys, t2.keys) and
+               types.compatible(t1.values, t2.values)
     elseif t1._tag == "Type.Nominal" and t2._tag == "Type.Nominal" then
         return t1.fqtn == t2.fqtn
     elseif t1._tag == "Type.Function" and t2._tag == "Type.Function" then
@@ -155,6 +160,9 @@ function types.equals(t1, t2)
     local tag1, tag2 = t1._tag, t2._tag
     if tag1 == "Type.Array" and tag2 == "Type.Array" then
         return types.equals(t1.elem, t2.elem)
+    elseif tag1 == "Type.Map" and tag2 == "Type.Map" then
+        return types.equals(t1.keys, t2.keys) and
+               types.equals(t1.values, t2.values)
     elseif tag1 == "Type.Pointer" and tag2 == "Type.Pointer" then
         return types.equals(t1.type, t2.type)
     elseif tag1 == "Type.Typedef" and tag2 == "Type.Typedef" then
@@ -201,6 +209,8 @@ function types.tostring(t)
     elseif tag == "Type.Invalid"     then return "invalid type"
     elseif tag == "Type.Array" then
         return "{ " .. types.tostring(t.elem) .. " }"
+    elseif tag == "Type.Map" then
+        return "{ " .. types.tostring(t.keys) .. " : " .. types.tostring(t.values) .. " }"
     elseif tag == "Type.Pointer" then
         if is_void_pointer(t) then
             return "void pointer"
@@ -253,8 +263,6 @@ function types.tostring(t)
             table.insert(out, ")")
         end
         return table.concat(out)
-    elseif tag == "Type.Array" then
-        return "{ " .. types.tostring(t.elem) .. " }"
     elseif tag == "Type.InitList" then
         return "initlist" -- TODO implement
     elseif tag == "Type.Record" then
@@ -270,6 +278,8 @@ function types.serialize(t)
     local tag = t._tag
     if tag == "Type.Array" then
         return "Array(" ..types.serialize(t.elem) .. ")"
+    elseif tag == "Type.Map" then
+        return "Map(" .. types.serialize(t.keys) .. ", " .. types.serialize(t.values) .. ")"
     elseif tag == "Type.ModuleMember" then
         return "ModuleMember('" .. t.modname .. "', '" ..
             t.name .. "', " .. types.serialize(t.type) .. ")"
