@@ -165,8 +165,10 @@ local keywords = {
     "and", "break", "do", "else", "elseif", "end", "for", "false",
     "function", "goto", "if", "in", "local", "nil", "not", "or",
     "repeat", "return", "then", "true", "until", "while", "import",
-    "record", "as", "foreign",
+    "record", "as", "foreign"
+}
 
+local type_keywords = {
     "boolean", "integer", "float", "string", "value"
 }
 
@@ -174,13 +176,32 @@ for _, keyword in ipairs(keywords) do
     lexer[keyword:upper()] = P(keyword) * -idrest
 end
 
+for _, keyword in ipairs(type_keywords) do
+    lexer[keyword:upper()] = P(keyword) * -idrest
+end
+
 local is_keyword = {}
+local is_type_keyword = {}
+
 for _, keyword in ipairs(keywords) do
     is_keyword[keyword] = true
+    is_type_keyword[keyword] = true
+end
+
+for _, keyword in ipairs(type_keywords) do
+    is_type_keyword[keyword] = true
 end
 
 lexer.NAME = Cmt(C(possiblename), function(_, pos, s)
     if not is_keyword[s] then
+        return pos, s
+    else
+        return false
+    end
+end)
+
+lexer.TYPENAME = Cmt(C(possiblename), function(_, pos, s)
+    if not is_type_keyword[s] then
         return pos, s
     else
         return false

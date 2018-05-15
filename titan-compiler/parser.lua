@@ -242,7 +242,7 @@ local grammar = re.compile([[
                            !(IMPORT / FOREIGN)
                            exp^ExpVarDec)                        -> TopLevelVar
 
-    toplevelrecord  <- (P  RECORD NAME^NameRecord
+    toplevelrecord  <- (P  RECORD TYPENAME^NameRecord
                            recordfields^FieldRecord
                            END^EndRecord)                        -> recorddecl
 
@@ -269,20 +269,20 @@ local grammar = re.compile([[
 
     decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
 
-    simpletype      <- (P  NIL)                                  -> TypeNil
+    simpletype      <- ((P  NAME DOT TYPENAME^QualName)       -> TypeQualName
+                     / (P  TYPENAME)                             -> TypeName
+                     / (P  NIL)                                  -> TypeNil
                      / (P  BOOLEAN)                              -> TypeBoolean
                      / (P  INTEGER)                              -> TypeInteger
                      / (P  FLOAT)                                -> TypeFloat
                      / (P  STRING)                               -> TypeString
                      / (P  VALUE)                                -> TypeValue
-                     / (P  NAME DOT NAME^QualName)               -> TypeQualName
-                     / (P  NAME)                                 -> TypeName
                      / (P  LCURLY type^TypeType
                            COLON
                            type^TypeType
                            RCURLY^RCurlyType)                    -> TypeMap
                      / (P  LCURLY type^TypeType
-                           RCURLY^RCurlyType)                    -> TypeArray
+                           RCURLY^RCurlyType)                    -> TypeArray) !DOT
 
     typelist        <- ( LPAREN
                          {| (type (COMMA type^TypelistType)*)? |}
@@ -503,6 +503,7 @@ local grammar = re.compile([[
     NUMBER          <- %NUMBER SKIP*
     STRINGLIT       <- %STRINGLIT SKIP*
     NAME            <- %NAME SKIP*
+    TYPENAME        <- %TYPENAME SKIP*
 
     -- Synonyms
 

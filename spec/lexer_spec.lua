@@ -9,59 +9,43 @@ end
 -- Find out how the lexer lexes a given string.
 -- Produces an error message if the string cannot be lexed or if there
 -- are multiple ways to lex it.
-local function run_lexer(source)
+local function run_lexer(source, tokens)
     local all_matched_tokens = {}
     local all_captures = {}
 
     local i = 1
-    while i <= #source do
 
-        local found_token = nil
-        local found_captures = nil
-        local found_j = nil
-
-        for tokname, tokpat in pairs(lexer) do
-            local a, b, c = lpeg.match(lpeg.Ct(tokpat) * lpeg.Cp(), source, i)
-            if a then
-                local captures, j = a, b
-                if i == j then
-                    return string.format(
-                        "error: token %s matched the empty string",
-                        tokname)
-                elseif found_token then
-                    return string.format(
-                        "error: multiple matching tokens: %s %s",
-                         found_token, tokname)
-                else
-                    found_token = tokname
-                    found_captures = captures
-                    found_j = j
-                end
-            elseif b and b ~= 'fail' then
-                return { err = b }
+    for _, tokname in ipairs(tokens) do
+        local a, b, c = lpeg.match(lpeg.Ct(lexer[tokname]) * lpeg.Cp(), source, i)
+        if a then
+            local captures, j = a, b
+            if i == j then
+                return string.format(
+                    "error: token %s matched the empty string",
+                    tokname)
+            else
+                table.insert(all_matched_tokens, tokname)
+                table_extend(all_captures, captures)
+                i = j
             end
-        end
-
-        if not found_token then
+        elseif b and b ~= 'fail' then
+            return { err = b }
+        else
             return "error: lexer got stuck"
         end
-
-        table.insert(all_matched_tokens, found_token)
-        table_extend(all_captures, found_captures)
-        i = found_j
     end
 
     return { tokens = all_matched_tokens, captures = all_captures }
 end
 
 local function assert_lex(source, expected_tokens, expected_captures)
-    local lexed    = run_lexer(source)
+    local lexed    = run_lexer(source, expected_tokens)
     local expected = { tokens = expected_tokens, captures = expected_captures }
     assert.are.same(expected, lexed)
 end
 
-local function assert_error(source, expected_error )
-    local lexed    = run_lexer(source)
+local function assert_error(source, tokname, expected_error )
+    local lexed    = run_lexer(source, { tokname })
     local expected = { err = expected_error }
     assert.are.same(expected, lexed)
 end
@@ -136,19 +120,19 @@ describe("Titan lexer", function()
     end)
 
     it("rejects invalid numeric literals ", function()
-        assert_error("1abcdef", "MalformedNumber")
-        assert_error("1.2.3.4", "MalformedNumber")
-        assert_error("1e",      "MalformedNumber")
-        assert_error("1e2e3",   "MalformedNumber")
-        assert_error("1p5",     "MalformedNumber")
-        assert_error(".1.",     "MalformedNumber")
-        assert_error("4..",     "MalformedNumber")
+        assert_error("1abcdef", "NUMBER", "MalformedNumber")
+        assert_error("1.2.3.4", "NUMBER", "MalformedNumber")
+        assert_error("1e",      "NUMBER", "MalformedNumber")
+        assert_error("1e2e3",   "NUMBER", "MalformedNumber")
+        assert_error("1p5",     "NUMBER", "MalformedNumber")
+        assert_error(".1.",     "NUMBER", "MalformedNumber")
+        assert_error("4..",     "NUMBER", "MalformedNumber")
 
         -- This is actually accepted by Lua (!)
-        assert_error("local x = 1337require",        "MalformedNumber")
+        assert_error("1337require", "NUMBER", "MalformedNumber")
 
         -- This is rejected by Lua ('c' is an hexdigit)
-        assert_error("local x = 1337collectgarbage", "MalformedNumber")
+        assert_error("1337collectgarbage", "NUMBER", "MalformedNumber")
     end)
 
     it("can lex some short strings", function()
@@ -196,11 +180,11 @@ describe("Titan lexer", function()
     end)
 
     it("rejects invalid string escape sequences", function()
-        assert_error([["\o"]],     "InvalidEscape")
+        assert_error([["\o"]], "STRINGLIT", "InvalidEscape")
     end)
 
     it("rejects invalid decimal escapes", function()
-        assert_error([["\555"]], "MalformedEscape_decimal")
+        assert_error([["\555"]], "STRINGLIT", "MalformedEscape_decimal")
     end)
 
     it("allows digits after decimal escape", function ()
@@ -208,31 +192,31 @@ describe("Titan lexer", function()
     end)
 
     it("rejects invalid hexadecimal escapes", function()
-        assert_error([["\x"]],     "MalformedEscape_x")
-        assert_error([["\xa"]],    "MalformedEscape_x")
-        assert_error([["\xag"]],   "MalformedEscape_x")
+        assert_error([["\x"]],     "STRINGLIT", "MalformedEscape_x")
+        assert_error([["\xa"]],    "STRINGLIT", "MalformedEscape_x")
+        assert_error([["\xag"]],   "STRINGLIT", "MalformedEscape_x")
     end)
 
     it("rejects invalid unicode escapes", function()
-        assert_error([["\u"]],     "MalformedEscape_u")
-        assert_error([["\u{"]],    "MalformedEscape_u")
-        assert_error([["\u{ab1"]], "MalformedEscape_u")
-        assert_error([["\u{ag}"]], "MalformedEscape_u")
+        assert_error([["\u"]],     "STRINGLIT", "MalformedEscape_u")
+        assert_error([["\u{"]],    "STRINGLIT", "MalformedEscape_u")
+        assert_error([["\u{ab1"]], "STRINGLIT", "MalformedEscape_u")
+        assert_error([["\u{ag}"]], "STRINGLIT", "MalformedEscape_u")
     end)
 
     it("rejects unclosed strings", function()
-        assert_error('"\'',       "UnclosedShortString")
-        assert_error('"A',        "UnclosedShortString")
+        assert_error('"\'',       "STRINGLIT", "UnclosedShortString")
+        assert_error('"A',        "STRINGLIT", "UnclosedShortString")
 
-        assert_error('"A\n',      "UnclosedShortString")
-        assert_error('"A\r',      "UnclosedShortString")
-        assert_error('"A\\\n\nB', "UnclosedShortString")
-        assert_error('"A\\\r\rB', "UnclosedShortString")
+        assert_error('"A\n',      "STRINGLIT", "UnclosedShortString")
+        assert_error('"A\r',      "STRINGLIT", "UnclosedShortString")
+        assert_error('"A\\\n\nB', "STRINGLIT", "UnclosedShortString")
+        assert_error('"A\\\r\rB', "STRINGLIT", "UnclosedShortString")
 
-        assert_error('"\\"',      "UnclosedShortString")
+        assert_error('"\\"',      "STRINGLIT", "UnclosedShortString")
 
-        assert_error("[[]",   "UnclosedLongString")
-        assert_error("[[]=]", "UnclosedLongString")
+        assert_error("[[]",   "STRINGLIT", "UnclosedLongString")
+        assert_error("[[]=]", "STRINGLIT", "UnclosedLongString")
     end)
 
     it("can lex some long strings", function()
