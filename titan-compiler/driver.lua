@@ -17,6 +17,12 @@ driver.LUA_SOURCE_PATH = "lua/src/"
 driver.CFLAGS = "--std=c99 -O2 -Wall -fPIC"
 driver.CC = "cc"
 
+local LUA_OFILES = {
+    "lgc.o", "ltable.o", "lstring.o", "lfunc.o", "lvm.o", "lobject.o",
+    "ldebug.o", "ltm.o", "lmem.o", "ldo.o", "lstate.o", "lctype.o",
+    "lopcodes.o", "lparser.o", "llex.o", "lundump.o", "lzio.o", "lcode.o"
+}
+
 local CIRCULAR_MARK = {}
 
 local function shell(cmd)
@@ -132,7 +138,11 @@ function driver.compile(modname, ast, sourcef, link, is_static, verbose)
     local ok, err = util.set_file_contents(filename, code)
     if not ok then return nil, err end
     local libflag = is_static and static_flag() or shared_flag()
-    local args = {driver.CC, driver.CFLAGS, libflag, filename,
+    local ofiles = ""
+    if not is_static then
+        ofiles = "lua/src/" .. table.concat(LUA_OFILES, " lua/src/")
+    end
+    local args = {driver.CC, driver.CFLAGS, libflag, filename, ofiles,
                   "-I", driver.LUA_SOURCE_PATH, "-o", libname}
     if link and not is_static then
         local libs = util.split_string(link, ",")
