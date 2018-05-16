@@ -2442,7 +2442,7 @@ describe("Titan code generator", function()
                     builtin function byte(s: string, i: integer): integer
                 ]],
                 bar = [[
-                    local string = import "string"
+                    import "string"
                     function main(args: {string}): integer
                         if string.byte('foo', 1) == 102 then
                             return 0

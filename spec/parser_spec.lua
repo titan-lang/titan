@@ -702,6 +702,27 @@ describe("Titan parser", function()
         assert_program_ast([[ local foo = import "module.foo" ]], {
             { _tag = "Ast.TopLevelImport", localname = "foo", modname = "module.foo" },
         })
+        assert_program_ast([[ import "module.foo" ]], {
+            { _tag = "Ast.TopLevelImport", localname = "foo", modname = "module.foo" },
+        })
+        assert_program_ast([[ local foo = import "foo" ]], {
+            { _tag = "Ast.TopLevelImport", localname = "foo", modname = "foo" },
+        })
+        assert_program_ast([[ import "foo" ]], {
+            { _tag = "Ast.TopLevelImport", localname = "foo", modname = "foo" },
+        })
+        assert_program_ast([[ local foo = foreign import "module/foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "module/foo.h" },
+        })
+        assert_program_ast([[ local foo = foreign import "foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "foo.h" },
+        })
+        assert_program_ast([[ foreign import "module/foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "module/foo.h" },
+        })
+        assert_program_ast([[ foreign import "foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "foo.h" },
+        })
     end)
 
     it("can parse multiple assignment", function ()

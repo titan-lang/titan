@@ -220,6 +220,14 @@ function defs.recorddecl(pos, name, fields)
            ast.TopLevelStatic(pos, name, "new", params, { ast.TypeName(pos, name) }, body)
 end
 
+function defs.shortimport(pos, name)
+    return ast.TopLevelImport(pos, name:match("(%w+)$"), name)
+end
+
+function defs.shortforeign(pos, name)
+    return ast.TopLevelForeignImport(pos, name:match("(%w+)[.]h$"), name)
+end
+
 local grammar = re.compile([[
 
     program         <-  SKIP*
@@ -229,7 +237,9 @@ local grammar = re.compile([[
                            / toplevelrecord
                            / toplevelbuiltin
                            / import
-                           / foreign )* |} !.
+                           / shortimport
+                           / foreign
+                           / shortforeign )* |} !.
 
     method          <- (P  FUNCTION NAME COLON NAME^NameMethod
                            LPAREN^LParPList paramlist RPAREN^RParPList
@@ -258,10 +268,18 @@ local grammar = re.compile([[
                           (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
                           STRINGLIT^StringImport))               -> TopLevelImport
 
+    shortimport     <- (P !FOREIGN IMPORT
+                          (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
+                           STRINGLIT^StringImport))              -> shortimport
+
     foreign         <- (P  LOCAL NAME^NameImport ASSIGN^AssignImport
                            FOREIGN IMPORT^ImportImport
                           (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
                            STRINGLIT^StringImport))              -> TopLevelForeignImport
+
+    shortforeign    <- (P FOREIGN IMPORT^ImportImport
+                          (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
+                           STRINGLIT^StringImport))              -> shortforeign
 
     rettypeopt      <- (P  (COLON rettype^TypeFunc)?)            -> rettypeopt
 
