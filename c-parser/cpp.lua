@@ -340,7 +340,7 @@ end)
 
 local eval_exp
 eval_exp = typed("Ctx, Exp -> number", function(ctx, exp)
-    debug(exp)
+    debug("exp", exp)
 
     if not exp.op then
         local val = exp[1]
@@ -412,7 +412,7 @@ eval_exp = typed("Ctx, Exp -> number", function(ctx, exp)
     end
 end)
 
-local consume_parentheses = typed("{string}, number, LineList, number -> {{string}}, number", function(tokens, start, linelist, cur)
+local consume_parentheses = typed("{string}, number, LineList, number -> {{string}}, number", function(tokens, start, linelist, curline)
     local args = {}
     local i = start + 1
     local arg = {}
@@ -421,12 +421,12 @@ local consume_parentheses = typed("{string}, number, LineList, number -> {{strin
         local token = tokens[i]
         if token == nil then
             repeat
-                cur = cur + 1
-                if not linelist[cur] then
+                curline = curline + 1
+                if not linelist[curline] then
                     error("unterminated function-like macro")
                 end
-                local nextline = linelist[cur].tk
-                linelist[cur].tk = {}
+                local nextline = linelist[curline].tk
+                linelist[curline].tk = {}
                 table.move(nextline, 1, #nextline, i, tokens)
                 token = tokens[i]
             until token
@@ -472,7 +472,7 @@ end
 
 local function table_replace_n_with(list, at, n, values)
     local old = #list
-    debug("TRNW?", list, "AT", at, "N", n, "VALUES", values)
+    debug("rplc?", list, "AT", at, "N", n, "VALUES", values)
     --assert(is_sequence(list))
     local nvalues = #values
     local nils = n >= nvalues and (n - nvalues + 1) or 0
@@ -482,7 +482,7 @@ local function table_replace_n_with(list, at, n, values)
     debug("....", list)
     table.move(values, 1, nvalues, at, list)
     --assert(is_sequence(list))
-    debug("TRNW!", list)
+    debug("rplc!", list)
     assert(#list == old - n + #values)
 end
 
@@ -492,21 +492,31 @@ end)
 
 local macro_expand
 
-local mark_noloop = typed("table, string, number -> ()", function(noloop, token, n)
-    noloop[token] = math.max(noloop[token] or 0, n)
-end)
+local LoopChecker
+LoopChecker = {
+    new = function(parent, offset)
+        local self = {}
+        self.tokens = parent and parent.tokens or {}
+        self.offset = offset and (offset + parent.offset) or 0
+        typed.set_type(self, "LoopChecker")
+        return setmetatable(self, { __index = LoopChecker })
+    end,
+    mark = typed("LoopChecker, string, number -> ()", function(self, token, n)
+        n = n + self.offset
+        self.tokens[token] = math.max(self.tokens[token] or 0, n)
+    end),
+    shift = typed("LoopChecker, number -> ()", function(self, n)
+        for token, v in pairs(self.tokens) do
+            self.tokens[token] = v + n
+        end
+    end),
+    valid = typed("LoopChecker, string, number -> ()", function(self, token, n)
+        n = n + self.offset
+        return self.tokens[token] == nil or self.tokens[token] < n
+    end),
+}
 
-local shift_noloop = typed("table, number -> ()", function(noloop, n)
-    for token, v in pairs(noloop) do
-        noloop[token] = v + n
-    end
-end)
-
-local valid_noloop = typed("table, string, number -> boolean", function(noloop, token, n)
-    return noloop[token] == nil or noloop[token] < n
-end)
-
-local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", function(ctx, tokens, args, linelist, cur)
+local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", function(ctx, tokens, args, linelist, curline)
     local i = 1
     local hash_next = false
     local join_next = false
@@ -522,7 +532,7 @@ local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", funct
             join_next = true
             table.remove(tokens, i)
         elseif args[token] then
-            macro_expand(ctx, args[token], linelist, cur, false)
+            macro_expand(ctx, args[token], linelist, curline, false)
             if hash_next then
                 tokens[i] = stringify(args[token])
                 hash_next = false
@@ -532,7 +542,7 @@ local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", funct
                 join_next = false
             else
                 table_replace_n_with(tokens, i, 1, args[token])
-                debug(token, args[token], tokens)
+                debug("rplcd", token, args[token], tokens)
                 i = i + #args[token]
             end
         elseif join_next then
@@ -547,13 +557,12 @@ local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", funct
     end
 end)
 
-macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(ctx, tokens, linelist, cur, expr_mode)
+macro_expand = typed("Ctx, {string}, LineList, number, boolean, LoopChecker? -> ()", function(ctx, tokens, linelist, curline, expr_mode, loopchecker)
     local i = 1
-    -- TODO propagate noloop into replace_args. recurse into macro_expand storing a proper offset internally.
-    local noloop = {}
+    loopchecker = loopchecker or LoopChecker.new()
     while true do
         ::continue::
-        debug(i, tokens)
+        debug("mexp", i, tokens)
         local token = tokens[i]
         if not token then
             break
@@ -568,19 +577,19 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(
             end
         end
         local define = ctx.defines[token]
-        if define and valid_noloop(noloop, token, i) then
-            debug(token, define)
+        if define and loopchecker:valid(token, i) then
+            debug("define" ,token, define)
             local repl = define.repl
             if define.args then
                 if tokens[i + 1] == "(" then
-                    local args, j = consume_parentheses(tokens, i + 1, linelist, cur)
+                    local args, j = consume_parentheses(tokens, i + 1, linelist, curline)
                     debug("args:", #args, args)
                     local named_args = {}
                     for i = 1, #define.args do
                         named_args[define.args[i]] = args[i] or {}
                     end
                     local expansion = array_copy(repl)
-                    replace_args(ctx, expansion, named_args, linelist, cur)
+                    replace_args(ctx, expansion, named_args, linelist, curline, loopchecker)
                     local nexpansion = #expansion
                     local n = j - i + 1
                     if nexpansion == 0 then
@@ -588,8 +597,8 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(
                     else
                         table_replace_n_with(tokens, i, n, expansion)
                     end
-                    shift_noloop(noloop, nexpansion - n)
-                    mark_noloop(noloop, token, i + nexpansion - 1)
+                    loopchecker:shift(nexpansion - n)
+                    --loopchecker:mark(token, i + nexpansion - 1)
                 else
                     i = i + 1
                 end
@@ -597,14 +606,13 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean -> ()", function(
                 local ndefine = #define
                 if ndefine == 0 then
                     table.remove(tokens, i)
-                    shift_noloop(noloop, -1)
+                    loopchecker:shift(-1)
                 elseif ndefine == 1 then
                     tokens[i] = define[1]
-                    mark_noloop(noloop, token, i)
-                    noloop[token] = math.max(noloop[token] or 0, i)
+                    loopchecker:mark(token, i)
                 else
                     table_replace_n_with(tokens, i, 1, define)
-                    mark_noloop(noloop, token, i + ndefine - 1)
+                    loopchecker:mark(token, i + ndefine - 1)
                 end
             end
         else
@@ -661,22 +669,22 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
     end
 
     local ifmode = ctx.ifmode
-    for cur, lineitem in ipairs(linelist) do
+    for curline, lineitem in ipairs(linelist) do
         local line = lineitem.line
         local tk = lineitem.tk
-        debug(filename, cur, ifmode[#ifmode], #ifmode, line)
+        debug("line", filename, curline, ifmode[#ifmode], #ifmode, line)
 
         if #ifmode == 1 and (tk.directive == "elif" or tk.directive == "else" or tk.directive == "endif") then
             return nil, "unexpected directive " .. tk.directive
         end
 
         if tk.exp then
-            macro_expand(ctx, tk.exp, linelist, cur, true)
+            macro_expand(ctx, tk.exp, linelist, curline, true)
         end
 
         if ifmode[#ifmode] == true then
             if tk.directive then
-                debug(tk)
+                debug("drctv", tk)
             end
             if tk.directive == "define" then
                 local k = tk.id
@@ -708,7 +716,7 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
                 end
                 cpp.parse_file(inc_filename, inc_fd, ctx)
             else
-                macro_expand(ctx, tk, linelist, cur, false)
+                macro_expand(ctx, tk, linelist, curline, false)
                 table.insert(ctx.output, table.concat(tk, " "))
             end
         elseif ifmode[#ifmode] == false then
