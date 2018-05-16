@@ -5,35 +5,56 @@ local types = require "titan-compiler.types"
 local inspect = require "inspect"
 
 local function type_from_name(st, typename)
+    local longs = 0
+    local ptrs = 0
+    local set = {}
     for i = #typename, 1, -1 do
         local token = typename[i]
-        if token == "const"
-        or token == "restrict" then
+        set[token] = true
+        if token == "const" or token == "restrict" then
             table.remove(typename, i)
         end
+        if token == "long" then
+            longs = longs + 1
+        end
+        if token == "*" then
+            ptrs = ptrs + 1
+        end
     end
+
     if #typename == 1 then
         local itype = st:find_foreign_type(typename[1])
         if itype then
             return itype
-        elseif typename[1] == "void" then
-            return types.Nil()
-        elseif typename[1] == "int" then
-            return types.Integer()
-        elseif typename[1] == "long" then
-            return types.Integer()
-        elseif typename[1] == "double" then
-            return types.Float()
         end
-    elseif #typename == 2 and typename[1] == "char" and typename[2] == "*" then
+    end
+
+    if set.char and ptrs == 1 then -- char*, unsigned char*
         return types.String()
-    elseif typename[#typename] == "*" then
+    end
+
+    if typename[#typename] == "*" then -- T*
         table.remove(typename)
         return {
             _tag = "Type.Pointer",
             type = type_from_name(st, typename)
         }
     end
+
+    if set.double or set.float then -- float, double, long double
+        return types.Float()
+    end
+    if set.long or set.int then -- long, long long, long int, long long int
+        return types.Integer()
+    end
+    if set.void then
+        return types.Nil()
+    end
+
+    if #typename == 0 then -- long, long long
+        return types.Integer()
+    end
+
     return { _tag = "Type.Unknown", data = typename }
 end
 
