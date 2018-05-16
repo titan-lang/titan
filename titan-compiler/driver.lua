@@ -13,9 +13,16 @@ driver.imported = {}
 
 driver.TITAN_BIN_PATH = os.getenv("TITAN_PATH_0_5") or os.getenv("TITAN_PATH") or ".;/usr/local/lib/titan/0.5"
 driver.TITAN_SOURCE_PATH = "."
-driver.LUA_SOURCE_PATH = "lua/src/"
+driver.LUA_SOURCE_PATH = "lua-5.3.4/src/"
+driver.TITAN_RUNTIME_PATH = "titan-runtime/"
 driver.CFLAGS = "--std=c99 -O2 -Wall -fPIC"
 driver.CC = "cc"
+
+local LUA_OFILES = {
+    "lgc.o", "ltable.o", "lstring.o", "lfunc.o", "lvm.o", "lobject.o",
+    "ldebug.o", "ltm.o", "lmem.o", "ldo.o", "lstate.o", "lctype.o",
+    "lopcodes.o", "lparser.o", "llex.o", "lundump.o", "lzio.o", "lcode.o"
+}
 
 local CIRCULAR_MARK = {}
 
@@ -120,7 +127,19 @@ function driver.compile_module(modname, mod, link, is_static, verbose)
     return true, nil, libname
 end
 
+local function check_runtime()
+    local runtime_c = driver.TITAN_RUNTIME_PATH .. "titan.c"
+    local runtime_o = driver.TITAN_RUNTIME_PATH .. "titan.o"
+    if not lfs.attributes(runtime_o, "size") then
+        local args = {driver.CC, driver.CFLAGS, "-c", runtime_c,
+            "-I", driver.TITAN_RUNTIME_PATH, "-I", driver.LUA_SOURCE_PATH,
+            "-o", runtime_o }
+        os.execute(table.concat(args, " "))
+    end
+end
+
 function driver.compile(modname, ast, sourcef, link, is_static, verbose)
+    check_runtime()
     sourcef = sourcef or modname:gsub("[.]", "/") .. ".titan"
     local code = coder.generate(modname, ast, not is_static)
     code = pretty.reindent_c(code)
@@ -132,7 +151,14 @@ function driver.compile(modname, ast, sourcef, link, is_static, verbose)
     local ok, err = util.set_file_contents(filename, code)
     if not ok then return nil, err end
     local libflag = is_static and static_flag() or shared_flag()
-    local args = {driver.CC, driver.CFLAGS, libflag, filename,
+    local ofiles = ""
+    if not is_static then
+        ofiles = driver.LUA_SOURCE_PATH ..
+            table.concat(LUA_OFILES, " " .. driver.LUA_SOURCE_PATH)
+    end
+    local runtime = not is_static and driver.TITAN_RUNTIME_PATH .. "titan.o" or ""
+    local args = {driver.CC, driver.CFLAGS, libflag, filename, ofiles,
+                  runtime, "-I", "titan-runtime",
                   "-I", driver.LUA_SOURCE_PATH, "-o", libname}
     if link and not is_static then
         local libs = util.split_string(link, ",")
@@ -154,12 +180,12 @@ end
 
 local entrypoint_template = [[
 
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
 
 /* portable alerts, from srlua */
 #ifdef _WIN32
@@ -269,10 +295,14 @@ function driver.compile_program(modname, libnames, link, verbose)
     if err then return nil, err end
 
     local args = {driver.CC, driver.CFLAGS, "-o", execname,
-                  entrypoint_c}
+                "-I", driver.TITAN_RUNTIME_PATH, "-I", driver.LUA_SOURCE_PATH,
+                entrypoint_c}
     for _, libname in ipairs(libnames) do
         table.insert(args, libname)
     end
+
+    table.insert(args, driver.TITAN_RUNTIME_PATH .. "titan.o")
+
     table.insert(args, driver.LUA_SOURCE_PATH .. "/liblua.a")
     table.insert(args, "-ldl")
     table.insert(args, "-lm")
