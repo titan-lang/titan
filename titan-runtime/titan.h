@@ -56,15 +56,4 @@ LUAI_FUNC void *loadlib (lua_State *L, const char *file);
 LUAI_FUNC void *loadsym (lua_State *L, void *lib, const char *sym);
 LUAI_FUNC const TValue *getgeneric (Table *t, const TValue *key);
 
-/* Builtins */
-LUAI_FUNC int titan_print(lua_State *L, int nargs, ...);
-LUAI_FUNC TValue titan_assert(lua_State *L, TValue cond, TString *msg);
-LUAI_FUNC Table *titan_dofile(lua_State *L, TString *fname, int nargs, ...);
-LUAI_FUNC int titan_error(lua_State *L, TString *msg);
-LUAI_FUNC Table *titan_dostring(lua_State *L, TString *code, int nargs, ...);
-LUAI_FUNC TString *titan_tostring(lua_State *L, TValue val);
-LUAI_FUNC lua_Number titan_tofloat(lua_State *L, TString *s);
-LUAI_FUNC lua_Integer titan_tointeger(lua_State *L, TString *s);
-LUAI_FUNC lua_Integer titan_string_byte(lua_State *L, TString *s, lua_Integer index);
-
 #endif

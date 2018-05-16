@@ -423,6 +423,10 @@ local function function_sig(fname, ftype, is_pointer)
     for i = 2, #ftype.rettypes do
         table.insert(params, ctype(ftype.rettypes[i]) .. "*")
     end
+    if type(ftype.vararg) == "table" then
+        table.insert(params, "int")
+        table.insert(params, "...")
+    end
     local rettype = ftype.rettypes[1]
     local template = is_pointer
                      and "$RETTYPE (*$FNAME)($PARAMS)"
@@ -1069,6 +1073,10 @@ local function codecall(ctx, node)
         if fnode._tag == "Ast.VarName" then
             if ftype._tag == "Type.BuiltinFunction" then
                 fname = builtin_name(ftype.name)
+                ctx.functions[ftype.name] = {
+                    mangled = builtin_name(ftype.name),
+                    type = ftype
+                }
             else
                 assert(ftype._tag == "Type.Function")
                 fname = func_name(ctx.module, fnode.name)
@@ -1094,6 +1102,10 @@ local function codecall(ctx, node)
                 end
             elseif ftype._tag == "Type.BuiltinFunction" then
                 fname = builtin_name(ftype.name)
+                ctx.functions[ftype.name] = {
+                    mangled = builtin_name(ftype.name),
+                    type = ftype
+                }
             else
                 assert(fnode._decl._tag == "Type.ModuleMember")
                 fname = func_name(fnode._decl.modname, fnode.name)
@@ -2546,20 +2558,24 @@ local function init_data_from_other_modules(tlcontext, includes, loadmods, initm
 
     for name, func in pairs(tlcontext.functions) do
         local fname = func.mangled
-        table.insert(includes, storage_class .. " " .. function_sig(fname, func.type, is_dynamic) .. ";")
-        if is_dynamic then
-            local mprefix = mprefixes[func.module]
-            if not mprefix then
-                mprefix = mangle_qn(func.module) .. "_"
-                mprefixes[func.module] = mprefix
-                local file = func.module:gsub("[.]", "/") .. ".so"
+        if func.type._tag == "Type.BuiltinFunction" then
+            table.insert(includes, "extern " .. function_sig(fname, func.type) .. ";")
+        else
+            table.insert(includes, storage_class .. " " .. function_sig(fname, func.type, is_dynamic) .. ";")
+            if is_dynamic then
+                local mprefix = mprefixes[func.module]
+                if not mprefix then
+                    mprefix = mangle_qn(func.module) .. "_"
+                    mprefixes[func.module] = mprefix
+                    local file = func.module:gsub("[.]", "/") .. ".so"
+                    table.insert(loadmods, render([[
+                        void *$HANDLE = loadlib(L, "$FILE");
+                    ]], { HANDLE = mprefix .. "handle", FILE = file }))
+                end
                 table.insert(loadmods, render([[
-                    void *$HANDLE = loadlib(L, "$FILE");
-                ]], { HANDLE = mprefix .. "handle", FILE = file }))
+                    $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
+                ]], { NAME = fname, TYPE = function_sig("", func.type, true), HANDLE = mprefix .. "handle" }))
             end
-            table.insert(loadmods, render([[
-                $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
-            ]], { NAME = fname, TYPE = function_sig("", func.type, true), HANDLE = mprefix .. "handle" }))
         end
     end
 
