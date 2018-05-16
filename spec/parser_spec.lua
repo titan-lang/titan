@@ -1162,5 +1162,30 @@ describe("Titan parser", function()
         assert_expression_syntax_error([[ y{42,,} ]], "ExpFieldList")
 
         assert_expression_syntax_error([[ foo as ]], "CastMissingType")
+
+        assert_program_syntax_error([[
+            builtin funtion foo (a:int, ) : int
+        ]], "BuiltinFunc")
+
+        assert_program_ast([[
+            builtin function print(...: value)
+            builtin function assert(val: value, msg: string): value
+            builtin function dofile(fname: string, ...: value): {value}
+            builtin function dostring(fname: string, ...: value): {value}
+            builtin function error(msg: string)
+            builtin function tostring(val: value): string
+            builtin function tofloat(val: string): float
+            builtin function tointeger(val: string): integer
+        ]], {
+            { _tag = "Ast.TopLevelBuiltin", name = "print", params = { {_tag = "Ast.Vararg"} }},
+            { _tag = "Ast.TopLevelBuiltin", name = "assert" },
+            { _tag = "Ast.TopLevelBuiltin", name = "dofile", params = { {_tag = "Ast.Decl"}, {_tag = "Ast.Vararg"} },
+                rettypes = { {_tag = "Ast.TypeArray"} } },
+            { _tag = "Ast.TopLevelBuiltin", name = "dostring" },
+            { _tag = "Ast.TopLevelBuiltin", name = "error" },
+            { _tag = "Ast.TopLevelBuiltin", name = "tostring" },
+            { _tag = "Ast.TopLevelBuiltin", name = "tofloat" },
+            { _tag = "Ast.TopLevelBuiltin", name = "tointeger" },
+        })
     end)
 end)

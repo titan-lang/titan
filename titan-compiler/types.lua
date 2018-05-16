@@ -20,6 +20,7 @@ local types = typedecl("Type", {
         ModuleMember = {"modname", "name", "type"},
         ModuleVariable = {"modname", "name", "type"},
         StaticMethod = {"fqtn", "name", "params", "rettypes"},
+        BuiltinFunction = {"name", "params", "rettypes", "vararg"},
     }
 })
 
@@ -223,11 +224,14 @@ function types.tostring(t)
         end
     elseif tag == "Type.Typedef" then
         return t.name
-    elseif tag == "Type.Function" then
-        local out = {"function("}
+    elseif tag == "Type.Function" or tag == "Type.BuiltinFunction" then
+        local out = {tag == "Type.BuiltinFunction" and "builtin " or "", "function("}
         local ptypes = {}
         for _, param in ipairs(t.params) do
             table.insert(ptypes, types.tostring(param))
+        end
+        if(type(t.vararg) == "table") then
+            table.insert(ptypes, types.tostring(t.vararg) .. "...")
         end
         table.insert(out, table.concat(ptypes, ", "))
         table.insert(out, ")")
@@ -347,6 +351,19 @@ function types.serialize(t)
             "},{" ..table.concat(functions, ",") .. "}" .. "," ..
             "{" .. table.concat(methods, ",") .. "}" ..
             ")"
+    elseif tag == "Type.BuiltinFunction" then
+        local ptypes = {}
+        for _, pt in ipairs(t.params) do
+            table.insert(ptypes, types.serialize(pt))
+        end
+        local rettypes = {}
+        for _, rt in ipairs(t.rettypes) do
+            table.insert(rettypes, types.serialize(rt))
+        end
+        return "BuiltinFunction('" .. t.name .. "'," ..
+            "{" .. table.concat(ptypes, ",") .. "}" .. "," ..
+            "{" .. table.concat(rettypes, ",") .. "}" .. "," ..
+            tostring(t.vararg) .. ")"
     elseif tag == "Type.Integer"     then return "Integer()"
     elseif tag == "Type.Boolean"     then return "Boolean()"
     elseif tag == "Type.String"      then return "String()"

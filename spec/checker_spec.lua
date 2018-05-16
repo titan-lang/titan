@@ -1629,25 +1629,31 @@ describe("Titan type checker", function()
     end)
 
     it("catches use of function as first-class value", function ()
-        local code = [[
+        assert_type_error("access a function", [[
             function foo(): integer
                 return foo
             end
-        ]]
-        local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("access a function", err)
+        ]])
+        assert_type_error("access a function", [[
+            builtin function bar()
+            function foo(): integer
+                return bar
+            end
+        ]])
     end)
 
     it("catches assignment to function", function ()
-        local code = [[
+        assert_type_error("assign to a function",[[
             function foo(): integer
                 foo = 2
             end
-        ]]
-        local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("assign to a function", err)
+        ]])
+        assert_type_error("assign to a function",[[
+            builtin function bar()
+            function foo(): integer
+                bar = 2
+            end
+        ]])
     end)
 
     it("catches use of external function as first-class value", function ()
@@ -1669,12 +1675,46 @@ describe("Titan type checker", function()
         assert.match("access a function", err)
     end)
 
+    it("catches use of external builtin function as first-class value", function ()
+        local modules = {
+            foo = [[
+                builtin function foo()
+            ]],
+            bar = [[
+                local foo = import "foo"
+                function bar(): integer
+                    return foo.foo
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("access a function", err)
+    end)
+
     it("catches assignment to external function", function ()
         local modules = {
             foo = [[
                 a: integer = 1
                 function foo()
                 end
+            ]],
+            bar = [[
+                local foo = import "foo"
+                function bar(): integer
+                    foo.foo = 2
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("assign to a function", err)
+    end)
+
+    it("catches assignment to external builtin function", function ()
+        local modules = {
+            foo = [[
+                builtin function foo()
             ]],
             bar = [[
                 local foo = import "foo"
@@ -1907,12 +1947,63 @@ describe("Titan type checker", function()
             function h()
                 f(20, (g()))
             end
+        ]], args = 2, params = 3 },{ code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            builtin function f(x: integer, y: integer, z: integer)
+            function h()
+                f(g())
+            end
+        ]], args = 2, params = 3 }, { code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            builtin function f(x: integer, y: integer, z: integer)
+            function h()
+                f(20, 30, g())
+            end
+        ]], args = 4, params = 3 }, { code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            builtin function f(x: integer, y: integer, z: integer)
+            function h()
+                f(20, (g()))
+            end
         ]], args = 2, params = 3 }}
         for _, c in ipairs(cases) do
             local ok, err = run_checker(c.code)
             assert.falsy(ok)
             assert.match("function 'f' called with " .. c.args .. " arguments but expects " .. c.params, err)
         end
+    end)
+
+    it("vararg builtins and functions", function ()
+        assert_type_check([[
+            builtin function f(a: string, ...: float)
+            function g()
+                f('foo', 1, 2.5)
+            end
+        ]])
+        assert_type_error("only the last parameter", [[
+            builtin function f(...: float, a: string)
+        ]])
+        assert_type_error("only the last parameter", [[
+            function f(...: float, a: string)
+            end
+        ]])
+        assert_type_error("only the last parameter", [[
+            record R end
+            function R:f(...: float, a: string)
+            end
+        ]])
+        assert_type_error("expected float but found string", [[
+            builtin function f(a: string, ...: float)
+            function g()
+                f('foo', 1, 'bar')
+            end
+        ]])
     end)
 end)
 

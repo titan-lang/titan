@@ -1,5 +1,6 @@
 local checker = {}
 
+local parser = require "titan-compiler.parser"
 local location = require "titan-compiler.location"
 local symtab = require "titan-compiler.symtab"
 local types = require "titan-compiler.types"
@@ -104,9 +105,6 @@ typefromnode = util.make_visitor({
     end,
 
     ["Ast.TypeFunction"] = function(node, st, errors)
-        if #node.argtypes ~= 1 then
-            error("functions with 0 or 2+ return values are not yet implemented")
-        end
         local ptypes = {}
         for _, ptype in ipairs(node.argtypes) do
             table.insert(ptypes, typefromnode(ptype, st, errors))
@@ -333,7 +331,7 @@ checkstat = util.make_visitor({
                 local texp = var._type
                 if texp._tag == "Type.Module" then
                     checker.typeerror(errors, var.loc, "trying to assign to a module")
-                elseif texp._tag == "Type.Function" then
+                elseif texp._tag == "Type.Function" or texp._tag == "Type.BuiltinFunction" then
                     checker.typeerror(errors, var.loc, "trying to assign to a function")
                 else
                     -- mark this declared variable as assigned to
@@ -770,7 +768,7 @@ checkexp = util.make_visitor({
                 "trying to access module '%s' as a first-class value",
                 node.var.name)
             node._type = types.Invalid()
-        elseif texp._tag == "Type.Function" then
+        elseif texp._tag == "Type.Function" or texp._tag == "Type.BuiltinFunction" then
             checker.typeerror(errors, node.loc,
                 "trying to access a function as a first-class value")
             node._type = types.Invalid()
@@ -1033,14 +1031,15 @@ checkexp = util.make_visitor({
             local ftype = node.exp._type
             local fname = expname(node.exp)
             local var = node.exp.var
-            if not (var and var._decl and (var._decl._tag == "Ast.BuiltinFunc" or
+            if not (var and var._decl and
+             (var._decl._tag == "Ast.TopLevelBuiltin" or
               var._decl._tag == "Ast.TopLevelFunc" or
               var._decl._tag == "Type.ModuleMember" or
               var._decl._tag == "Type.StaticMethod")) then
                 checker.typeerror(errors, node.loc,
                     "first-class functions are not supported in this version of Titan")
             end
-            if ftype._tag ~= "Type.Function" then
+            if ftype._tag ~= "Type.Function" and ftype._tag ~= "Type.BuiltinFunction" then
                 checker.typeerror(errors, node.loc,
                     "'%s' is not a function but %s",
                     fname, types.tostring(ftype))
@@ -1133,6 +1132,7 @@ local function checkfunc(node, st, errors)
         checktype(rettype, node.rettypes[i].loc, errors)
     end
     for i, param in ipairs(node.params) do
+        param.name = param.name or "..."
         st:add_symbol(param.name, param)
         param._type = ptypes[i]
         checktype(param._type, param.loc, errors)
@@ -1256,7 +1256,8 @@ local function toplevel_name(node)
     elseif tag == "Ast.TopLevelVar" then
         return node.decl.name
     elseif tag == "Ast.TopLevelFunc" or
-           tag == "Ast.TopLevelRecord" then
+           tag == "Ast.TopLevelRecord" or
+           tag == "Ast.TopLevelBuiltin" then
         return node.name
     elseif tag == "Ast.TopLevelMethod" or tag == "Ast.TopLevelStatic" then
         return nil
@@ -1326,7 +1327,16 @@ local toplevel_visitor = util.make_visitor({
 
     ["Ast.TopLevelFunc"] = function(node, st, errors)
         local ptypes = {}
-        for _, pdecl in ipairs(node.params) do
+        for i, pdecl in ipairs(node.params) do
+            if pdecl._tag == "Ast.Vararg" then
+                if i < #node.params then
+                    checker.typeerror(errors, pdecl.loc,
+                        "only the last parameter can be '...'")
+                else
+                    checker.typeerror(errors, pdecl.loc,
+                        "top-level functions cannot be variadic")
+                end
+            end
             table.insert(ptypes, typefromnode(pdecl.type, st, errors))
         end
         local rettypes = {}
@@ -1399,7 +1409,16 @@ local toplevel_visitor = util.make_visitor({
         end
         node._record = record
         local ptypes = {}
-        for _, pdecl in ipairs(node.params) do
+        for i, pdecl in ipairs(node.params) do
+            if pdecl._tag == "Ast.Vararg" then
+                if i < #node.params then
+                    checker.typeerror(errors, pdecl.loc,
+                        "only the last parameter can be '...''")
+                else
+                    checker.typeerror(errors, pdecl.loc,
+                        "top-level functions cannot be variadic")
+                end
+            end
             table.insert(ptypes, typefromnode(pdecl.type, st, errors))
         end
         local rettypes = {}
@@ -1451,7 +1470,16 @@ local toplevel_visitor = util.make_visitor({
         end
         node._record = record
         local ptypes = {}
-        for _, pdecl in ipairs(node.params) do
+        for i, pdecl in ipairs(node.params) do
+            if pdecl._tag == "Ast.Vararg" then
+                if i < #node.params then
+                    checker.typeerror(errors, pdecl.loc,
+                        "only the last parameter can be '...''")
+                else
+                    checker.typeerror(errors, pdecl.loc,
+                        "top-level functions cannot be variadic")
+                end
+            end
             table.insert(ptypes, typefromnode(pdecl.type, st, errors))
         end
         local rettypes = {}
@@ -1460,6 +1488,32 @@ local toplevel_visitor = util.make_visitor({
         end
         node._type = types.Method(rectype.name, node.name, ptypes, rettypes)
         rectype.methods[node.name] = node._type
+    end,
+
+    ["Ast.TopLevelBuiltin"] = function(node, st, errors)
+        local ptypes = {}
+        local vararg = false
+        for i, pdecl in ipairs(node.params) do
+            if(pdecl._tag == "Ast.Vararg") then
+                if i < #node.params then
+                    checker.typeerror(errors, pdecl.loc,
+                        "only the last parameter can be '...'")
+                    table.insert(ptypes, typefromnode(pdecl.type, st, errors))
+                else
+                    vararg = typefromnode(pdecl.type, st, errors)
+                end
+            else
+                table.insert(ptypes, typefromnode(pdecl.type, st, errors))
+            end
+        end
+        local rettypes = {}
+        for _, rt in ipairs(node.rettypes) do
+            table.insert(rettypes, typefromnode(rt, st, errors))
+        end
+        local fname = st and st.modname .. "." .. node.name or node.name
+        node._type = types.BuiltinFunction(fname,
+            ptypes, rettypes, vararg)
+        return node
     end,
 })
 
@@ -1525,7 +1579,7 @@ local function makemoduletype(modname, modast)
             local tag = tlnode._tag
             if tag == "Ast.TopLevelVar" then
                 table.insert(members, types.ModuleVariable(modname, tlnode.decl.name, tlnode._type))
-            elseif tag == "Ast.TopLevelFunc" or tag == "Ast.TopLevelRecord" then
+            elseif tag == "Ast.TopLevelFunc" or tag == "Ast.TopLevelRecord" or tag == "Ast.TopLevelBuiltin" then
                 table.insert(members, types.ModuleMember(modname, tlnode.name, tlnode._type))
             end
         end
@@ -1534,29 +1588,19 @@ local function makemoduletype(modname, modast)
 end
 
 local function add_builtins(st)
-    st:add_symbol("print",
-        ast.BuiltinFunc("print", types.Function({}, { types.Nil() }, types.Value())))
-    st:add_symbol("assert",
-        ast.BuiltinFunc("assert",
-            types.Function({ types.Value(), types.String() }, { types.Value() }, false)))
-    st:add_symbol("dofile",
-        ast.BuiltinFunc("dofile",
-            types.Function({ types.String() }, { types.Array(types.Value()) }, types.Value())))
-    st:add_symbol("error",
-        ast.BuiltinFunc("error",
-            types.Function({ types.String() }, { types.Nil() }, false)))
-    st:add_symbol("dostring",
-        ast.BuiltinFunc("dostring",
-            types.Function({ types.String() }, { types.Array(types.Value()) }, types.Value())))
-    st:add_symbol("tostring",
-        ast.BuiltinFunc("tostring",
-            types.Function({ types.Value() }, { types.String() }, false)))
-    st:add_symbol("tofloat",
-        ast.BuiltinFunc("tofloat",
-            types.Function({ types.String() }, { types.Float() }, false)))
-    st:add_symbol("tointeger",
-        ast.BuiltinFunc("tointeger",
-            types.Function({ types.String() }, { types.Integer() }, false)))
+    local nodes = parser.parse("builtin.titan", [[
+        builtin function print(...: value)
+        builtin function assert(val: value, msg: string): value
+        builtin function dofile(fname: string, ...: value): {value}
+        builtin function dostring(fname: string, ...: value): {value}
+        builtin function error(msg: string)
+        builtin function tostring(val: value): string
+        builtin function tofloat(val: string): float
+        builtin function tointeger(val: string): integer
+    ]])
+    for _, node in ipairs(nodes) do
+        st:add_symbol(node.name, toplevel_visitor(node))
+    end
 end
 
 -- Entry point for the typechecker

@@ -115,7 +115,7 @@ local function func_name(modname, name)
 end
 
 local function builtin_name(name)
-    return "titan_" .. name
+    return "titan_" .. mangle_qn(name)
 end
 
 local function func_luaname(modname, name)
@@ -1067,10 +1067,10 @@ local function codecall(ctx, node)
     local ftype = fnode._type
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
-            if fnode._decl._tag == "Ast.BuiltinFunc" then
-                fname = builtin_name(fnode._decl.name)
+            if ftype._tag == "Type.BuiltinFunction" then
+                fname = builtin_name(ftype.name)
             else
-                assert(fnode._decl._tag == "Ast.TopLevelFunc")
+                assert(ftype._tag == "Type.Function")
                 fname = func_name(ctx.module, fnode.name)
             end
         elseif fnode._tag == "Ast.VarDot" then
@@ -1092,6 +1092,8 @@ local function codecall(ctx, node)
                         INDEX = c_integer_literal(fnode.exp.var.exp.var._decl._upvalue) -- whew!
                     })
                 end
+            elseif ftype._tag == "Type.BuiltinFunction" then
+                fname = builtin_name(ftype.name)
             else
                 assert(fnode._decl._tag == "Type.ModuleMember")
                 fname = func_name(fnode._decl.modname, fnode.name)

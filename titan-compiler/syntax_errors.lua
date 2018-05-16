@@ -169,6 +169,7 @@ local errors = {
 
     NameMethod = "Expected a method name after the colon.",
 
+    BuiltinFunc = "Expected a builtin function declaration.",
 }
 
 syntax_errors.errors = errors

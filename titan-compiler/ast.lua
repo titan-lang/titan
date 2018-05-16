@@ -23,10 +23,12 @@ return typedecl("Ast", {
         TopLevelRecord  = {"loc", "name", "fields"},
         TopLevelImport  = {"loc", "localname", "modname"},
         TopLevelForeignImport = {"loc", "localname", "headername"},
+        TopLevelBuiltin = {"loc", "name", "params", "rettypes"},
     },
 
     Decl = {
         Decl = {"loc", "name", "type"},
+        Vararg = {"loc", "type"}
     },
 
     Stat = {
@@ -75,9 +77,5 @@ return typedecl("Ast", {
 
     Field = {
         Field           = {"loc", "name", "exp"},
-    },
-
-    Builtin = {
-        BuiltinFunc = { "name", "_type" }
     },
 })

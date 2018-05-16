@@ -65,5 +65,6 @@ LUAI_FUNC Table *titan_dostring(lua_State *L, TString *code, int nargs, ...);
 LUAI_FUNC TString *titan_tostring(lua_State *L, TValue val);
 LUAI_FUNC lua_Number titan_tofloat(lua_State *L, TString *s);
 LUAI_FUNC lua_Integer titan_tointeger(lua_State *L, TString *s);
+LUAI_FUNC lua_Integer titan_string_byte(lua_State *L, TString *s, lua_Integer index);
 
 #endif
