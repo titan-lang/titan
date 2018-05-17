@@ -70,7 +70,8 @@ local function call_app(appname, ...)
     local f = io.popen(cmd)
     local out = f:read()
     local ok, err, status = f:close()
-    os.remove(appname)
+    if err == "exit" then ok = true end
+    if not verbose then os.remove(appname) end
     return ok, err, status, out
 end
 
