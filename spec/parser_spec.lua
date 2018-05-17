@@ -1185,28 +1185,28 @@ describe("Titan parser", function()
         assert_expression_syntax_error([[ foo as ]], "CastMissingType")
 
         assert_program_syntax_error([[
-            builtin funtion foo (a:int, ) : int
-        ]], "BuiltinFunc")
+            foreign funtion foo (a:int, ) : int
+        ]], "ForeignFunc")
 
         assert_program_ast([[
-            builtin function print(...: value)
-            builtin function assert(val: value, msg: string): value
-            builtin function dofile(fname: string, ...: value): {value}
-            builtin function dostring(fname: string, ...: value): {value}
-            builtin function error(msg: string)
-            builtin function tostring(val: value): string
-            builtin function tofloat(val: string): float
-            builtin function tointeger(val: string): integer
+            foreign function print(...: value)
+            foreign function assert(val: value, msg: string): value
+            foreign function dofile(fname: string, ...: value): {value}
+            foreign function dostring(fname: string, ...: value): {value}
+            foreign function error(msg: string)
+            foreign function tostring(val: value): string
+            foreign function tofloat(val: string): float
+            foreign function tointeger(val: string): integer
         ]], {
-            { _tag = "Ast.TopLevelBuiltin", name = "print", params = { {_tag = "Ast.Vararg"} }},
-            { _tag = "Ast.TopLevelBuiltin", name = "assert" },
-            { _tag = "Ast.TopLevelBuiltin", name = "dofile", params = { {_tag = "Ast.Decl"}, {_tag = "Ast.Vararg"} },
+            { _tag = "Ast.TopLevelForeignFunc", name = "print", params = { {_tag = "Ast.Vararg"} }},
+            { _tag = "Ast.TopLevelForeignFunc", name = "assert" },
+            { _tag = "Ast.TopLevelForeignFunc", name = "dofile", params = { {_tag = "Ast.Decl"}, {_tag = "Ast.Vararg"} },
                 rettypes = { {_tag = "Ast.TypeArray"} } },
-            { _tag = "Ast.TopLevelBuiltin", name = "dostring" },
-            { _tag = "Ast.TopLevelBuiltin", name = "error" },
-            { _tag = "Ast.TopLevelBuiltin", name = "tostring" },
-            { _tag = "Ast.TopLevelBuiltin", name = "tofloat" },
-            { _tag = "Ast.TopLevelBuiltin", name = "tointeger" },
+            { _tag = "Ast.TopLevelForeignFunc", name = "dostring" },
+            { _tag = "Ast.TopLevelForeignFunc", name = "error" },
+            { _tag = "Ast.TopLevelForeignFunc", name = "tostring" },
+            { _tag = "Ast.TopLevelForeignFunc", name = "tofloat" },
+            { _tag = "Ast.TopLevelForeignFunc", name = "tointeger" },
         })
     end)
 end)

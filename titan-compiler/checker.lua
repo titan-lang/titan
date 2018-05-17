@@ -331,7 +331,7 @@ checkstat = util.make_visitor({
                 local texp = var._type
                 if texp._tag == "Type.Module" then
                     checker.typeerror(errors, var.loc, "trying to assign to a module")
-                elseif texp._tag == "Type.Function" or texp._tag == "Type.BuiltinFunction" then
+                elseif texp._tag == "Type.Function" or texp._tag == "Type.ForeignFunction" then
                     checker.typeerror(errors, var.loc, "trying to assign to a function")
                 else
                     -- mark this declared variable as assigned to
@@ -768,7 +768,7 @@ checkexp = util.make_visitor({
                 "trying to access module '%s' as a first-class value",
                 node.var.name)
             node._type = types.Invalid()
-        elseif texp._tag == "Type.Function" or texp._tag == "Type.BuiltinFunction" then
+        elseif texp._tag == "Type.Function" or texp._tag == "Type.ForeignFunction" then
             checker.typeerror(errors, node.loc,
                 "trying to access a function as a first-class value")
             node._type = types.Invalid()
@@ -1032,14 +1032,14 @@ checkexp = util.make_visitor({
             local fname = expname(node.exp)
             local var = node.exp.var
             if not (var and var._decl and
-             (var._decl._tag == "Ast.TopLevelBuiltin" or
+             (var._decl._tag == "Ast.TopLevelForeignFunc" or
               var._decl._tag == "Ast.TopLevelFunc" or
               var._decl._tag == "Type.ModuleMember" or
               var._decl._tag == "Type.StaticMethod")) then
                 checker.typeerror(errors, node.loc,
                     "first-class functions are not supported in this version of Titan")
             end
-            if ftype._tag ~= "Type.Function" and ftype._tag ~= "Type.BuiltinFunction" then
+            if ftype._tag ~= "Type.Function" and ftype._tag ~= "Type.ForeignFunction" then
                 checker.typeerror(errors, node.loc,
                     "'%s' is not a function but %s",
                     fname, types.tostring(ftype))
@@ -1257,7 +1257,7 @@ local function toplevel_name(node)
         return node.decl.name
     elseif tag == "Ast.TopLevelFunc" or
            tag == "Ast.TopLevelRecord" or
-           tag == "Ast.TopLevelBuiltin" then
+           tag == "Ast.TopLevelForeignFunc" then
         return node.name
     elseif tag == "Ast.TopLevelMethod" or tag == "Ast.TopLevelStatic" then
         return nil
@@ -1490,7 +1490,7 @@ local toplevel_visitor = util.make_visitor({
         rectype.methods[node.name] = node._type
     end,
 
-    ["Ast.TopLevelBuiltin"] = function(node, st, errors)
+    ["Ast.TopLevelForeignFunc"] = function(node, st, errors)
         local ptypes = {}
         local vararg = false
         for i, pdecl in ipairs(node.params) do
@@ -1511,7 +1511,7 @@ local toplevel_visitor = util.make_visitor({
             table.insert(rettypes, typefromnode(rt, st, errors))
         end
         local fname = st and st.modname .. "." .. node.name or node.name
-        node._type = types.BuiltinFunction(fname,
+        node._type = types.ForeignFunction(fname,
             ptypes, rettypes, vararg)
         return node
     end,
@@ -1587,16 +1587,16 @@ local function makemoduletype(modname, modast)
     return types.Module(modname, members)
 end
 
-local function add_builtins(st)
-    local nodes = parser.parse("builtin.titan", [[
-        builtin function print(...: value)
-        builtin function assert(val: value, msg: string): value
-        builtin function dofile(fname: string, ...: value): {value}
-        builtin function dostring(fname: string, ...: value): {value}
-        builtin function error(msg: string)
-        builtin function tostring(val: value): string
-        builtin function tofloat(val: string): float
-        builtin function tointeger(val: string): integer
+local function add_foreigns(st)
+    local nodes = parser.parse("foreign.titan", [[
+        foreign function print(...: value)
+        foreign function assert(val: value, msg: string): value
+        foreign function dofile(fname: string, ...: value): {value}
+        foreign function dostring(fname: string, ...: value): {value}
+        foreign function error(msg: string)
+        foreign function tostring(val: value): string
+        foreign function tofloat(val: string): float
+        foreign function tointeger(val: string): integer
     ]])
     for _, node in ipairs(nodes) do
         st:add_symbol(node.name, toplevel_visitor(node))
@@ -1619,7 +1619,7 @@ function checker.check(modname, ast, subject, filename, loader)
         return nil, "you must pass a loader to import modules"
     end
     local st = symtab.new(modname)
-    add_builtins(st)
+    add_foreigns(st)
     local errors = {subject = subject, filename = filename}
     checktoplevel(ast, st, errors, loader)
     checkbodies(ast, st, errors)

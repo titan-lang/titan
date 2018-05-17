@@ -462,7 +462,7 @@ returns the corresponding integer value, otherwise returns `0`.
 
 Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, {A} means 0 or more As, and \[A\] means an optional A.
 
-    program ::= {tlfunc | tlvar | tlrecord | tlimport | tlforeignimport | tlbuiltin}
+    program ::= {tlfunc | tlvar | tlrecord | tlimport | tlforeignimport | tlforeignfunc}
 
     tlfunc ::= [local] function Name '(' [parlist] ')'  ':' type block end
 
@@ -474,7 +474,7 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
 
     tlforeignimport ::= [local Name '='] foreign import LiteralString
 
-    tlbuiltin ::= builtin function Name '(' [parlist] ')'  ':' type
+    tlforeignfunc ::= foreign function Name '(' [parlist] ')'  ':' type
 
     param ::= Name ':' type | '...' ':' type
 

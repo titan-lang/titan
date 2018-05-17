@@ -235,7 +235,7 @@ local grammar = re.compile([[
                            / toplevelfunc
                            / toplevelvar
                            / toplevelrecord
-                           / toplevelbuiltin
+                           / toplevelforeign
                            / import
                            / shortimport
                            / foreign
@@ -249,9 +249,9 @@ local grammar = re.compile([[
                            LPAREN^LParPList paramlist RPAREN^RParPList
                            rettypeopt block END^EndFunc)         -> TopLevelFunc
 
-    toplevelbuiltin <- (P  BUILTIN FUNCTION^BuiltinFunc NAME^NameFunc
+    toplevelforeign <- (P  FOREIGN FUNCTION^ForeignFunc NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
-                           rettypeopt)                           -> TopLevelBuiltin
+                           rettypeopt)                           -> TopLevelForeignFunc
 
     toplevelvar     <- (P localopt decl ASSIGN^AssignVar
                            !(IMPORT / FOREIGN)
@@ -483,7 +483,6 @@ local grammar = re.compile([[
     IMPORT          <- %IMPORT SKIP*
     AS              <- %AS SKIP*
     FOREIGN         <- %FOREIGN SKIP*
-    BUILTIN         <- %BUILTIN SKIP*
 
     BOOLEAN         <- %BOOLEAN SKIP*
     INTEGER         <- %INTEGER SKIP*

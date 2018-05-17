@@ -114,7 +114,7 @@ local function func_name(modname, name)
     return modprefix(modname) .. name .. "_titan"
 end
 
-local function builtin_name(name)
+local function foreign_name(name)
     return "titan_" .. mangle_qn(name)
 end
 
@@ -1071,10 +1071,10 @@ local function codecall(ctx, node)
     local ftype = fnode._type
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
-            if ftype._tag == "Type.BuiltinFunction" then
-                fname = builtin_name(ftype.name)
+            if ftype._tag == "Type.ForeignFunction" then
+                fname = foreign_name(ftype.name)
                 ctx.functions[ftype.name] = {
-                    mangled = builtin_name(ftype.name),
+                    mangled = foreign_name(ftype.name),
                     type = ftype
                 }
             else
@@ -1100,10 +1100,10 @@ local function codecall(ctx, node)
                         INDEX = c_integer_literal(fnode.exp.var.exp.var._decl._upvalue) -- whew!
                     })
                 end
-            elseif ftype._tag == "Type.BuiltinFunction" then
-                fname = builtin_name(ftype.name)
+            elseif ftype._tag == "Type.ForeignFunction" then
+                fname = foreign_name(ftype.name)
                 ctx.functions[ftype.name] = {
-                    mangled = builtin_name(ftype.name),
+                    mangled = foreign_name(ftype.name),
                     type = ftype
                 }
             else
@@ -2558,7 +2558,7 @@ local function init_data_from_other_modules(tlcontext, includes, loadmods, initm
 
     for name, func in pairs(tlcontext.functions) do
         local fname = func.mangled
-        if func.type._tag == "Type.BuiltinFunction" then
+        if func.type._tag == "Type.ForeignFunction" then
             table.insert(includes, "extern " .. function_sig(fname, func.type) .. ";")
         else
             table.insert(includes, storage_class .. " " .. function_sig(fname, func.type, is_dynamic) .. ";")

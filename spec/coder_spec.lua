@@ -2328,7 +2328,7 @@ describe("Titan code generator", function()
 
     end)
 
-    describe("#builtins", function()
+    describe("#foreigns", function()
         it("call print", function ()
             run_coder_app([[
             ]], [[
@@ -2436,10 +2436,10 @@ describe("Titan code generator", function()
             ]])
         end)
 
-        it("calls builtin from another module", function ()
+        it("calls foreign from another module", function ()
             local modules = {
                 string = [[
-                    builtin function byte(s: string, i: integer): integer
+                    foreign function byte(s: string, i: integer): integer
                 ]],
                 bar = [[
                     import "string"

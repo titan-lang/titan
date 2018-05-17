@@ -23,7 +23,7 @@ return typedecl("Ast", {
         TopLevelRecord  = {"loc", "name", "fields"},
         TopLevelImport  = {"loc", "localname", "modname"},
         TopLevelForeignImport = {"loc", "localname", "headername"},
-        TopLevelBuiltin = {"loc", "name", "params", "rettypes"},
+        TopLevelForeignFunc = {"loc", "name", "params", "rettypes"},
     },
 
     Decl = {

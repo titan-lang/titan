@@ -1635,7 +1635,7 @@ describe("Titan type checker", function()
             end
         ]])
         assert_type_error("access a function", [[
-            builtin function bar()
+            foreign function bar()
             function foo(): integer
                 return bar
             end
@@ -1649,7 +1649,7 @@ describe("Titan type checker", function()
             end
         ]])
         assert_type_error("assign to a function",[[
-            builtin function bar()
+            foreign function bar()
             function foo(): integer
                 bar = 2
             end
@@ -1675,10 +1675,10 @@ describe("Titan type checker", function()
         assert.match("access a function", err)
     end)
 
-    it("catches use of external builtin function as first-class value", function ()
+    it("catches use of external foreign function as first-class value", function ()
         local modules = {
             foo = [[
-                builtin function foo()
+                foreign function foo()
             ]],
             bar = [[
                 local foo = import "foo"
@@ -1711,10 +1711,10 @@ describe("Titan type checker", function()
         assert.match("assign to a function", err)
     end)
 
-    it("catches assignment to external builtin function", function ()
+    it("catches assignment to external foreign function", function ()
         local modules = {
             foo = [[
-                builtin function foo()
+                foreign function foo()
             ]],
             bar = [[
                 local foo = import "foo"
@@ -1951,7 +1951,7 @@ describe("Titan type checker", function()
             function g(): (integer, integer)
                 return 20, 30
             end
-            builtin function f(x: integer, y: integer, z: integer)
+            foreign function f(x: integer, y: integer, z: integer)
             function h()
                 f(g())
             end
@@ -1959,7 +1959,7 @@ describe("Titan type checker", function()
             function g(): (integer, integer)
                 return 20, 30
             end
-            builtin function f(x: integer, y: integer, z: integer)
+            foreign function f(x: integer, y: integer, z: integer)
             function h()
                 f(20, 30, g())
             end
@@ -1967,7 +1967,7 @@ describe("Titan type checker", function()
             function g(): (integer, integer)
                 return 20, 30
             end
-            builtin function f(x: integer, y: integer, z: integer)
+            foreign function f(x: integer, y: integer, z: integer)
             function h()
                 f(20, (g()))
             end
@@ -1979,15 +1979,15 @@ describe("Titan type checker", function()
         end
     end)
 
-    it("vararg builtins and functions", function ()
+    it("vararg foreigns and functions", function ()
         assert_type_check([[
-            builtin function f(a: string, ...: float)
+            foreign function f(a: string, ...: float)
             function g()
                 f('foo', 1, 2.5)
             end
         ]])
         assert_type_error("only the last parameter", [[
-            builtin function f(...: float, a: string)
+            foreign function f(...: float, a: string)
         ]])
         assert_type_error("only the last parameter", [[
             function f(...: float, a: string)
@@ -1999,7 +1999,7 @@ describe("Titan type checker", function()
             end
         ]])
         assert_type_error("expected float but found string", [[
-            builtin function f(a: string, ...: float)
+            foreign function f(a: string, ...: float)
             function g()
                 f('foo', 1, 'bar')
             end

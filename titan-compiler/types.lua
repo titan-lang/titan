@@ -20,7 +20,7 @@ local types = typedecl("Type", {
         ModuleMember = {"modname", "name", "type"},
         ModuleVariable = {"modname", "name", "type"},
         StaticMethod = {"fqtn", "name", "params", "rettypes"},
-        BuiltinFunction = {"name", "params", "rettypes", "vararg"},
+        ForeignFunction = {"name", "params", "rettypes", "vararg"},
     }
 })
 
@@ -224,8 +224,8 @@ function types.tostring(t)
         end
     elseif tag == "Type.Typedef" then
         return t.name
-    elseif tag == "Type.Function" or tag == "Type.BuiltinFunction" then
-        local out = {tag == "Type.BuiltinFunction" and "builtin " or "", "function("}
+    elseif tag == "Type.Function" or tag == "Type.ForeignFunction" then
+        local out = {tag == "Type.ForeignFunction" and "foreign " or "", "function("}
         local ptypes = {}
         for _, param in ipairs(t.params) do
             table.insert(ptypes, types.tostring(param))
@@ -351,7 +351,7 @@ function types.serialize(t)
             "},{" ..table.concat(functions, ",") .. "}" .. "," ..
             "{" .. table.concat(methods, ",") .. "}" ..
             ")"
-    elseif tag == "Type.BuiltinFunction" then
+    elseif tag == "Type.ForeignFunction" then
         local ptypes = {}
         for _, pt in ipairs(t.params) do
             table.insert(ptypes, types.serialize(pt))
@@ -360,7 +360,7 @@ function types.serialize(t)
         for _, rt in ipairs(t.rettypes) do
             table.insert(rettypes, types.serialize(rt))
         end
-        return "BuiltinFunction('" .. t.name .. "'," ..
+        return "ForeignFunction('" .. t.name .. "'," ..
             "{" .. table.concat(ptypes, ",") .. "}" .. "," ..
             "{" .. table.concat(rettypes, ",") .. "}" .. "," ..
             tostring(t.vararg) .. ")"
