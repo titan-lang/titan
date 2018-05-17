@@ -1069,6 +1069,7 @@ local function codecall(ctx, node)
     local fnode = node.exp.var
     local modarg = "_mod"
     local ftype = fnode._type
+    local modarg = "_mod"
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
             if ftype._tag == "Type.ForeignFunction" then
@@ -2979,6 +2980,24 @@ function coder.generate(modname, ast, is_dynamic)
             NSLOTS = c_integer_literal(nslots),
         }))
     end
+
+    local nslots = initctx.nslots
+
+    table.insert(initvars, 1, render([[
+        /* reserve needed stack space */
+        if (L->stack_last - L->top > $NSLOTS) {
+            if (L->ci->top < L->top + $NSLOTS) L->ci->top = L->top + $NSLOTS;
+        } else {
+            lua_checkstack(L, $NSLOTS);
+        }
+        TValue *_base = L->top;
+        L->top += $NSLOTS;
+        for(TValue *_s = L->top - 1; _base <= _s; _s--) {
+            setnilvalue(_s);
+        }
+    ]], {
+        NSLOTS = c_integer_literal(nslots),
+    }))
 
     table.insert(code, render(modtypes, {
         TYPESNAME = tlcontext.prefix .. "types",
