@@ -18,7 +18,8 @@ local types = typedecl("Type", {
         Method      = {"fqtn", "name", "params", "rettypes"},
         ForeignModule = {"name", "members"},
         ModuleMember = {"modname", "name", "type"},
-        StaticMethod = {"fqtn", "name", "params", "rettypes"}
+        ModuleVariable = {"modname", "name", "type"},
+        StaticMethod = {"fqtn", "name", "params", "rettypes"},
     }
 })
 
@@ -55,6 +56,9 @@ end
 -- construct nonsense things like a function type that returns
 -- a module type
 function types.Module(modname, members)
+    for _, member in ipairs(members) do
+        members[member.name] = member
+    end
     return { _tag = "Type.Module", name = modname,
         prefix = modname:gsub("[%-.]", "_") .. "_",
         file = modname:gsub("[.]", "/") .. ".so",
@@ -282,6 +286,9 @@ function types.serialize(t)
         return "Map(" .. types.serialize(t.keys) .. ", " .. types.serialize(t.values) .. ")"
     elseif tag == "Type.ModuleMember" then
         return "ModuleMember('" .. t.modname .. "', '" ..
+            t.name .. "', " .. types.serialize(t.type) .. ")"
+    elseif tag == "Type.ModuleVariable" then
+        return "ModuleVariable('" .. t.modname .. "', '" ..
             t.name .. "', " .. types.serialize(t.type) .. ")"
     elseif tag == "Type.Module" then
         local members = {}

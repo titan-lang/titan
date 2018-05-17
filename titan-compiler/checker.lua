@@ -1524,7 +1524,7 @@ local function makemoduletype(modname, modast)
             if tag == "Ast.TopLevelFunc" then
                 members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
             elseif tag == "Ast.TopLevelVar" then
-                members[tlnode.decl.name] = types.ModuleMember(modname, tlnode.decl.name, tlnode._type)
+                members[tlnode.decl.name] = types.ModuleVariable(modname, tlnode.decl.name, tlnode._type)
             elseif tag == "Ast.TopLevelRecord" then
                 members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
             elseif tag == "Ast.TopLevelInterface" then

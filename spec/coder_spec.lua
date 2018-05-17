@@ -54,7 +54,7 @@ local function run_coder(titan_code, lua_test, errmsg)
     assert.truthy(ast, err)
     local ok, err = checker.check("test", ast, titan_code, "test.titan")
     assert.equal(0, #err, table.concat(err, "\n"))
-    local ok, err = driver.compile("test", ast, nil, nil, verbose)
+    local ok, err = driver.compile("test", ast, nil, nil, nil, verbose)
     assert.truthy(ok, err)
     local ok, err = call("test", lua_test)
     if errmsg then
@@ -635,7 +635,13 @@ describe("Titan code generator", function()
         assert.equal(0, #err, table.concat(err, "\n"))
         local ok, err = driver.compile("titan_test", ast)
         assert.truthy(ok, err)
-        local ok, err = call("titan_test", "assert(titan_test.geta() == 1);titan_test.a = 2;assert(titan_test.geta() == 2)")
+        local ok, err = call("titan_test", [[
+            assert(titan_test.geta() == 1)
+            assert(titan_test.a == 1)
+            titan_test.a = 2
+            assert(titan_test.a == 2)
+            assert(titan_test.geta() == 2)
+        ]])
         assert.truthy(ok, err)
     end)
 
