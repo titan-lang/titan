@@ -249,7 +249,7 @@ local grammar = re.compile([[
                            LPAREN^LParPList paramlist RPAREN^RParPList
                            rettypeopt block END^EndFunc)         -> TopLevelFunc
 
-    toplevelforeign <- (P  FOREIGN FUNCTION^ForeignFunc NAME^NameFunc
+    toplevelforeign <- (P  FOREIGN !IMPORT FUNCTION^ForeignFunc NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
                            rettypeopt)                           -> TopLevelForeignFunc
 
