@@ -2460,6 +2460,13 @@ function coder.generate(modname, ast, is_dynamic)
             if tag == "Ast.TopLevelImport" then
                 if is_dynamic then
                     prefix(initmods, mprefixes, node.modname)
+                else
+                    table.insert(sigs, render("extern void $INIT(lua_State *L);", {
+                        INIT = mangle_qn(node.modname) .. "_" .. "init"
+                    }))
+                    table.insert(initmods, render([[
+                        $INIT(L);
+                    ]], { INIT = mangle_qn(node.modname) .. "_" .. "init" }));
                 end
                 for name, member in pairs(node._type.members) do
                     if not member._slot and member.type._tag ~= "Type.Function"

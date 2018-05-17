@@ -70,7 +70,8 @@ local function call_app(appname, ...)
     local f = io.popen(cmd)
     local out = f:read()
     local ok, err, status = f:close()
-    os.remove(appname)
+    if err == "exit" then ok = true end
+    if not verbose then os.remove(appname) end
     return ok, err, status, out
 end
 
@@ -2246,6 +2247,29 @@ describe("Titan code generator", function()
             local ok, err, status = call_app("./bar")
             assert.truthy(ok, err)
             assert.equal(0, status)
+        end)
+
+        it("correctly uses module local variables in application", function ()
+            local modules = {
+                foo = [[
+                    local xs: {integer} = {}
+                    function resetxs()
+                        xs = {}
+                    end
+                ]],
+                bar = [[
+                    local foo = import "foo"
+                    function main(args: {string}): integer
+                        foo.resetxs()
+                        return 42
+                    end
+                ]]
+            }
+            local ok, err = generate_modules(modules, "bar", true)
+            assert.truthy(ok, err)
+            local ok, err, status = call_app("./bar")
+            assert.truthy(ok, err)
+            assert.equal(42, status)
         end)
 
     end)
