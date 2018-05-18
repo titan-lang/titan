@@ -1069,6 +1069,7 @@ local function codecall(ctx, node)
     local fnode = node.exp.var
     local modarg = "_mod"
     local ftype = fnode._type
+    local modarg = "_mod"
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
             if ftype._tag == "Type.ForeignFunction" then
