@@ -324,6 +324,7 @@ local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:st
 end
 
 local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
+    if not dst then error() end
     local tmpl
     if typ._tag == "Type.Integer" then tmpl = "setivalue($DST, $SRC);"
     elseif typ._tag == "Type.Float" then tmpl = "setfltvalue($DST, $SRC);"
@@ -489,6 +490,25 @@ end
 
 local function popd(ctx)
     ctx.depth = table.remove(ctx.dstack)
+end
+
+-- pushes a temporary in the stack
+local function pushtmp(ctx, cexp, typ)
+    local tmp = ctx.tmp
+    ctx.tmp = ctx.tmp + 1
+    local tmpname = "_tmp_" .. tmp
+    local slotname = "_tmp_" .. tmp .. "_slot"
+    return render([[
+        $TYPE $TMPNAME = $EXP;
+        $NEWSLOT
+        $SETSLOT
+    ]], {
+        EXP = cexp,
+        TYPE = ctype(typ),
+        NEWSLOT = newslot(ctx, slotname),
+        TMPNAME = tmpname,
+        SETSLOT = setslot(typ, slotname, tmpname)
+    }), tmpname
 end
 
 -- All the code generation functions for STATEMENTS take
@@ -862,7 +882,12 @@ local function codeassignment(ctx, var, cexp, etype)
                 cset = setslot(etype, "_slot", cexp)
             end
 
-            local ctmpk, tmpkname, tmpkslot = newtmp(ctx, key._type, true)
+            local ctmpk, tmpkname = pushtmp(ctx, ckexp, key._type)
+
+            local pushstats = {}
+            for name, typ in pairs(ctx.live) do
+                table.insert(pushstats, (pushtmp(ctx, name, typ)))
+            end
 
             ctx.live[cexp] = nil
             return render([[
@@ -871,10 +896,11 @@ local function codeassignment(ctx, var, cexp, etype)
                     Table *_t = $CMEXP;
                     $CKSTATS
                     $CTMPK
-                    $TMPKNAME = $CKEXP;
+                    TValue _k;
                     $SETSLOTK
 
                     TValue *_slot;
+                    $PUSHSTATS
                     $CTABLEKEY
                     $CSET
                 }
@@ -885,8 +911,9 @@ local function codeassignment(ctx, var, cexp, etype)
                     CTMPK = ctmpk,
                     TMPKNAME = tmpkname,
                     CKEXP = ckexp,
-                    SETSLOTK = setwrapped(key._type, tmpkslot, tmpkname),
-                    CTABLEKEY = get_table_key(key._type, "_t", tmpkslot, "_slot", true),
+                    PUSHSTATS = table.concat(pushstats, "\n"),
+                    SETSLOTK = setwrapped(key._type, "&_k", tmpkname),
+                    CTABLEKEY = get_table_key(key._type, "_t", "&_k", "_slot", true),
                     CSET = cset,
                 })
         end
@@ -1027,25 +1054,6 @@ local function codeforeignvar(ctx, node)
     return "", node.name
 end
 
--- pushes a temporary in the stack
-local function pushtmp(ctx, cexp, typ)
-    local tmp = ctx.tmp
-    ctx.tmp = ctx.tmp + 1
-    local tmpname = "_tmp_" .. tmp
-    local slotname = "_tmp_" .. tmp .. "_slot"
-    return render([[
-        $TYPE $TMPNAME = $EXP;
-        $NEWSLOT
-        $SETSLOT
-    ]], {
-        EXP = cexp,
-        TYPE = ctype(typ),
-        NEWSLOT = newslot(ctx, slotname),
-        TMPNAME = tmpname,
-        SETSLOT = setslot(typ, slotname, tmpname)
-    }), tmpname
-end
-
 local function codecall(ctx, node)
     local castats, caexps, tmpnames, retslots = {}, { "L" }, {}, {}
     local fname
@@ -1129,7 +1137,7 @@ local function codecall(ctx, node)
         table.insert(caexps, "&" .. tmpname)
     end
     for name, typ in pairs(ctx.live) do
-        table.insert(castats, pushtmp(ctx, name, typ))
+        table.insert(castats, (pushtmp(ctx, name, typ)))
     end
     ctx.live = {}
     if #node._types > 1 then
@@ -1323,6 +1331,7 @@ local function codearray(ctx, node, target)
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
     else
         ctmp, tmpname = newtmp(ctx, node._type)
+        ctx.live[tmpname] = node._type
     end
     cinit = render([[
         $CTMP
@@ -1390,56 +1399,66 @@ local function codemap(ctx, node, target)
     local cinit, ctmp, tmpname, tmpslot
     if target then
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
+        cinit = render([[
+            $CTMP
+            $TMPNAME = luaH_new(L);
+            sethvalue(L, $TMPSLOT, $TMPNAME);
+        ]], {
+            CTMP = ctmp,
+            TMPNAME = tmpname,
+            TMPSLOT = tmpslot,
+        })
     else
-        ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
+        ctmp, tmpname = pushtmp(ctx, "luaH_new(L)", node._type);
+        cinit = ctmp
     end
-    cinit = render([[
-        $CTMP
-        $TMPNAME = luaH_new(L);
-        sethvalue(L, $TMPSLOT, $TMPNAME);
-    ]], {
-        CTMP = ctmp,
-        TMPNAME = tmpname,
-        TMPSLOT = tmpslot,
-    })
     table.insert(stats, cinit)
     local slots = {}
     for _, field in ipairs(node.fields) do
         local kexp = field.name
         local ckstats, ckexp = codeexp(ctx, kexp)
-        local ctmpk, tmpkname, tmpkslot = newtmp(ctx, node._type.keys, true)
+        local ctmpk, tmpkname = pushtmp(ctx, ckexp, node._type.keys)
+        local tmpkslot = tmpkname .. "_kslot"
 
         local vexp = field.exp
         local cvstats, cvexp = codeexp(ctx, vexp)
-        local ctmpv, tmpvname, tmpvslot = newtmp(ctx, node._type.values, true)
+        local ctmpv, tmpvname = pushtmp(ctx, cvexp, node._type.values)
+        local tmpvslot = tmpvname .. "_kslot"
 
         local code = render([[
             $CKSTATS
             $CTMPK
-            $TMPKNAME = $CKEXP;
+            TValue $KSLOT;
             $SETSLOTK
 
             $CVSTATS
             $CTMPV
-            $TMPVNAME = $CVEXP;
+            TValue $VSLOT;
             $SETSLOTV
         ]], {
             CKSTATS = ckstats,
             CTMPK = ctmpk,
             TMPKNAME = tmpkname,
             CKEXP = ckexp,
-            SETSLOTK = setwrapped(node._type.keys, tmpkslot, tmpkname),
+            KSLOT = tmpkslot,
+            SETSLOTK = setwrapped(node._type.keys, "&" .. tmpkslot, tmpkname),
 
             CVSTATS = cvstats,
             CTMPV = ctmpv,
             TMPVNAME = tmpvname,
             CVEXP = cvexp,
-            SETSLOTV = setwrapped(node._type.values, tmpvslot, tmpvname),
+            VSLOT = tmpvslot,
+            SETSLOTV = setwrapped(node._type.values, "&" .. tmpvslot, tmpvname),
         })
 
-        table.insert(slots, { k = tmpkslot, v = tmpvslot })
+        table.insert(slots, { k = "&" .. tmpkslot, v = "&" .. tmpvslot })
         table.insert(stats, code)
     end
+
+    for name, typ in pairs(ctx.live) do
+        table.insert(stats, (pushtmp(ctx, name, typ)))
+    end
+
     for _, slot in ipairs(slots) do
         table.insert(stats, render([[
             {
@@ -1479,6 +1498,7 @@ local function coderecord(ctx, node, target)
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
     else
         ctmp, tmpname = newtmp(ctx, node._type)
+        ctx.live[tmpname] = node._type
     end
     cinit = render([[
         $CTMP
@@ -1797,7 +1817,7 @@ local function codeindexarray(ctx, node, iscondition)
     local cistats, ciexp = codeexp(ctx, node.exp2)
     local typ = node._type
     local ctmp, tmpname = newtmp(ctx, typ)
-    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc.line)
+    local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc)
     local cfinish
     if iscondition then
         cfinish = render([[
@@ -1848,14 +1868,11 @@ end
 
 local function codeindexmap(ctx, node, iscondition)
     local cmstats, cmexp = codeexp(ctx, node.exp1)
+    ctx.live[cmexp] = node.exp1._type
     local ckstats, ckexp = codeexp(ctx, node.exp2)
     local typ = node._type
-    local ctmp, tmpname, tmpslot = newtmp(ctx, typ, types.is_gc(typ))
-    local cset = ""
+    local ctmp, tmpname = newtmp(ctx, typ)
     local ccheck = checkandget(ctx, typ, tmpname, "_s", node.loc)
-    if types.is_gc(typ) then
-        cset = setslot(typ, tmpslot, tmpname)
-    end
     local cfinish
     if iscondition then
         cfinish = render([[
@@ -1863,24 +1880,16 @@ local function codeindexmap(ctx, node, iscondition)
             $TMPNAME = 0;
           } else {
             $CCHECK
-            $CSET
           }
         ]], {
             TMPNAME = tmpname,
             CCHECK = ccheck,
-            CSET = cset,
         })
     else
-        cfinish = render([[
-            $CCHECK
-            $CSET
-        ]], {
-            CCHECK = ccheck,
-            CSET = cset,
-        })
+        cfinish = ccheck
     end
     local ktyp = node.exp2._type
-    local ctmpk, tmpkname, tmpkslot = newtmp(ctx, ktyp, true)
+    local ctmpk, tmpkname = newtmp(ctx, ktyp)
     local stats = render([[
         $CTMP
         {
@@ -1889,6 +1898,7 @@ local function codeindexmap(ctx, node, iscondition)
             Table *_t = $CMEXP;
             $CTMPK
             $TMPKNAME = $CKEXP;
+            TValue _k;
             $SETSLOTK
             const TValue* _s;
             $CTABLEKEY
@@ -1901,8 +1911,8 @@ local function codeindexmap(ctx, node, iscondition)
         CTMPK = ctmpk,
         TMPKNAME = tmpkname,
         CKEXP = ckexp,
-        SETSLOTK = setwrapped(ktyp, tmpkslot, tmpkname),
-        CTABLEKEY = get_table_key(ktyp, "_t", tmpkslot, "_s", false),
+        SETSLOTK = setwrapped(ktyp, "&_k", tmpkname),
+        CTABLEKEY = get_table_key(ktyp, "_t", "&_k", "_s", false),
         CFINISH = cfinish
     })
     return stats, tmpname
@@ -2308,6 +2318,7 @@ local function codefuncdec(tlcontext, node)
 end
 
 local function codevardec(tlctx, ctx, node)
+    ctx.live = {}
     local cstats, cexp = codeexp(ctx, node.value)
     if node.islocal then
         node._cvar = "_global_" .. node.decl.name
