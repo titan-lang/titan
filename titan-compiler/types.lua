@@ -18,7 +18,8 @@ local types = typedecl("Type", {
         Method      = {"fqtn", "name", "params", "rettypes"},
         ForeignModule = {"name", "members"},
         ModuleMember = {"modname", "name", "type"},
-        StaticMethod = {"fqtn", "name", "params", "rettypes"}
+        ModuleVariable = {"modname", "name", "type"},
+        StaticMethod = {"fqtn", "name", "params", "rettypes"},
     }
 })
 
@@ -55,6 +56,9 @@ end
 -- construct nonsense things like a function type that returns
 -- a module type
 function types.Module(modname, members)
+    for _, member in ipairs(members) do
+        members[member.name] = member
+    end
     return { _tag = "Type.Module", name = modname,
         prefix = modname:gsub("[%-.]", "_") .. "_",
         file = modname:gsub("[.]", "/") .. ".so",
@@ -283,10 +287,13 @@ function types.serialize(t)
     elseif tag == "Type.ModuleMember" then
         return "ModuleMember('" .. t.modname .. "', '" ..
             t.name .. "', " .. types.serialize(t.type) .. ")"
+    elseif tag == "Type.ModuleVariable" then
+        return "ModuleVariable('" .. t.modname .. "', '" ..
+            t.name .. "', " .. types.serialize(t.type) .. ")"
     elseif tag == "Type.Module" then
         local members = {}
-        for name, member in pairs(t.members) do
-            table.insert(members, name .. " = " .. types.serialize(member))
+        for _, member in ipairs(t.members) do
+            table.insert(members, types.serialize(member))
         end
         return "Module(" ..
             "'" .. t.name .. "'" .. "," ..

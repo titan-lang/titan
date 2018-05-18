@@ -23,6 +23,8 @@
 
 #define TITAN_LUAINTEGER_NBITS cast_int(sizeof(lua_Integer) * CHAR_BIT)
 
+#define titan_pushmodule(L, c) setclCvalue(L, L->top++, c)
+
 /*
 ** Macro to convert pointer-to-void* to pointer-to-function. This cast
 ** is undefined according to ISO C, but POSIX assumes that it works.

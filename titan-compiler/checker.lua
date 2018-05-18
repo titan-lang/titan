@@ -1521,14 +1521,10 @@ local function makemoduletype(modname, modast)
     for _, tlnode in ipairs(modast) do
         if tlnode._tag ~= "Ast.TopLevelImport" and not tlnode.islocal and not tlnode._ignore then
             local tag = tlnode._tag
-            if tag == "Ast.TopLevelFunc" then
-                members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
-            elseif tag == "Ast.TopLevelVar" then
-                members[tlnode.decl.name] = types.ModuleMember(modname, tlnode.decl.name, tlnode._type)
-            elseif tag == "Ast.TopLevelRecord" then
-                members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
-            elseif tag == "Ast.TopLevelInterface" then
-                members[tlnode.name] = types.ModuleMember(modname, tlnode.name, tlnode._type)
+            if tag == "Ast.TopLevelVar" then
+                table.insert(members, types.ModuleVariable(modname, tlnode.decl.name, tlnode._type))
+            elseif tag == "Ast.TopLevelFunc" or tag == "Ast.TopLevelRecord" then
+                table.insert(members, types.ModuleMember(modname, tlnode.name, tlnode._type))
             end
         end
     end

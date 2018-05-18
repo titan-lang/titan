@@ -54,7 +54,7 @@ local function run_coder(titan_code, lua_test, errmsg)
     assert.truthy(ast, err)
     local ok, err = checker.check("test", ast, titan_code, "test.titan")
     assert.equal(0, #err, table.concat(err, "\n"))
-    local ok, err = driver.compile("test", ast, nil, nil, verbose)
+    local ok, err = driver.compile("test", ast, nil, nil, nil, verbose)
     assert.truthy(ok, err)
     local ok, err = call("test", lua_test)
     if errmsg then
@@ -100,6 +100,10 @@ local function run_coder_app(titan_code, main, estatus, eout)
 end
 
 describe("Titan code generator", function()
+    setup(function ()
+        os.remove("titan-runtime/titan.o")
+    end)
+
     after_each(function ()
         os.execute("rm -f *.o")
         os.execute("rm -f *.so")
@@ -635,7 +639,13 @@ describe("Titan code generator", function()
         assert.equal(0, #err, table.concat(err, "\n"))
         local ok, err = driver.compile("titan_test", ast)
         assert.truthy(ok, err)
-        local ok, err = call("titan_test", "assert(titan_test.geta() == 1);titan_test.a = 2;assert(titan_test.geta() == 2)")
+        local ok, err = call("titan_test", [[
+            assert(titan_test.geta() == 1)
+            assert(titan_test.a == 1)
+            titan_test.a = 2
+            assert(titan_test.a == 2)
+            assert(titan_test.geta() == 2)
+        ]])
         assert.truthy(ok, err)
     end)
 
@@ -1944,6 +1954,20 @@ describe("Titan code generator", function()
         local ok, err = call("bar", "x, y = bar.bar(); assert(x == 4.0); assert(y == 6.0)")
         assert.truthy(ok, err)
     end)
+
+    for _, op in ipairs({"==", "~="}) do
+        it("can compare values using " .. op, function()
+            run_coder(util.render([[
+                function fn(a1: value, a2: value): boolean
+                    return a1 $OP a2
+                end
+            ]], { OP = op }), util.render([[
+                local a = {}
+                assert(a $OP a == test.fn(a, a))
+            ]], { OP = op }))
+        end)
+    end
+
 
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()
