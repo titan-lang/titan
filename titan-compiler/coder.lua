@@ -1344,7 +1344,7 @@ local function codearray(ctx, node, target)
     if target and target._cvar then
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
     elseif target and target._slot then
-        ctmp, tmpname, tmpslot = newtmp(ctx, node._type, false)
+        ctmp, tmpname = newtmp(ctx, node._type, false)
         tmpslot = target._slot
     else
         ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
@@ -1416,7 +1416,7 @@ local function codemap(ctx, node, target)
     if target and target._cvar then
         ctmp, tmpname, tmpslot = "", target._cvar, target._slot
     elseif target and target._slot then
-        ctmp, tmpname, tmpslot = newtmp(ctx, node._type, false)
+        ctmp, tmpname = newtmp(ctx, node._type, false)
         tmpslot = target._slot
     else
         ctmp, tmpname, tmpslot = newtmp(ctx, node._type, true)
@@ -1802,6 +1802,16 @@ local function codebinaryop(ctx, node, iscondition)
             return generate_binop_idiv_flt(node, ctx)
         else
             error("impossible: " .. ltyp .. " " .. rtyp)
+        end
+    elseif (op == "==" or op == "!=") and
+            node.lhs._type._tag == "Type.Value" and
+            node.rhs._type._tag == "Type.Value" then
+        local lstats, lcode = codeexp(ctx, node.lhs)
+        local rstats, rcode = codeexp(ctx, node.rhs)
+        if op == "!=" then
+            return lstats .. rstats, "!luaV_rawequalobj(&(" .. lcode .. "),&(" .. rcode .. "))"
+        else
+            return lstats .. rstats, "luaV_rawequalobj(&(" .. lcode .. "),&(" .. rcode .. "))"
         end
     else
         local lstats, lcode = codeexp(ctx, node.lhs)
@@ -2497,7 +2507,7 @@ local function import_module(loadmods, initmods, sigs, mprefixes, dynamic, node)
     -- Set upvalue indexes for public members in the module's type
     -- if they are not set yet
     local memberslot = 1
-    for _, member in pairs(node._type.members) do
+    for _, member in ipairs(node._type.members) do
         if member._tag == "Type.ModuleVariable" then
             member._upvalue = memberslot
             memberslot = memberslot + 1

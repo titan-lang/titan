@@ -292,8 +292,8 @@ function types.serialize(t)
             t.name .. "', " .. types.serialize(t.type) .. ")"
     elseif tag == "Type.Module" then
         local members = {}
-        for name, member in pairs(t.members) do
-            table.insert(members, name .. " = " .. types.serialize(member))
+        for _, member in ipairs(t.members) do
+            table.insert(members, types.serialize(member))
         end
         return "Module(" ..
             "'" .. t.name .. "'" .. "," ..

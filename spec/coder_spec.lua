@@ -1951,6 +1951,20 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    for _, op in ipairs({"==", "~="}) do
+        it("can compare values using " .. op, function()
+            run_coder(util.render([[
+                function fn(a1: value, a2: value): boolean
+                    return a1 $OP a2
+                end
+            ]], { OP = op }), util.render([[
+                local a = {}
+                assert(a $OP a == test.fn(a, a))
+            ]], { OP = op }))
+        end)
+    end
+
+
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()
             run_coder([[
