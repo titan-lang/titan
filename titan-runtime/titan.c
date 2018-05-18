@@ -206,7 +206,7 @@ const TValue *getgeneric (Table *t, const TValue *key) {
 }
 
 /* Builtin foreign functions */
-int titan_print(lua_State *L, int nargs, ...) {
+int titan_print(lua_State *L, CClosure *_mod, int nargs, ...) {
     if(nargs > 0) {
         lua_checkstack(L, 3);
         TValue *top = L->top;
@@ -228,14 +228,14 @@ int titan_print(lua_State *L, int nargs, ...) {
     return 0;
 }
 
-TValue titan_assert(lua_State *L, TValue cond, TString *msg) {
+TValue titan_assert(lua_State *L, CClosure *_mod, TValue cond, TString *msg) {
     if(l_isfalse(&cond)) {
         luaL_error(L, getstr(msg));
     }
     return cond;
 }
 
-Table *titan_dofile(lua_State *L, TString *fname, int nargs, ...) {
+Table *titan_dofile(lua_State *L, CClosure *_mod, TString *fname, int nargs, ...) {
     TValue *top = L->top;
     lua_checkstack(L, 2 + nargs);
     lua_createtable(L, 0, 0);
@@ -262,11 +262,11 @@ Table *titan_dofile(lua_State *L, TString *fname, int nargs, ...) {
     return tres;
 }
 
-int titan_error(lua_State *L, TString *msg) {
+int titan_error(lua_State *L, CClosure *_mod, TString *msg) {
     return luaL_error(L, getstr(msg));
 }
 
-Table *titan_dostring(lua_State *L, TString *code, int nargs, ...) {
+Table *titan_dostring(lua_State *L, CClosure *_mod, TString *code, int nargs, ...) {
     TValue *top = L->top;
     lua_checkstack(L, 2 + nargs);
     lua_createtable(L, 0, 0);
@@ -293,7 +293,7 @@ Table *titan_dostring(lua_State *L, TString *code, int nargs, ...) {
     return tres;
 }
 
-TString *titan_tostring(lua_State *L, TValue val) {
+TString *titan_tostring(lua_State *L, CClosure *_mod, TValue val) {
     TValue *top = L->top;
     lua_checkstack(L, 3);
     L->top++;
@@ -305,7 +305,7 @@ TString *titan_tostring(lua_State *L, TValue val) {
     return s;
 }
 
-lua_Number titan_tofloat(lua_State *L, TString *s) {
+lua_Number titan_tofloat(lua_State *L, CClosure *_mod, TString *s) {
     TValue val;
     if(luaO_str2num(getstr(s), &val)) {
         return nvalue(&val);
@@ -314,7 +314,7 @@ lua_Number titan_tofloat(lua_State *L, TString *s) {
     }
 }
 
-lua_Integer titan_tointeger(lua_State *L, TString *s) {
+lua_Integer titan_tointeger(lua_State *L, CClosure *_mod, TString *s) {
     TValue val;
     if(luaO_str2num(getstr(s), &val)) {
         lua_Integer res;
@@ -328,7 +328,7 @@ lua_Integer titan_tointeger(lua_State *L, TString *s) {
     }
 }
 
-lua_Integer titan_string_byte(lua_State *L, TString *s, lua_Integer index) {
+lua_Integer titan_string_byte(lua_State *L, CClosure *_mod, TString *s, lua_Integer index) {
     size_t len = tsslen(s);
     if(index == 0)
         return 0;
