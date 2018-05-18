@@ -533,8 +533,8 @@ local grammar = re.compile([[
 
     --Err_007: Problem: the recovery pattern will not work, because we reach this label when 'NAME' fails to match (error)
     -- Not using NameRecordRec, after the error just matches the empty string, so we will always get a second error
-    NameRecord     <- ({} '' -> 'NameRecord') -> adderror  ''  ('' -> defaultRecName)
-    --NameRecordRec  <- (!NAME eatTk)*
+    NameRecord     <- ({} '' -> 'NameRecord') -> adderror  NameRecordRec  ('' -> defaultRecName)
+    NameRecordRec  <- (!NAME eatTk)*
  
     --Err_008: do not use FieldRecordRec
     FieldRecord     <- ({} '' -> 'FieldRecord') -> adderror (!END eatTk)*  ('' -> defaultFieldRec)
