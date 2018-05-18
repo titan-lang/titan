@@ -2435,29 +2435,6 @@ describe("Titan code generator", function()
                 assert(test.f('foo') == 0)
             ]])
         end)
-
-        it("calls foreign from another module", function ()
-            local modules = {
-                string = [[
-                    foreign function byte(s: string, i: integer): integer
-                ]],
-                bar = [[
-                    import "string"
-                    function main(args: {string}): integer
-                        if string.byte('foo', 1) == 102 then
-                            return 0
-                        else
-                            return 1
-                        end
-                    end
-                ]]
-            }
-            local ok, err = generate_modules(modules, "bar", true)
-            assert.truthy(ok, err)
-            local ok, err, status = call_app("./bar")
-            assert.truthy(ok, err)
-            assert.equal(0, status)
-        end)
     end)
 
 end)

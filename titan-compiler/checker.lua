@@ -1588,7 +1588,7 @@ local function makemoduletype(modname, modast)
 end
 
 local function add_foreigns(st)
-    local nodes = parser.parse("foreign.titan", [[
+    local nodes, err, foo = parser.parse_foreign([[
         foreign function print(...: value)
         foreign function assert(val: value, msg: string): value
         foreign function dofile(fname: string, ...: value): {value}

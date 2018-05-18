@@ -1184,29 +1184,5 @@ describe("Titan parser", function()
 
         assert_expression_syntax_error([[ foo as ]], "CastMissingType")
 
-        assert_program_syntax_error([[
-            foreign funtion foo (a:int, ) : int
-        ]], "ForeignFunc")
-
-        assert_program_ast([[
-            foreign function print(...: value)
-            foreign function assert(val: value, msg: string): value
-            foreign function dofile(fname: string, ...: value): {value}
-            foreign function dostring(fname: string, ...: value): {value}
-            foreign function error(msg: string)
-            foreign function tostring(val: value): string
-            foreign function tofloat(val: string): float
-            foreign function tointeger(val: string): integer
-        ]], {
-            { _tag = "Ast.TopLevelForeignFunc", name = "print", params = { {_tag = "Ast.Vararg"} }},
-            { _tag = "Ast.TopLevelForeignFunc", name = "assert" },
-            { _tag = "Ast.TopLevelForeignFunc", name = "dofile", params = { {_tag = "Ast.Decl"}, {_tag = "Ast.Vararg"} },
-                rettypes = { {_tag = "Ast.TypeArray"} } },
-            { _tag = "Ast.TopLevelForeignFunc", name = "dostring" },
-            { _tag = "Ast.TopLevelForeignFunc", name = "error" },
-            { _tag = "Ast.TopLevelForeignFunc", name = "tostring" },
-            { _tag = "Ast.TopLevelForeignFunc", name = "tofloat" },
-            { _tag = "Ast.TopLevelForeignFunc", name = "tointeger" },
-        })
     end)
 end)
