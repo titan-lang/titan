@@ -1511,6 +1511,7 @@ local function coderecord(ctx, node, target)
     cinit = render([[
         $CTMP
         $TMPNAME = luaF_newCclosure(L, $NFIELDS);
+        memset($TMPNAME->upvalue, 0, sizeof(TValue) * $NFIELDS);
         {
             Udata* _ud = luaS_newudata(L, sizeof(void*));
             *((void**)(getudatamem(_ud))) = (void*)$TAG;
@@ -2369,13 +2370,12 @@ local function codevardec(ctx, initvars, switch_get, switch_set, gvar_map, node)
         }))
         table.insert(switch_set, render([[
             case $I: {
-                lua_pushvalue(L, 3);
                 $SETSLOT;
                 break;
             }
         ]], {
             I = c_integer_literal(node._upvalue),
-            SETSLOT = checkandset(ctx, node._type, node._slot, "L->top-1", node.loc)
+            SETSLOT = checkandset(ctx, node._type, node._slot, "_value", node.loc)
         }))
     end
 end
@@ -2412,8 +2412,7 @@ $SIGS
 local postamble = [[
 int $LUAOPEN_NAME(lua_State *L) {
     CClosure *mod = $INITNAME(L);
-    L->top++;
-    setobj2t(L, L->top-1, &mod->upvalue[0]);
+    setobj2s(L, L->top++, &mod->upvalue[0]);
     return 1;
 }
 ]]
@@ -2426,8 +2425,13 @@ CClosure *$INITNAME(lua_State *L) {
     lua_getfield(L, LUA_REGISTRYINDEX, $MODNAMESTR);
     if(lua_isnil(L, -1)) {
         _initialized = 1;
+        lua_pop(L, 1);
         CClosure *_mod = luaF_newCclosure(L, $NUPVALS);
-        setclCvalue(L, L->top-1, _mod);
+        memset(_mod->upvalue, 0, sizeof(TValue) * $NUPVALS);
+        for(int i = 0; i < $NUPVALS; i++) {
+            setnilvalue(&_mod->upvalue[i]);
+        }
+        titan_pushmodule(L, _mod);
         lua_setfield(L, LUA_REGISTRYINDEX, $MODNAMESTR);
         $LOADMODULES1
         $INITMODULES
@@ -2542,7 +2546,7 @@ local function init_data_from_other_modules(tlcontext, includes, loadmods, initm
         table.insert(initmetas, render([[
             luaL_getmetatable(L, "Titan record $TYPE metatable");
             setobj2t(L, &_mod->upvalue[$INDEX], L->top-1);
-            L->top--;
+            lua_pop(L, 1);
         ]], {
             INDEX = c_integer_literal(upvalue),
             TYPE = fqtn,
@@ -2553,7 +2557,7 @@ local function init_data_from_other_modules(tlcontext, includes, loadmods, initm
         table.insert(initmetas, render([[
             lua_getfield(L, LUA_REGISTRYINDEX, "Titan module $MODULE");
             setobj2t(L, &_mod->upvalue[$INDEX], L->top-1);
-            L->top--;
+            lua_pop(L, 1);
         ]], {
             INDEX = c_integer_literal(upvalue),
             MODULE = module,
@@ -2598,8 +2602,7 @@ local function coderecorddec(ctx, code, initrecs, inittags, node)
         table.insert(fieldmap, render([[
             lua_pushliteral(L, $NAME);
             /* Module is upvalue of Lua entry point of method */
-            L->top++;
-            setclCvalue(L, L->top-1, _mod);
+            titan_pushmodule(L, _mod);
             lua_pushcclosure(L, $METHOD, 1);
             lua_rawset(L, -3);
         ]], {
@@ -2812,8 +2815,7 @@ function coder.generate(modname, ast, is_dynamic)
                 if tag == "Ast.TopLevelFunc" and not node.islocal then
                     table.insert(code, node._luabody)
                     table.insert(funcs, render([[
-                        L->top++;
-                        setclCvalue(L, L->top-1, _mod);
+                        titan_pushmodule(L, _mod);
                         lua_pushcclosure(L, $LUANAME, 1);
                         lua_setfield(L, -2, $NAMESTR);
                     ]], {
@@ -2826,8 +2828,7 @@ function coder.generate(modname, ast, is_dynamic)
                     table.insert(code, node._luabody)
                     table.insert(funcs, render([[
                         lua_getfield(L, -1, $RECNAME);
-                        L->top++;
-                        setclCvalue(L, L->top-1, _mod);
+                        titan_pushmodule(L, _mod);
                         lua_pushcclosure(L, $LUANAME, 1);
                         lua_setfield(L, -2, $NAMESTR);
                         lua_pop(L, 1);
@@ -2855,14 +2856,13 @@ function coder.generate(modname, ast, is_dynamic)
             static int __index(lua_State *L) {
                 CClosure *_me = clCvalue(L->ci->func);
                 CClosure *_mod = clCvalue(&_me->upvalue[0]);
-                lua_pushvalue(L, 2);
-                lua_rawget(L, lua_upvalueindex(2));
-                if(lua_isnil(L, -1)) {
+                const TValue *_index = luaH_get(hvalue(&_me->upvalue[1]), L->ci->func+2);
+                if(TITAN_UNLIKELY(ttisnil(_index))) {
                     return luaL_error(L,
                         "global variable '%s' does not exist in Titan module '%s'",
                         lua_tostring(L, 2), $MODSTR);
                 }
-                switch(lua_tointeger(L, -1)) {
+                switch(ivalue(_index)) {
                     $SWITCH_GET
                 }
                 return 1;
@@ -2871,14 +2871,14 @@ function coder.generate(modname, ast, is_dynamic)
             static int __newindex(lua_State *L) {
                 CClosure *_me = clCvalue(L->ci->func);
                 CClosure *_mod = clCvalue(&_me->upvalue[0]);
-                lua_pushvalue(L, 2);
-                lua_rawget(L, lua_upvalueindex(2));
-                if(lua_isnil(L, -1)) {
+                TValue *_value = L->ci->func + 3;
+                const TValue *_index = luaH_get(hvalue(&_me->upvalue[1]), L->ci->func+2);
+                if(TITAN_UNLIKELY(ttisnil(_index))) {
                     return luaL_error(L,
                         "global variable '%s' does not exist in Titan module '%s'",
                         lua_tostring(L, 2), $MODSTR);
                 }
-                switch(lua_tointeger(L, -1)) {
+                switch(ivalue(_index)) {
                     $SWITCH_SET
                 }
                 return 1;
@@ -2898,17 +2898,17 @@ function coder.generate(modname, ast, is_dynamic)
             lua_newtable(L);
             $GVARMAP
             /* Store __index in metatable */
-            L->top++; setclCvalue(L, L->top-1, _mod);
+            titan_pushmodule(L, _mod);
             lua_pushvalue(L, -2);
             lua_pushcclosure(L, __index, 2);
             lua_setfield(L, -3, "__index");
             /* Store __newindex in metatable */
-            L->top++; setclCvalue(L, L->top-1, _mod);
+            titan_pushmodule(L, _mod);
             lua_pushvalue(L, -2);
             lua_pushcclosure(L, __newindex, 2);
             lua_setfield(L, -3, "__newindex");
             /* Set metatable */
-            L->top++; setobj2s(L, L->top-1, &_mod->upvalue[0]);
+            setobj2s(L, L->top++, &_mod->upvalue[0]);
             lua_pushvalue(L, -3);
             lua_setmetatable(L, -2);
             /* Pop module, varmap, and metatable */
@@ -2922,21 +2922,14 @@ function coder.generate(modname, ast, is_dynamic)
 
     local nslots = initctx.nslots
 
-    table.insert(initvars, 1, render([[
-        /* reserve needed stack space */
-        if (L->stack_last - L->top > $NSLOTS) {
-            if (L->ci->top < L->top + $NSLOTS) L->ci->top = L->top + $NSLOTS;
-        } else {
+    if nslots > 0 then
+        table.insert(initvars, 1, render([[
             lua_checkstack(L, $NSLOTS);
-        }
-        TValue *_base = L->top;
-        L->top += $NSLOTS;
-        for(TValue *_s = L->top - 1; _base <= _s; _s--) {
-            setnilvalue(_s);
-        }
-    ]], {
-        NSLOTS = c_integer_literal(nslots),
-    }))
+            TValue *_base = L->top;
+        ]], {
+            NSLOTS = c_integer_literal(nslots),
+        }))
+    end
 
     table.insert(code, render(modtypes, {
         TYPESNAME = tlcontext.prefix .. "types",
