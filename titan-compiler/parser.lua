@@ -29,7 +29,6 @@ for tag, cons in pairs(ast) do
 end
 
 defs['adderror'] = function (pos, lab)
-  print("chamou adderror", pos, lab)
 	table.insert(synerr, { pos = pos, lab = lab })
 	return
 end
@@ -510,12 +509,12 @@ local grammar = re.compile([[
     NameFuncRec     <- (!'(' .)*
    
     --Err_002: not in parser_spec
-    LParList        <- ({} '' -> 'LParList') -> adderror  LParListRec
-    LParListRec     <- (!(NAME  /  ')') .)*
+    LParPList       <- ({} '' -> 'LParPList') -> adderror  LParPListRec
+    LParPListRec    <- (!(NAME  /  ')') .)*
     
     --Err_003: not in parser_spec
-    RParList        <- ({} '' -> 'RParList') -> adderror  RParListRec
-    RParListRec     <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  ':'  /  '(') .)*
+    RParPList       <- ({} '' -> 'RParPList') -> adderror  RParPListRec
+    RParPListRec    <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  ':'  /  '(') .)*
    
     --Err_004:
     EndFunc         <- ({} '' -> 'EndFunc') -> adderror  EndFuncRec
@@ -532,21 +531,22 @@ local grammar = re.compile([[
     ExpVarDec       <- ({} '' -> 'ExpVarDec') -> adderror  ExpVarDecRec  (P '' -> defaultInt2)  -> number_exp
     ExpVarDecRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* 
 
-    --Err_007: Problem: the recovery pattern will not work, because we reach this label when 'NAME' fails to match
-    --NameRecord     <- ({} '' -> 'NameRecord') -> adderror  NameRecordRec  ('' -> defaultRecName)
+    --Err_007: Problem: the recovery pattern will not work, because we reach this label when 'NAME' fails to match (error)
+    -- Not using NameRecordRec, after the error just matches the empty string, so we will always get a second error
+    NameRecord     <- ({} '' -> 'NameRecord') -> adderror  ''  ('' -> defaultRecName)
     --NameRecordRec  <- (!NAME eatTk)*
  
-    --Err_008:
-    FieldRecord     <- ({} '' -> 'FieldRecord') -> adderror  FieldRecordRec  ('' -> defaultFieldRec)
-    FieldRecordRec  <- (!END eatTk)*
+    --Err_008: do not use FieldRecordRec
+    FieldRecord     <- ({} '' -> 'FieldRecord') -> adderror (!END eatTk)*  ('' -> defaultFieldRec)
+    --FieldRecordRec  <- (!END eatTk)*
 
     --Err_009:
     EndRecord       <- ({} '' -> 'EndRecord') -> adderror  EndRecordRec
     EndRecordRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
-    --Err_010
-    NameImport      <- ({} '' -> 'NameImport') -> adderror  NameImportRec  ('' -> defaultImportName)
-    NameImportRec   <- (!'=' eatTk)*
+    --Err_010: do not use NameImportRec
+    NameImport      <- ({} '' -> 'NameImport') -> adderror (!'=' eatTk)*  ('' -> defaultImportName)
+    --NameImportRec   <- (!'=' eatTk)*
  
     --Err_011: not in parser_spec
     AssignImport     <- ({} '' -> 'AssignImport') -> adderror  AssignImportRec
@@ -848,18 +848,20 @@ function parser.parse(filename, input)
     THIS_FILENAME = filename
     synerr = {}
     local ast, err, errpos = grammar:match(input)
-    print("ast, err, errpos, synerr", ast, err, errpos, #synerr)
+    --print("ast, err, errpos, synerr", ast, err, errpos, #synerr)
     THIS_FILENAME = nil
 
     if ast and #synerr == 0 then
         return ast
     else
+        assert(ast, "Ouch! We did not get an ast for " .. tostring(err))
         local loc
         if ast then
-            print(parser.pretty_print_ast(ast))
+            --print(parser.pretty_print_ast(ast))
             loc = synerr[1].pos
             err = synerr[1].lab
-            print("loc = ", loc, "err = ", err)
+            --print("loc = ", loc, "err = ", err)
+            loc = location.from_pos(filename, input, loc)
         else            
             loc = location.from_pos(filename, input, errpos)
         end
