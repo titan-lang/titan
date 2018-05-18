@@ -2326,6 +2326,28 @@ describe("Titan code generator", function()
             assert.equal(0, status)
         end)
 
+        it("correctly uses module local variables in application", function ()
+            local modules = {
+                foo = [[
+                    local xs: {integer} = {}
+                    function resetxs()
+                        xs = {}
+                    end
+                ]],
+                bar = [[
+                    local foo = import "foo"
+                    function main(args: {string}): integer
+                        foo.resetxs()
+                        return 42
+                    end
+                ]]
+            }
+            local ok, err = generate_modules(modules, "bar", true)
+            assert.truthy(ok, err)
+            local ok, err, status = call_app("./bar")
+            assert.truthy(ok, err)
+            assert.equal(42, status)
+        end)
     end)
 
     describe("#foreigns", function()
