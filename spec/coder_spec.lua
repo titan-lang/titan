@@ -100,6 +100,10 @@ local function run_coder_app(titan_code, main, estatus, eout)
 end
 
 describe("Titan code generator", function()
+    setup(function ()
+        os.remove("titan-runtime/titan.o")
+    end)
+
     after_each(function ()
         os.execute("rm -f *.o")
         os.execute("rm -f *.so")
