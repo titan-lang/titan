@@ -1627,6 +1627,35 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
     end)
 
+    it("calls method from a returned record", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+                function Point:move(dx: float, dy: float): Point
+                    self.x, self.y = self.x + dx, self.y + dy
+                    return self
+                end
+                function get_point(): Point
+                    return { x = 10, y = 20 }
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(): (float, float)
+                    local p = f.get_point():move(2, 3)
+                    return p.x, p.y
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "bar")
+        assert.truthy(ok, err)
+        local ok, err = call("bar", "x, y = bar.bar(); assert(x == 12.0); assert(y == 23.0)")
+        assert.truthy(ok, err)
+    end)
+
     it("uses method of record from transitive module", function ()
         local modules = {
             foo = [[
