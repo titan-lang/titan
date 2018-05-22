@@ -86,6 +86,7 @@ function driver.defaultloader(static_deps)
 end
 
 function driver.tableloader(modtable, imported, deps)
+    deps = deps or {}
     local function loader(modname)
         if imported[modname] == CIRCULAR_MARK then
             imported[modname] = nil
