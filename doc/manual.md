@@ -281,7 +281,7 @@ An `import` statement references another module and lets the current
 module use its exported module variables and functions. Its syntax
 is:
 
-    local <localname> = import "<modname>"
+    [local <localname> =] import "<modname>"
 
 The module name `<modname>` is a name like `foo`, `foo.bar`, or `foo.bar.baz`.
 The Titan compiler translates a module name into a file name by converting
@@ -289,6 +289,9 @@ all dots to path separators, and then appending `.so`, for binary modules, or
 `.titan`, for source modules, so the above three
 modules will correspond to `foo.{so|titan}`, `foo/bar.{so|titan}`, and `foo/bar/baz.{so|titan}`.
 The Titan compiler will recompile the module if its source is newer than its binary.
+
+If the `<localname>` is not given, Titan will use the last name of
+the module (`foo` for all of `foo`, `bar.foo`, or `baz.bar.foo`, for example).
 
 Binary modules are looked up in the *runtime search path*, a semicolon-separated list
 of paths that defaults to `.;/usr/local/lib/titan/0.5`, but can be overriden with a
@@ -323,11 +326,14 @@ as call the exported function `bar`.
 A `foreign import` statement loads a C header file, and imports all its
 function and type definitions. Its syntax is:
 
-    local <localname> = foreign import "<headername>"
+    [local <localname> =] foreign import "<headername>"
 
 The string containing the `<headername>` argument may be a relative or
 absolute pathname to a C header file. When a relative pathname is given,
 the Titan compiler will search in standard C header paths.
+
+If the `<localname>` is not given, Titan will use the name of the header
+file without the path part (`foo` for `path/foo.h`, for example).
 
 Due to the flat namespace of C functions and types, all types and functions
 imported via foreign imports share a single namespace in Titan as well.
@@ -340,8 +346,8 @@ many headers will import the same system headers.
 
 For example, if one loads two header files like this
 
-    local foo = foreign import "foo.h"
-    local bar = foreign import "bar.h"
+    foreign import "foo.h"
+    foreign import "bar.h"
 
 and both `foo.h` and `bar.h` happen to include (directly or indirectly) the
 system header `stdio.h`, this means that both `foo.printf` and `bar.printf`
@@ -400,11 +406,63 @@ Casts from `float` to `integer` fail if it is not an integral value, and if
 this value is outside the allowable range for integers. Casts from `value`
 fail if the value does not have the target type, or cannot be converted to it.
 
+## The standard library
+
+### Basic functions
+
+You can call these functions directly from anywhere in a Titan module,
+without needing to import anything.
+
+#### assert(v: value, msg: string): string
+
+Returns `v` if it is truthy, otherwise throws an error with message `msg`.
+
+#### dofile(filename: string, ...: value): { value }
+
+Executes the Lua chunk inside the file named `filename`, passing any extra
+arguments (you can access these arguments inside the Lua code with `...`).
+Returns an array containing all the values that the Lua chunk returned.
+
+The Lua code can load (using `require`) any Titan module that is part of
+a Titan application, if you are running in the context of an application.
+
+#### dostring(chunk: string, ...: value): { value }
+
+Executes the Lua chunk inside `chunk`, passing any extra
+arguments (you can access these arguments inside the Lua code with `...`).
+Returns an array containing all the values that the Lua chunk returned.
+
+The Lua code can load (using `require`) any Titan module that is part of
+a Titan application, if you are running in the context of an application.
+
+#### error(msg: string)
+
+Throws an error with error message `msg`.
+
+#### print(...: value)
+
+Prints its arguments to the standard output, separated by tabs and ending in a newline
+(`print()` prints just a newline).
+
+#### tostring(v: value): string
+
+Returns the string representation for the Titan value `v`.
+
+#### tofloat(s: string): float
+
+If `s` has a numeric literal returns the corresponding number as a floating
+point value, otherwise returns `0.0`.
+
+#### tointeger(s: string): integer
+
+If `s` has an integer literal or an integral floating point literal
+returns the corresponding integer value, otherwise returns `0`.
+
 ## The Complete Syntax of Titan
 
 Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, {A} means 0 or more As, and \[A\] means an optional A.
 
-    program ::= {tlfunc | tlvar | tlrecord | tlimport | tlforeignimport}
+    program ::= {tlfunc | tlvar | tlrecord | tlimport | tlforeignimport | tlforeignfunc}
 
     tlfunc ::= [local] function Name '(' [parlist] ')'  ':' type block end
 
@@ -412,11 +470,15 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
 
     tlrecord ::= record Name recordfields end
 
-    tlimport ::= local Name '=' import LiteralString
+    tlimport ::= [local Name '='] import LiteralString
 
-    tlforeignimport ::= local Name '=' foreign import LiteralString
+    tlforeignimport ::= [local Name '='] foreign import LiteralString
 
-    parlist ::= Name ':' type {',' Name ':' type}
+    tlforeignfunc ::= foreign function Name '(' [parlist] ')'  ':' type
+
+    param ::= Name ':' type | '...' ':' type
+
+    parlist ::= param {',' param}
 
     type ::= value | integer | float | boolean | string | array | map
 

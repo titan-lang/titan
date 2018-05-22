@@ -16,17 +16,19 @@ local function generate_modules(modules, main, forapp)
     types.registry = {}
     local imported = {}
     local loader = driver.tableloader(modules, imported)
-    local type, err = checker.checkimport(main, loader)
-    if not type then return nil, err end
-    if #err ~= 0 then return nil, table.concat(err, "\n") end
-    local ofiles = {}
+    for name, _ in pairs(modules) do
+        local type, err = checker.checkimport(name, loader)
+        if not type then return nil, err end
+        if #err ~= 0 then return nil, table.concat(err, "\n") end
+    end
+    local mods = {}
     for name, mod in pairs(imported) do
         local ok, err = driver.compile_module(name, mod, nil, forapp, verbose)
-        table.insert(ofiles, name .. ".o")
+        table.insert(mods, name)
         if not ok then return nil, err end
     end
     if forapp then
-        local ok, err = driver.compile_program(main, ofiles, nil, verbose)
+        local ok, err = driver.compile_program(main, mods, nil, verbose)
         if not ok then return nil, err end
     end
     return true
@@ -36,9 +38,9 @@ local function call(modname, code)
     local cmd = string.format("lua-5.3.4/src/lua -l %s -e \"print(pcall(function () %s end))\"",
         modname, code)
     local f = io.popen(cmd)
-    local out = f:read()
+    local out = f:read("*a")
     local ok, err = f:close()
-    if not ok then return false, err end
+    if not ok then return false, err, out end
     local ok, data = out:match("^(true)%s*(.*)$")
     if not ok then
         local _, error = out:match("^(false)%s*(.*)$")
@@ -56,7 +58,7 @@ local function run_coder(titan_code, lua_test, errmsg)
     assert.equal(0, #err, table.concat(err, "\n"))
     local ok, err = driver.compile("test", ast, nil, nil, nil, verbose)
     assert.truthy(ok, err)
-    local ok, err = call("test", lua_test)
+    local ok, err, out = call("test", lua_test)
     if errmsg then
         assert.falsy(ok)
         assert.match(errmsg, err)
@@ -68,7 +70,7 @@ end
 local function call_app(appname, ...)
     local cmd = table.concat({ appname, ... }, " ")
     local f = io.popen(cmd)
-    local out = f:read()
+    local out = f:read("*a")
     local ok, err, status = f:close()
     if err == "exit" then ok = true end
     if not verbose then os.remove(appname) end
@@ -89,7 +91,7 @@ local function run_coder_app(titan_code, main, estatus, eout)
     assert.equal(0, #err, table.concat(err, "\n"))
     local ok, err = driver.compile("test", ast, nil, nil, true, verbose)
     assert.truthy(ok, err)
-    local ok, err = driver.compile_program("test", { "test.o" }, nil, verbose)
+    local ok, err = driver.compile_program("test", { "test" }, nil, verbose)
     assert.truthy(ok, err)
     local ok, err, status, output = call_app("./test")
     assert.truthy(ok, err)
@@ -2316,6 +2318,57 @@ describe("Titan code generator", function()
                         foo.resetxs()
                         return 42
                     end
+                    ]]
+                }
+            local ok, err = generate_modules(modules, "bar", true)
+            assert.truthy(ok, err)
+            local ok, err, status = call_app("./bar")
+            assert.truthy(ok, err)
+            assert.equal(42, status)
+        end)
+
+        it("loads titan module from lua code inside application", function ()
+            local modules = {
+                foo = [[
+                    function a(): integer
+                        return 42
+                    end
+                ]],
+                bar = [[
+                    function main(args: {string}): integer
+                        local res = dostring([=[
+                            local m = require 'foo'
+                            return m.a()
+                        ]=])
+                        if res[1] == 42 then
+                            return 0
+                        else
+                            return 1
+                        end
+                    end
+                ]]
+            }
+            local ok, err = generate_modules(modules, "bar", true)
+            assert.truthy(ok, err)
+            local ok, err, status = call_app("./bar")
+            assert.truthy(ok, err)
+            assert.equal(0, status)
+        end)
+
+        it("correctly uses module local variables in application", function ()
+            local modules = {
+                foo = [[
+                    local xs: {integer} = {}
+                    function resetxs()
+                        xs = {}
+                    end
+                ]],
+                bar = [[
+                    local foo = import "foo"
+                    function main(args: {string}): integer
+                        foo.resetxs()
+                        return 42
+                    end
                 ]]
             }
             local ok, err = generate_modules(modules, "bar", true)
@@ -2324,8 +2377,117 @@ describe("Titan code generator", function()
             assert.truthy(ok, err)
             assert.equal(42, status)
         end)
-
     end)
+
+    describe("#foreigns", function()
+        it("call print", function ()
+            run_coder_app([[
+            ]], [[
+                print(1, 'foo', true, 2.5)
+                print()
+                return 0
+            ]], 0, "1\tfoo\ttrue\t2.5\n\n")
+        end)
+
+        it("call assert", function ()
+            run_coder([[
+                function f(cond: value): value
+                    return assert(cond, 'foo')
+                end
+            ]], [[
+                assert(test.f(42) == 42)
+                local ok, err = pcall(test.f, nil)
+                assert(not ok)
+                assert(err:match('foo'))
+                local ok, err = pcall(test.f, false)
+                assert(not ok)
+                assert(err:match('foo'))
+            ]])
+        end)
+
+        it("call dostring", function ()
+            run_coder([=[
+                function f(): { value }
+                    return dostring([[
+                        return ...
+                    ]], 1, 'foo', 2.5)
+                end
+            ]=], [[
+                local res = test.f()
+                assert(#res == 3)
+                assert(res[1] == 1)
+                assert(res[2] == 'foo')
+                assert(res[3] == 2.5)
+            ]])
+        end)
+
+        it("call dofile", function ()
+            os.execute('echo "return ..." > test_dofile.lua')
+            run_coder([=[
+                function f(): { value }
+                    return dofile('test_dofile.lua', 1, 'foo', 2.5)
+                end
+            ]=], [[
+                local res = test.f()
+                assert(#res == 3)
+                assert(res[1] == 1)
+                assert(res[2] == 'foo')
+                assert(res[3] == 2.5)
+            ]])
+            os.remove("test_dofile.lua")
+        end)
+
+        it("call error", function ()
+            run_coder([[
+                function f(): nil
+                    error('foo')
+                end
+            ]], [[
+                local ok, err = pcall(test.f)
+                assert(not ok)
+                assert(err:match('foo'))
+            ]])
+        end)
+
+        it("call tostring", function ()
+            run_coder([[
+                function f(v: value): string
+                    return tostring(v)
+                end
+            ]], [[
+                assert(test.f(1) == '1')
+                assert(test.f(2.5) == '2.5')
+                assert(test.f('foo') == 'foo')
+                assert(test.f(true) == 'true')
+                assert(test.f(nil) == 'nil')
+            ]])
+        end)
+
+        it("call tofloat", function ()
+            run_coder([[
+                function f(v: string): float
+                    return tofloat(v)
+                end
+            ]], [[
+                assert(test.f('1') == 1.0)
+                assert(test.f('2.5') == 2.5)
+                assert(test.f('foo') == 0.0)
+            ]])
+        end)
+
+        it("call tointeger", function ()
+            run_coder([[
+                function f(v: string): integer
+                    return tointeger(v)
+                end
+            ]], [[
+                assert(test.f('10') == 10)
+                assert(test.f('2.5') == 0)
+                assert(test.f('foo') == 0)
+            ]])
+        end)
+    end)
+
 end)
 
 

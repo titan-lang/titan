@@ -169,6 +169,7 @@ local errors = {
 
     NameMethod = "Expected a method name after the colon.",
 
+    ForeignFunc = "Expected a foreign function declaration.",
 }
 
 syntax_errors.errors = errors

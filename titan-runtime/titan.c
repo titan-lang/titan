@@ -204,3 +204,137 @@ const TValue *getgeneric (Table *t, const TValue *key) {
     }
   }
 }
+
+/* Builtin foreign functions */
+int titan_print(lua_State *L, CClosure *_mod, int nargs, ...) {
+    if(nargs > 0) {
+        lua_checkstack(L, 3);
+        TValue *top = L->top;
+        va_list args;
+        va_start(args, nargs);
+        for(int i = 0; i < nargs; i++) {
+            TValue val = va_arg(args, TValue);
+            setobj2s(L, L->top-1, &val);
+            size_t l;
+            const char *s = luaL_tolstring(L, -1, &l);
+            if(i > 0) lua_writestring("\t", 1);
+            lua_writestring(s, l);
+            L->top--;
+        }
+        va_end(args);
+        L->top = top;
+    }
+    lua_writeline();
+    return 0;
+}
+
+TValue titan_assert(lua_State *L, CClosure *_mod, TValue cond, TString *msg) {
+    if(l_isfalse(&cond)) {
+        luaL_error(L, getstr(msg));
+    }
+    return cond;
+}
+
+Table *titan_dofile(lua_State *L, CClosure *_mod, TString *fname, int nargs, ...) {
+    TValue *top = L->top;
+    lua_checkstack(L, 2 + nargs);
+    lua_createtable(L, 0, 0);
+    Table *tres = hvalue(L->top-1);
+    TValue *firstres = L->top;
+    if (luaL_loadfile(L, getstr(fname)) != LUA_OK) {
+        lua_error(L);
+    }
+    if(nargs > 0) {
+        va_list args;
+        va_start(args, nargs);
+        for(int i = 0; i < nargs; i++) {
+            TValue arg = va_arg(args, TValue);
+            L->top++;
+            setobj2s(L, L->top-1, &arg);
+        }
+        va_end(args);        
+    }
+    lua_call(L, nargs, LUA_MULTRET);
+    for(TValue *res = firstres; res < L->top; res++) {
+        luaH_setint(L, tres, res - firstres + 1, res);
+    }
+    L->top = top;
+    return tres;
+}
+
+int titan_error(lua_State *L, CClosure *_mod, TString *msg) {
+    return luaL_error(L, getstr(msg));
+}
+
+Table *titan_dostring(lua_State *L, CClosure *_mod, TString *code, int nargs, ...) {
+    TValue *top = L->top;
+    lua_checkstack(L, 2 + nargs);
+    lua_createtable(L, 0, 0);
+    Table *tres = hvalue(L->top-1);
+    TValue *firstres = L->top;
+    if (luaL_loadstring(L, getstr(code)) != LUA_OK) {
+        lua_error(L);
+    }
+    if(nargs > 0) {
+        va_list args;
+        va_start(args, nargs);
+        for(int i = 0; i < nargs; i++) {
+            TValue arg = va_arg(args, TValue);
+            L->top++;
+            setobj2s(L, L->top-1, &arg);
+        }
+        va_end(args);        
+    }
+    lua_call(L, nargs, LUA_MULTRET);
+    for(TValue *res = firstres; res < L->top; res++) {
+        luaH_setint(L, tres, res - firstres + 1, res);
+    }
+    L->top = top;
+    return tres;
+}
+
+TString *titan_tostring(lua_State *L, CClosure *_mod, TValue val) {
+    TValue *top = L->top;
+    lua_checkstack(L, 3);
+    L->top++;
+    setobj2s(L, L->top-1, &val);
+    size_t l;
+    luaL_tolstring(L, -1, &l);
+    TString *s = tsvalue(L->top-1);
+    L->top = top;
+    return s;
+}
+
+lua_Number titan_tofloat(lua_State *L, CClosure *_mod, TString *s) {
+    TValue val;
+    if(luaO_str2num(getstr(s), &val)) {
+        return nvalue(&val);
+    } else {
+        return 0;
+    }
+}
+
+lua_Integer titan_tointeger(lua_State *L, CClosure *_mod, TString *s) {
+    TValue val;
+    if(luaO_str2num(getstr(s), &val)) {
+        lua_Integer res;
+        if(luaV_tointeger(&val, &res, 0)) {
+            return res;
+        } else {
+            return 0;
+        }
+    } else {
+        return 0;
+    }
+}
+
+lua_Integer titan_string_byte(lua_State *L, CClosure *_mod, TString *s, lua_Integer index) {
+    size_t len = tsslen(s);
+    if(index == 0)
+        return 0;
+    else if(index < 0) 
+        index = index % len; 
+    else 
+        index = (index - 1) % len;
+    return getstr(s)[index];
+}

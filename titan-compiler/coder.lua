@@ -114,6 +114,10 @@ local function func_name(modname, name)
     return modprefix(modname) .. name .. "_titan"
 end
 
+local function foreign_name(name)
+    return "titan_" .. mangle_qn(name)
+end
+
 local function func_luaname(modname, name)
     return modprefix(modname) .. name .. "_lua"
 end
@@ -418,6 +422,10 @@ local function function_sig(fname, ftype, is_pointer)
     end
     for i = 2, #ftype.rettypes do
         table.insert(params, ctype(ftype.rettypes[i]) .. "*")
+    end
+    if type(ftype.vararg) == "table" then
+        table.insert(params, "int")
+        table.insert(params, "...")
     end
     local rettype = ftype.rettypes[1]
     local template = is_pointer
@@ -1060,9 +1068,19 @@ local function codecall(ctx, node)
     local fname
     local fnode = node.exp.var
     local modarg = "_mod"
+    local ftype = fnode._type
     if node.args._tag == "Ast.ArgsFunc" then
         if fnode._tag == "Ast.VarName" then
-            fname = func_name(ctx.module, fnode.name)
+            if ftype._tag == "Type.ForeignFunction" then
+                fname = foreign_name(ftype.name)
+                ctx.functions[ftype.name] = {
+                    mangled = foreign_name(ftype.name),
+                    type = ftype
+                }
+            else
+                assert(ftype._tag == "Type.Function")
+                fname = func_name(ctx.module, fnode.name)
+            end
         elseif fnode._tag == "Ast.VarDot" then
             if fnode.exp._type._tag == "Type.ForeignModule" then
                 return codeforeigncall(ctx, node)
@@ -1082,6 +1100,12 @@ local function codecall(ctx, node)
                         INDEX = c_integer_literal(fnode.exp.var.exp.var._decl._upvalue) -- whew!
                     })
                 end
+            elseif ftype._tag == "Type.ForeignFunction" then
+                fname = foreign_name(ftype.name)
+                ctx.functions[ftype.name] = {
+                    mangled = foreign_name(ftype.name),
+                    type = ftype
+                }
             else
                 assert(fnode._decl._tag == "Type.ModuleMember")
                 fname = func_name(fnode._decl.modname, fnode.name)
@@ -1103,6 +1127,7 @@ local function codecall(ctx, node)
     else
         assert(node.args._tag == "Ast.ArgsMethod")
         local mtype = node._method
+        ftype = mtype
         fname = method_name(mtype)
         local mod, record = mtype.fqtn:match("^(.*)%.(%a+)$")
         if mod ~= ctx.module then
@@ -1125,7 +1150,8 @@ local function codecall(ctx, node)
         table.insert(caexps, modarg)
         table.insert(caexps, cexp)
     end
-    for _, arg in ipairs(node.args.args) do
+    for i = 1, #ftype.params do
+        local arg = node.args.args[i]
         local cstat, cexp = codeexp(ctx, arg)
         table.insert(castats, cstat)
         table.insert(caexps, cexp)
@@ -1139,6 +1165,15 @@ local function codecall(ctx, node)
         table.insert(castats, ctmp)
         table.insert(caexps, "&" .. tmpname)
         retslots[i] = tmpslot
+    end
+    if type(ftype.vararg) == "table" then
+        table.insert(caexps, c_integer_literal(#node.args.args - #ftype.params))
+    end
+    for i = #ftype.params+1, #node.args.args do
+        local arg = node.args.args[i]
+        local cstat, cexp = codeexp(ctx, arg)
+        table.insert(castats, cstat)
+        table.insert(caexps, cexp)
     end
     local cstats = table.concat(castats, "\n")
     local ccall = render("$NAME($CAEXPS)", {
@@ -2524,20 +2559,24 @@ local function init_data_from_other_modules(tlcontext, includes, loadmods, initm
 
     for name, func in pairs(tlcontext.functions) do
         local fname = func.mangled
-        table.insert(includes, storage_class .. " " .. function_sig(fname, func.type, is_dynamic) .. ";")
-        if is_dynamic then
-            local mprefix = mprefixes[func.module]
-            if not mprefix then
-                mprefix = mangle_qn(func.module) .. "_"
-                mprefixes[func.module] = mprefix
-                local file = func.module:gsub("[.]", "/") .. ".so"
+        if func.type._tag == "Type.ForeignFunction" then
+            table.insert(includes, "extern " .. function_sig(fname, func.type) .. ";")
+        else
+            table.insert(includes, storage_class .. " " .. function_sig(fname, func.type, is_dynamic) .. ";")
+            if is_dynamic then
+                local mprefix = mprefixes[func.module]
+                if not mprefix then
+                    mprefix = mangle_qn(func.module) .. "_"
+                    mprefixes[func.module] = mprefix
+                    local file = func.module:gsub("[.]", "/") .. ".so"
+                    table.insert(loadmods, render([[
+                        void *$HANDLE = loadlib(L, "$FILE");
+                    ]], { HANDLE = mprefix .. "handle", FILE = file }))
+                end
                 table.insert(loadmods, render([[
-                    void *$HANDLE = loadlib(L, "$FILE");
-                ]], { HANDLE = mprefix .. "handle", FILE = file }))
+                    $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
+                ]], { NAME = fname, TYPE = function_sig("", func.type, true), HANDLE = mprefix .. "handle" }))
             end
-            table.insert(loadmods, render([[
-                $NAME = cast_func($TYPE, loadsym(L, $HANDLE, "$NAME"));
-            ]], { NAME = fname, TYPE = function_sig("", func.type, true), HANDLE = mprefix .. "handle" }))
         end
     end
 

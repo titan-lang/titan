@@ -220,6 +220,106 @@ function defs.recorddecl(pos, name, fields)
            ast.TopLevelStatic(pos, name, "new", params, { ast.TypeName(pos, name) }, body)
 end
 
+function defs.shortimport(pos, name)
+    return ast.TopLevelImport(pos, name:match("(%w+)$"), name)
+end
+
+function defs.shortforeign(pos, name)
+    return ast.TopLevelForeignImport(pos, name:match("(%w+)[.]h$"), name)
+end
+
+local tokens = [[
+    --
+    -- Get current position
+    --
+
+    P <- {} => get_loc
+
+    -- Create new rules for all our tokens, for the whitespace-skipping magic
+    -- Currently done by hand but this is something that parser-gen should be
+    -- able to do for us.
+
+    SKIP            <- (%SPACE / %COMMENT)
+
+    AND             <- %AND SKIP*
+    BREAK           <- %BREAK SKIP*
+    DO              <- %DO SKIP*
+    ELSE            <- %ELSE SKIP*
+    ELSEIF          <- %ELSEIF SKIP*
+    END             <- %END SKIP*
+    FALSE           <- %FALSE SKIP*
+    FOR             <- %FOR SKIP*
+    FUNCTION        <- %FUNCTION SKIP*
+    GOTO            <- %GOTO SKIP*
+    IF              <- %IF SKIP*
+    IN              <- %IN SKIP*
+    LOCAL           <- %LOCAL SKIP*
+    NIL             <- %NIL SKIP*
+    NOT             <- %NOT SKIP*
+    OR              <- %OR SKIP*
+    RECORD          <- %RECORD SKIP*
+    REPEAT          <- %REPEAT SKIP*
+    RETURN          <- %RETURN SKIP*
+    THEN            <- %THEN SKIP*
+    TRUE            <- %TRUE SKIP*
+    UNTIL           <- %UNTIL SKIP*
+    WHILE           <- %WHILE SKIP*
+    IMPORT          <- %IMPORT SKIP*
+    AS              <- %AS SKIP*
+    FOREIGN         <- %FOREIGN SKIP*
+
+    BOOLEAN         <- %BOOLEAN SKIP*
+    INTEGER         <- %INTEGER SKIP*
+    FLOAT           <- %FLOAT SKIP*
+    STRING          <- %STRING SKIP*
+    VALUE           <- %VALUE SKIP*
+
+    ADD             <- %ADD SKIP*
+    SUB             <- %SUB SKIP*
+    MUL             <- %MUL SKIP*
+    MOD             <- %MOD SKIP*
+    DIV             <- %DIV SKIP*
+    IDIV            <- %IDIV SKIP*
+    POW             <- %POW SKIP*
+    LEN             <- %LEN SKIP*
+    BAND            <- %BAND SKIP*
+    BXOR            <- %BXOR SKIP*
+    BOR             <- %BOR SKIP*
+    SHL             <- %SHL SKIP*
+    SHR             <- %SHR SKIP*
+    CONCAT          <- %CONCAT SKIP*
+    EQ              <- %EQ SKIP*
+    LT              <- %LT SKIP*
+    GT              <- %GT SKIP*
+    NE              <- %NE SKIP*
+    LE              <- %LE SKIP*
+    GE              <- %GE SKIP*
+    ASSIGN          <- %ASSIGN SKIP*
+    LPAREN          <- %LPAREN SKIP*
+    RPAREN          <- %RPAREN SKIP*
+    LBRACKET        <- %LBRACKET SKIP*
+    RBRACKET        <- %RBRACKET SKIP*
+    LCURLY          <- %LCURLY SKIP*
+    RCURLY          <- %RCURLY SKIP*
+    SEMICOLON       <- %SEMICOLON SKIP*
+    COMMA           <- %COMMA SKIP*
+    DOT             <- %DOT SKIP*
+    DOTS            <- %DOTS SKIP*
+    DBLCOLON        <- %DBLCOLON SKIP*
+    COLON           <- %COLON SKIP*
+    RARROW          <- %RARROW SKIP*
+
+    NUMBER          <- %NUMBER SKIP*
+    STRINGLIT       <- %STRINGLIT SKIP*
+    NAME            <- %NAME SKIP*
+    TYPENAME        <- %TYPENAME SKIP*
+
+    -- Synonyms
+
+    NEG             <- SUB
+    BNEG            <- BXOR
+]]
+
 local grammar = re.compile([[
 
     program         <-  SKIP*
@@ -227,8 +327,11 @@ local grammar = re.compile([[
                            / toplevelfunc
                            / toplevelvar
                            / toplevelrecord
+                           -- / toplevelforeign
                            / import
-                           / foreign )* |} !.
+                           / shortimport
+                           / foreign
+                           / shortforeign )* |} !.
 
     method          <- (P  FUNCTION NAME COLON NAME^NameMethod
                            LPAREN^LParPList paramlist RPAREN^RParPList
@@ -238,11 +341,15 @@ local grammar = re.compile([[
                            LPAREN^LParPList paramlist RPAREN^RParPList
                            rettypeopt block END^EndFunc)         -> TopLevelFunc
 
+    toplevelforeign <- (P  FOREIGN !IMPORT FUNCTION^ForeignFunc NAME^NameFunc
+                           LPAREN^LParPList paramlist RPAREN^RParPList
+                           rettypeopt)                           -> TopLevelForeignFunc
+
     toplevelvar     <- (P localopt decl ASSIGN^AssignVar
                            !(IMPORT / FOREIGN)
                            exp^ExpVarDec)                        -> TopLevelVar
 
-    toplevelrecord  <- (P  RECORD NAME^NameRecord
+    toplevelrecord  <- (P  RECORD TYPENAME^NameRecord
                            recordfields^FieldRecord
                            END^EndRecord)                        -> recorddecl
 
@@ -253,10 +360,18 @@ local grammar = re.compile([[
                           (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
                           STRINGLIT^StringImport))               -> TopLevelImport
 
+    shortimport     <- (P !FOREIGN IMPORT
+                          (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
+                           STRINGLIT^StringImport))              -> shortimport
+
     foreign         <- (P  LOCAL NAME^NameImport ASSIGN^AssignImport
                            FOREIGN IMPORT^ImportImport
                           (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
                            STRINGLIT^StringImport))              -> TopLevelForeignImport
+
+    shortforeign    <- (P FOREIGN IMPORT^ImportImport
+                          (LPAREN STRINGLIT^StringLParImport RPAREN^RParImport /
+                           STRINGLIT^StringImport))              -> shortforeign
 
     rettypeopt      <- (P  (COLON rettype^TypeFunc)?)            -> rettypeopt
 
@@ -264,25 +379,27 @@ local grammar = re.compile([[
 
     param           <- (P  NAME COLON^ParamSemicolon
                            type^TypeDecl)                        -> Decl
+                     / (P DOTS COLON^ParamSemicolon
+                           type^TypeDecl)                        -> Vararg
 
     decl            <- (P  NAME (COLON type^TypeDecl)? -> opt)   -> Decl
 
     decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
 
-    simpletype      <- (P  NIL)                                  -> TypeNil
+    simpletype      <- ((P  NAME DOT TYPENAME^QualName)       -> TypeQualName
+                     / (P  TYPENAME)                             -> TypeName
+                     / (P  NIL)                                  -> TypeNil
                      / (P  BOOLEAN)                              -> TypeBoolean
                      / (P  INTEGER)                              -> TypeInteger
                      / (P  FLOAT)                                -> TypeFloat
                      / (P  STRING)                               -> TypeString
                      / (P  VALUE)                                -> TypeValue
-                     / (P  NAME DOT NAME^QualName)               -> TypeQualName
-                     / (P  NAME)                                 -> TypeName
                      / (P  LCURLY type^TypeType
                            COLON
                            type^TypeType
                            RCURLY^RCurlyType)                    -> TypeMap
                      / (P  LCURLY type^TypeType
-                           RCURLY^RCurlyType)                    -> TypeArray
+                           RCURLY^RCurlyType)                    -> TypeArray) !DOT
 
     typelist        <- ( LPAREN
                          {| (type (COMMA type^TypelistType)*)? |}
@@ -420,96 +537,58 @@ local grammar = re.compile([[
 
     fieldsep        <- SEMICOLON / COMMA
 
-    --
-    -- Get current position
-    --
+]] .. tokens, defs)
 
-    P <- {} => get_loc
+local toplevelforeign = re.compile([[
 
-    -- Create new rules for all our tokens, for the whitespace-skipping magic
-    -- Currently done by hand but this is something that parser-gen should be
-    -- able to do for us.
+    declarations    <- SKIP* {| toplevelforeign* |} !.
 
-    SKIP            <- (%SPACE / %COMMENT)
+    toplevelforeign <- (P  FOREIGN !IMPORT FUNCTION^ForeignFunc NAME^NameFunc
+                           LPAREN^LParPList paramlist RPAREN^RParPList
+                           rettypeopt)                           -> TopLevelForeignFunc
 
-    AND             <- %AND SKIP*
-    BREAK           <- %BREAK SKIP*
-    DO              <- %DO SKIP*
-    ELSE            <- %ELSE SKIP*
-    ELSEIF          <- %ELSEIF SKIP*
-    END             <- %END SKIP*
-    FALSE           <- %FALSE SKIP*
-    FOR             <- %FOR SKIP*
-    FUNCTION        <- %FUNCTION SKIP*
-    GOTO            <- %GOTO SKIP*
-    IF              <- %IF SKIP*
-    IN              <- %IN SKIP*
-    LOCAL           <- %LOCAL SKIP*
-    NIL             <- %NIL SKIP*
-    NOT             <- %NOT SKIP*
-    OR              <- %OR SKIP*
-    RECORD          <- %RECORD SKIP*
-    REPEAT          <- %REPEAT SKIP*
-    RETURN          <- %RETURN SKIP*
-    THEN            <- %THEN SKIP*
-    TRUE            <- %TRUE SKIP*
-    UNTIL           <- %UNTIL SKIP*
-    WHILE           <- %WHILE SKIP*
-    IMPORT          <- %IMPORT SKIP*
-    AS              <- %AS SKIP*
-    FOREIGN         <- %FOREIGN SKIP*
+    rettypeopt      <- (P  (COLON rettype^TypeFunc)?)            -> rettypeopt
 
-    BOOLEAN         <- %BOOLEAN SKIP*
-    INTEGER         <- %INTEGER SKIP*
-    FLOAT           <- %FLOAT SKIP*
-    STRING          <- %STRING SKIP*
-    VALUE           <- %VALUE SKIP*
+    paramlist       <- {| (param (COMMA param^DeclParList)*)? |} -- produces {Decl}
 
-    ADD             <- %ADD SKIP*
-    SUB             <- %SUB SKIP*
-    MUL             <- %MUL SKIP*
-    MOD             <- %MOD SKIP*
-    DIV             <- %DIV SKIP*
-    IDIV            <- %IDIV SKIP*
-    POW             <- %POW SKIP*
-    LEN             <- %LEN SKIP*
-    BAND            <- %BAND SKIP*
-    BXOR            <- %BXOR SKIP*
-    BOR             <- %BOR SKIP*
-    SHL             <- %SHL SKIP*
-    SHR             <- %SHR SKIP*
-    CONCAT          <- %CONCAT SKIP*
-    EQ              <- %EQ SKIP*
-    LT              <- %LT SKIP*
-    GT              <- %GT SKIP*
-    NE              <- %NE SKIP*
-    LE              <- %LE SKIP*
-    GE              <- %GE SKIP*
-    ASSIGN          <- %ASSIGN SKIP*
-    LPAREN          <- %LPAREN SKIP*
-    RPAREN          <- %RPAREN SKIP*
-    LBRACKET        <- %LBRACKET SKIP*
-    RBRACKET        <- %RBRACKET SKIP*
-    LCURLY          <- %LCURLY SKIP*
-    RCURLY          <- %RCURLY SKIP*
-    SEMICOLON       <- %SEMICOLON SKIP*
-    COMMA           <- %COMMA SKIP*
-    DOT             <- %DOT SKIP*
-    DOTS            <- %DOTS SKIP*
-    DBLCOLON        <- %DBLCOLON SKIP*
-    COLON           <- %COLON SKIP*
-    RARROW          <- %RARROW SKIP*
+    param           <- (P NAME COLON^ParamSemicolon
+                           type^TypeDecl)                        -> Decl
+                     / (P DOTS COLON^ParamSemicolon
+                           type^TypeDecl)                        -> Vararg
 
-    NUMBER          <- %NUMBER SKIP*
-    STRINGLIT       <- %STRINGLIT SKIP*
-    NAME            <- %NAME SKIP*
+    simpletype      <- ((P NAME DOT TYPENAME^QualName)       -> TypeQualName
+                     / (P  TYPENAME)                             -> TypeName
+                     / (P  NIL)                                  -> TypeNil
+                     / (P  BOOLEAN)                              -> TypeBoolean
+                     / (P  INTEGER)                              -> TypeInteger
+                     / (P  FLOAT)                                -> TypeFloat
+                     / (P  STRING)                               -> TypeString
+                     / (P  VALUE)                                -> TypeValue
+                     / (P  LCURLY type^TypeType
+                           COLON
+                           type^TypeType
+                           RCURLY^RCurlyType)                    -> TypeMap
+                     / (P  LCURLY type^TypeType
+                           RCURLY^RCurlyType)                    -> TypeArray) !DOT
 
-    -- Synonyms
+    typelist        <- ( LPAREN
+                         {| (type (COMMA type^TypelistType)*)? |}
+                         RPAREN^RParenTypelist )                 -- produces {Type}
 
-    NEG             <- SUB
-    BNEG            <- BXOR
+    rettype         <- {| (P  typelist RARROW
+                            rettype^TypeReturnTypes)             -> TypeFunction |}
+                     / {| (P  {| simpletype |} RARROW
+                             rettype^TypeReturnTypes)            -> TypeFunction |}
+                     / typelist
+                     / {| simpletype |}
 
-]], defs)
+    type            <- (P  typelist RARROW
+                           rettype^TypeReturnTypes)              -> TypeFunction
+                     / (P  {| simpletype |} RARROW
+                           rettype^TypeReturnTypes)              -> TypeFunction
+                     / simpletype
+
+]] .. tokens, defs)
 
 function parser.parse(filename, input)
     -- Abort if someone calls this non-reentrant parser recursively
@@ -519,6 +598,17 @@ function parser.parse(filename, input)
     THIS_FILENAME = filename
     local ast, err, errpos = grammar:match(input)
     THIS_FILENAME = nil
+
+    if ast then
+        return ast
+    else
+        local loc = location.from_pos(filename, input, errpos)
+        return false, { label = err, loc = loc }
+    end
+end
+
+function parser.parse_foreign(input)
+    local ast, err, errpos = toplevelforeign:match(input)
 
     if ast then
         return ast

@@ -702,6 +702,27 @@ describe("Titan parser", function()
         assert_program_ast([[ local foo = import "module.foo" ]], {
             { _tag = "Ast.TopLevelImport", localname = "foo", modname = "module.foo" },
         })
+        assert_program_ast([[ import "module.foo" ]], {
+            { _tag = "Ast.TopLevelImport", localname = "foo", modname = "module.foo" },
+        })
+        assert_program_ast([[ local foo = import "foo" ]], {
+            { _tag = "Ast.TopLevelImport", localname = "foo", modname = "foo" },
+        })
+        assert_program_ast([[ import "foo" ]], {
+            { _tag = "Ast.TopLevelImport", localname = "foo", modname = "foo" },
+        })
+        assert_program_ast([[ local foo = foreign import "module/foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "module/foo.h" },
+        })
+        assert_program_ast([[ local foo = foreign import "foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "foo.h" },
+        })
+        assert_program_ast([[ foreign import "module/foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "module/foo.h" },
+        })
+        assert_program_ast([[ foreign import "foo.h" ]], {
+            { _tag = "Ast.TopLevelForeignImport", localname = "foo", headername = "foo.h" },
+        })
     end)
 
     it("can parse multiple assignment", function ()
@@ -870,21 +891,33 @@ describe("Titan parser", function()
         assert_statements_syntax_error([[ (x) = 42 ]], "ExpAssign")
     end)
 
-    it("does not allow identifiers that are type names", function()
-        assert_program_syntax_error([[
+    it("allows identifiers that are type names only outside type context", function()
+        assert_parses_successfuly([[
             function integer()
             end
-        ]], "NameFunc")
+        ]])
 
-        assert_program_syntax_error([[
+        assert_parses_successfuly([[
             function f()
                 local integer: integer = 10
             end
-        ]], "DeclLocal")
+        ]])
+
+        assert_program_syntax_error([[
+            function f()
+                local integer: foo.integer = 10
+            end
+        ]], "QualName")
+
+        assert_parses_successfuly([[
+            function f()
+                local integer: integer.foo = 10
+            end
+        ]])
     end)
 
-    it("doesn't allow using a primitive type as a record", function()
-        assert_expression_syntax_error("integer.new(10)", "ExpAssign")
+    it("allows using a primitive type as a module name", function()
+        assert_expression_ast("integer.new(10)", {})
     end)
 
     it("uses specific error labels for some errors", function()
@@ -1150,5 +1183,6 @@ describe("Titan parser", function()
         assert_expression_syntax_error([[ y{42,,} ]], "ExpFieldList")
 
         assert_expression_syntax_error([[ foo as ]], "CastMissingType")
+
     end)
 end)

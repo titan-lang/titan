@@ -1629,25 +1629,29 @@ describe("Titan type checker", function()
     end)
 
     it("catches use of function as first-class value", function ()
-        local code = [[
+        assert_type_error("access a function", [[
             function foo(): integer
                 return foo
             end
-        ]]
-        local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("access a function", err)
+        ]])
+        assert_type_error("access a function", [[
+            function foo(): integer
+                return print
+            end
+        ]])
     end)
 
     it("catches assignment to function", function ()
-        local code = [[
+        assert_type_error("assign to a function",[[
             function foo(): integer
                 foo = 2
             end
-        ]]
-        local ok, err = run_checker(code)
-        assert.falsy(ok)
-        assert.match("assign to a function", err)
+        ]])
+        assert_type_error("assign to a function",[[
+            function foo(): integer
+                print = 2
+            end
+        ]])
     end)
 
     it("catches use of external function as first-class value", function ()
@@ -1907,12 +1911,55 @@ describe("Titan type checker", function()
             function h()
                 f(20, (g()))
             end
-        ]], args = 2, params = 3 }}
+        ]], args = 2, params = 3 },{ code = [[
+            function g(): integer
+                return 20
+            end
+            function h()
+                assert(g())
+            end
+        ]], args = 1, params = 2 }, { code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            function h()
+                assert(20, g())
+            end
+        ]], args = 3, params = 2 }, { code = [[
+            function g(): (integer, integer)
+                return 20, 30
+            end
+            function h()
+                assert((g()))
+            end
+        ]], args = 1, params = 2 }}
         for _, c in ipairs(cases) do
             local ok, err = run_checker(c.code)
             assert.falsy(ok)
-            assert.match("function 'f' called with " .. c.args .. " arguments but expects " .. c.params, err)
+            assert.match("called with " .. c.args .. " arguments but expects " .. c.params, err)
         end
+    end)
+
+    it("vararg foreigns and functions", function ()
+        assert_type_check([[
+            function g()
+                print('foo', 1, 2.5)
+            end
+        ]])
+        assert_type_error("only the last parameter", [[
+            function f(...: float, a: string)
+            end
+        ]])
+        assert_type_error("only the last parameter", [[
+            record R end
+            function R:f(...: float, a: string)
+            end
+        ]])
+        assert_type_error("expected string but found float", [[
+            function g()
+                dostring(2.5, 1, 'bar')
+            end
+        ]])
     end)
 end)
 
