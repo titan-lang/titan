@@ -1971,7 +1971,7 @@ describe("Titan code generator", function()
         ]])
     end)
 
-    it("record types created from different loaded modules", function ()
+    it("records created from different loaded modules", function ()
         local modules = {
             foo = [[
                 record Point
@@ -1996,10 +1996,11 @@ describe("Titan code generator", function()
         assert.truthy(ok, err)
         local ok, err = call("foo", [[
             bar = require 'bar'
-            p = bar.point(2,3)
-            assert(foo.px(p) == 2.0)
-            p = foo.Point.new(2,3)
-            assert(bar.px(p) == 2.0)
+            p1 = bar.point(2,3)
+            assert(foo.px(p1) == 2.0)
+            p2 = foo.Point.new(2,3)
+            assert(bar.px(p2) == 2.0)
+            assert(debug.getmetatable(p1) == debug.getmetatable(p2))
         ]])
         assert.truthy(ok, err)
     end)
