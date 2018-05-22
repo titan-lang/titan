@@ -1986,6 +1986,7 @@ function codeexp(ctx, node, iscondition, target)
     elseif tag == "Ast.ExpBinop" then
         return codebinaryop(ctx, node, iscondition)
     elseif tag == "Ast.ExpCall"
+           and node.exp.var
            and node.exp.var._tag == "Ast.VarDot"
            and node.exp.var.exp._type._tag == "Type.ForeignModule" then
         local fstats, fexp = codeforeigncall(ctx, node)
