@@ -866,7 +866,7 @@ describe("Titan code generator", function()
         }
         local ok, err = generate_modules(modules, "bar")
         assert.truthy(ok, err)
-        local ok, err = call("bar", "assert(bar.bar() == 5); assert((require 'foo').a == 5)")
+        local ok, err = call("bar", "foo = require 'foo'; assert(bar.bar() == 5); assert(foo.a == 5)")
         assert.truthy(ok, err)
     end)
 
@@ -1419,7 +1419,7 @@ describe("Titan code generator", function()
         }
         local ok, err = generate_modules(modules, "bar")
         assert.truthy(ok, err)
-        local ok, err = call("bar", "assert(bar.bar() == 5); assert((require 'foo').a == 5)")
+        local ok, err = call("bar", "foo = require 'foo';assert(bar.bar() == 5); assert(foo.a == 5)")
         assert.truthy(ok, err)
     end)
 
@@ -1969,6 +1969,39 @@ describe("Titan code generator", function()
             assert(2.0 == x)
             assert(3.0 == y)
         ]])
+    end)
+
+    it("record types created from different loaded modules", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+                function px(p: Point): float
+                    return p.x
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function point(x: float, y: float): f.Point
+                    return { x = 2, y = 3 }
+                end
+                function px(p: f.Point): float
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err = generate_modules(modules, "bar")
+        assert.truthy(ok, err)
+        local ok, err = call("foo", [[
+            bar = require 'bar'
+            p = bar.point(2,3)
+            assert(foo.px(p) == 2.0)
+            p = foo.Point.new(2,3)
+            assert(bar.px(p) == 2.0)
+        ]])
+        assert.truthy(ok, err)
     end)
 
     it("constructs record from other module", function ()

@@ -2453,6 +2453,7 @@ CClosure *$INITNAME(lua_State *L) {
         $FUNCS
         lua_pop(L, 1);
         $CREATEMETA
+        $INITTAGS
         return _mod;
     } else {
         CClosure *_mod = clCvalue(L->top-1);
