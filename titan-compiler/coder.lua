@@ -2516,13 +2516,14 @@ local function import_module(loadmods, initmods, sigs, mprefixes, dynamic, node)
     end
 end
 
-local function init_data_from_other_modules(tlcontext, includes, loadmods, initmetas, inittags, mprefixes, is_dynamic)
+local function init_data_from_other_modules(tlcontext, includes, loadmods, initmetas, inittags, mprefixes, static_deps)
     -- When linking dynamically, we need to make 'static' variables and load the values
     -- from the other module's dynamic library
     -- When linking statically, we only need to make 'extern' forward declarations.
-    local storage_class = is_dynamic and "static" or "extern"
 
     for name, func in pairs(tlcontext.functions) do
+        local is_dynamic = not static_deps[func.module]
+        local storage_class = is_dynamic and "static" or "extern"
         local fname = func.mangled
         table.insert(includes, storage_class .. " " .. function_sig(fname, func.type, is_dynamic) .. ";")
         if is_dynamic then
@@ -2761,7 +2762,7 @@ local function allocate_upvalues(tlcontext, ast)
     end
 end
 
-function coder.generate(modname, ast, is_dynamic)
+function coder.generate(modname, ast, static_deps)
     local tlcontext = {
         module = modname,
         prefix = mangle_qn(modname) .. "_",
@@ -2797,7 +2798,7 @@ function coder.generate(modname, ast, is_dynamic)
         if not node._ignore then
             local tag = node._tag
             if tag == "Ast.TopLevelImport" then
-                import_module(loadmods, initmods, sigs, mprefixes, is_dynamic, node)
+                import_module(loadmods, initmods, sigs, mprefixes, not static_deps[node.modname], node)
             elseif tag == "Ast.TopLevelForeignImport" then
                 local include
                 if node.headername:match("^/") then
@@ -2947,7 +2948,7 @@ function coder.generate(modname, ast, is_dynamic)
         TYPES = string.format("%q", types.serialize(ast._type))
     }))
 
-    init_data_from_other_modules(tlcontext, includes, loadmods, initrecs, inittags, mprefixes, is_dynamic)
+    init_data_from_other_modules(tlcontext, includes, loadmods, initrecs, inittags, mprefixes, static_deps)
 
     table.insert(code, render(init, {
         INITNAME = tlcontext.prefix .. 'init',
