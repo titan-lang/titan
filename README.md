@@ -37,19 +37,22 @@ are looked up in the source tree (defaults to the current working directory,
 but you can override this with the `--tree` option), as well as in the Titan
 binary path, a semicolon-separated list of paths 
 (defaults to `.;/usr/local/lib/titan/0.5`, you can override with a `TITAN_PATH_0_5`
-or `TITAN_PATH` environment variable). A module gets compiled if its `.titan` file
-is newer than its binary, or a binary does not exist.
+or `TITAN_PATH` environment variable).
 
 If everything is all right with your modules, you will get the result of
 your compilation as a native binary:
 
 * if one of your Titan modules has a `main` function, with signature
   `function({string}):integer`, then `titanc` will bundle all modules
-  given in the command-line as a stand-alone executable program.
+  given in the command-line, along with all their dependencies where
+  source code was available, as a stand-alone executable program.
 * Otherwise, it will compile each module into a shared library
   (in the same path as the module source) that you can `import` from
   Titan as well as `require` from Lua, and call any exported
-  functions/access exported variables.
+  functions/access exported variables. For each generated module, any
+  of its transitive imports is statically linked if source code was
+  found; dependencies that were only available as a shared library
+  will be dynamically loaded.
 
 # Running the test suite
 
