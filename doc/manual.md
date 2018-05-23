@@ -289,13 +289,13 @@ all dots to path separators, and then appending `.so`, for binary modules, or
 `.titan`, for source modules, so the above three
 modules will correspond to `foo.{so|titan}`, `foo/bar.{so|titan}`, and `foo/bar/baz.{so|titan}`.
 
-Source modules are looked in
-the *source tree*, which defaults to the current working directory, but can be overriden
+Source modules are looked up in
+the *source tree*, which defaults to the current working directory, but can be overridden
 with a command-line option to the Titan compiler. They are compiled statically
 with the Titan application or the binary module that is being generated.
 
 Binary modules are looked up at runtime in the *runtime search path*, a semicolon-separated list
-of paths that defaults to `.;/usr/local/lib/titan/0.5`, but can be overriden with a
+of paths that defaults to `.;/usr/local/lib/titan/0.5`, but can be overridden with a
 `TITAN_PATH_0_5` or `TITAN_PATH` environment variable. 
 
 Generated binaries are always saved in the same path of the source.
