@@ -794,12 +794,21 @@ describe("Titan coder /", function()
             end
         ]]))
 
+        if RECORDS_AS_TABLES then
+        it("create records", function()
+            run_test([[
+                local foo = test.make_foo(123, {})
+                assert("table" == type(foo))
+            ]])
+        end)
+        else
         it("create records", function()
             run_test([[
                 local foo = test.make_foo(123, {})
                 assert("userdata" == type(foo))
             ]])
         end)
+        end
 
         it("get/set primitive fields in titan", function()
             run_test([[
@@ -821,6 +830,7 @@ describe("Titan coder /", function()
             ]])
         end)
 
+        if not RECORDS_AS_TABLES then
         it("create records with only primitive fields", function()
             run_test([[
                 local x = test.make_prim(123)
@@ -852,6 +862,7 @@ describe("Titan coder /", function()
             ]])
             pending("fix error message")
         end)
+        end
     end)
 
     describe("I/O", function()

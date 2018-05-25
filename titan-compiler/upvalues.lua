@@ -6,6 +6,8 @@ local types = require "titan-compiler.types"
 
 local upvalues = {}
 
+RECORDS_AS_TABLES = true
+
 local analyze_upvalues
 
 -- This pass analyzes what variables each Titan function needs to have
@@ -135,6 +137,13 @@ function analyze:Var(var, upvs, literals, referenced_upvalues_map)
         if index then
             referenced_upvalues_map[index] = true
         end
+
+    elseif tag == ast.Var.Dot then
+        if RECORDS_AS_TABLES then
+            local n = add_literal(upvs, literals, var.name)
+            referenced_upvalues_map[n] = true
+        end
+
     else
         ast_iterator.Var(self, var, upvs, literals, referenced_upvalues_map)
     end
@@ -150,8 +159,15 @@ function analyze:Exp(exp, upvs, literals, referenced_upvalues_map)
     elseif tag == ast.Exp.Initlist then
         local typ = exp._type
         if typ._tag == types.T.Record then
-            local rec = typ.type_decl
-            referenced_upvalues_map[rec._upvalue_index] = true
+            if RECORDS_AS_TABLES then
+                for _, field in ipairs(exp.fields) do
+                    local n = add_literal(upvs, literals, field.name)
+                    referenced_upvalues_map[n] = true
+                end
+            else
+                local rec = typ.type_decl
+                referenced_upvalues_map[rec._upvalue_index] = true
+            end
         end
 
     elseif tag == ast.Exp.CallFunc then
