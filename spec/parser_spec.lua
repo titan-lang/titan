@@ -281,6 +281,49 @@ describe("Titan parser", function()
                   valuestype = {_tag = "Ast.TypeName", name = "int" } } } )
     end)
 
+    it("can parse option types", function()
+        assert_type_ast("integer?",
+            { _tag = "Ast.TypeOption",
+              basetype = {_tag = "Ast.TypeInteger" } } )
+
+        assert_type_ast("boolean?",
+              { _tag = "Ast.TypeOption",
+                basetype = {_tag = "Ast.TypeBoolean" } } )
+
+        assert_type_ast("float?",
+                { _tag = "Ast.TypeOption",
+                  basetype = {_tag = "Ast.TypeFloat" } } )
+
+        assert_type_ast("string?",
+                  { _tag = "Ast.TypeOption",
+                    basetype = {_tag = "Ast.TypeString" } } )
+
+        assert_type_ast("Foo?",
+                { _tag = "Ast.TypeOption",
+                  basetype = {_tag = "Ast.TypeName" } } )
+
+        assert_type_ast("foo.Bar?",
+                { _tag = "Ast.TypeOption",
+                  basetype = {_tag = "Ast.TypeQualName" } } )
+
+        assert_type_ast("{integer}?",
+              { _tag = "Ast.TypeOption",
+                basetype = {_tag = "Ast.TypeArray" } } )
+
+        assert_type_ast("{integer: string}?",
+                { _tag = "Ast.TypeOption",
+                  basetype = {_tag = "Ast.TypeMap" } } )
+
+        assert_type_ast("{{int:string}:{string:int}}",
+            { _tag = "Ast.TypeMap",
+              keystype = { _tag = "Ast.TypeMap",
+                  keystype = {_tag = "Ast.TypeName", name = "int" },
+                  valuestype = {_tag = "Ast.TypeString" } },
+              valuestype = { _tag = "Ast.TypeMap",
+                  keystype = {_tag = "Ast.TypeString" },
+                  valuestype = {_tag = "Ast.TypeName", name = "int" } } } )
+    end)
+
     describe("can parse function types", function()
         it("with parameter lists of length = 0", function()
             assert_type_ast("() -> ()",

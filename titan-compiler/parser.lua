@@ -49,6 +49,14 @@ function defs.rettypeopt(pos, x)
     end
 end
 
+function defs.typeopt(t, isopt)
+    if not isopt or isopt == "" then
+        return t
+    else
+        return ast.TypeOption(t.loc, t)
+    end
+end
+
 function defs.opt(x)
     if x == "" then
         return false
@@ -269,7 +277,7 @@ local grammar = re.compile([[
 
     decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
 
-    simpletype      <- (P  NIL)                                  -> TypeNil
+    simpletype      <- (((P  NIL)                                -> TypeNil
                      / (P  BOOLEAN)                              -> TypeBoolean
                      / (P  INTEGER)                              -> TypeInteger
                      / (P  FLOAT)                                -> TypeFloat
@@ -282,7 +290,8 @@ local grammar = re.compile([[
                            type^TypeType
                            RCURLY^RCurlyType)                    -> TypeMap
                      / (P  LCURLY type^TypeType
-                           RCURLY^RCurlyType)                    -> TypeArray
+                           RCURLY^RCurlyType)                    -> TypeArray)
+                                                  (OPT -> '?')?) -> typeopt
 
     typelist        <- ( LPAREN
                          {| (type (COMMA type^TypelistType)*)? |}
@@ -499,6 +508,7 @@ local grammar = re.compile([[
     DBLCOLON        <- %DBLCOLON SKIP*
     COLON           <- %COLON SKIP*
     RARROW          <- %RARROW SKIP*
+    OPT             <- %OPT SKIP*
 
     NUMBER          <- %NUMBER SKIP*
     STRINGLIT       <- %STRINGLIT SKIP*

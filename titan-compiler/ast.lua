@@ -13,6 +13,7 @@ return typedecl("Ast", {
         TypeArray       = {"loc", "subtype"},
         TypeMap         = {"loc", "keystype", "valuestype"},
         TypeFunction    = {"loc", "argtypes", "rettypes"},
+        TypeOption      = {"loc", "basetype"}
     },
 
     TopLevel = {

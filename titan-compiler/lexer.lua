@@ -208,6 +208,7 @@ local symbols = {
     -- Titan:
     COLON = ":",
     RARROW = "->",
+    OPT = "?",
 }
 
 -- Enforce the longest match rule among the symbolic tokens.
