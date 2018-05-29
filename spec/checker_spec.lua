@@ -767,37 +767,68 @@ describe("Titan type checker", function()
         end)
     end
 
-    for _, op in ipairs({"and", "or"}) do
-        it("coerces "..op.." to float if any side is a float", function()
-            local code = [[
-                function fn(): integer
-                    local i: integer = 1
-                    local f: float = 1.5
-                    local i_f = i ]] .. op .. [[ f
-                    local f_i = f ]] .. op .. [[ i
-                    local f_f = f ]] .. op .. [[ f
-                    local i_i = i ]] .. op .. [[ i
-                end
-            ]]
-            local ok, err, ast = run_checker(code)
+    it("typechecks and", function ()
+        local code = [[
+            function fn(): integer
+                local i: integer = 1
+                local f: float = 1.5
+                local b: boolean = true
+                local i_f = i and f
+                local f_i = f and i
+                local f_f = f and f
+                local i_i = i and i
+                local b_f = b and f
+                local f_b = f and b
+                local n = nil and f
+                local of: float? = 2.0
+                local b_of = b and of
+            end
+        ]]
+        local ok, err, ast = run_checker(code)
 
-            assert.same(types.Float(), ast[1].block.stats[3].exps[1].lhs._type)
-            assert.same(types.Float(), ast[1].block.stats[3].exps[1].rhs._type)
-            assert.same(types.Float(), ast[1].block.stats[3].exps[1]._type)
+        assert.same(types.Float(), ast[1].block.stats[4].exps[1]._type)
+        assert.same(types.Integer(), ast[1].block.stats[5].exps[1]._type)
+        assert.same(types.Float(), ast[1].block.stats[6].exps[1]._type)
+        assert.same(types.Integer(), ast[1].block.stats[7].exps[1]._type)
+        assert.same(types.Option(types.Float()), ast[1].block.stats[8].exps[1].exp._type)
+        assert.same(types.Boolean(), ast[1].block.stats[9].exps[1]._type)
+        assert.same(types.Nil(), ast[1].block.stats[10].exps[1]._type)
+        assert.same(types.Option(types.Float()), ast[1].block.stats[12].exps[1].exp._type)
+    end)
 
-            assert.same(types.Float(), ast[1].block.stats[4].exps[1].lhs._type)
-            assert.same(types.Float(), ast[1].block.stats[4].exps[1].rhs._type)
-            assert.same(types.Float(), ast[1].block.stats[4].exps[1]._type)
+    it("typechecks or", function ()
+        local code = [[
+            function fn(): integer
+                local i: integer = 1
+                local f: float = 1.5
+                local b: boolean = true
+                local f_i = f or i
+                local i_f = i or f
+                local f_f = f or f
+                local i_i = i or i
+                local b_f: boolean = b or f
+                local f_b: boolean = f or b
+                local n = nil or f
+                local of: float? = 2.0
+                local of_f = of or f
+                local v: value = 1
+                local of_v = of or v
+                local v_f = v or f
+            end
+        ]]
+        local ok, err, ast = run_checker(code)
 
-            assert.same(types.Float(), ast[1].block.stats[5].exps[1].lhs._type)
-            assert.same(types.Float(), ast[1].block.stats[5].exps[1].rhs._type)
-            assert.same(types.Float(), ast[1].block.stats[5].exps[1]._type)
-
-            assert.same(types.Integer(), ast[1].block.stats[6].exps[1].lhs._type)
-            assert.same(types.Integer(), ast[1].block.stats[6].exps[1].rhs._type)
-            assert.same(types.Integer(), ast[1].block.stats[6].exps[1]._type)
-        end)
-    end
+        assert.same(types.Float(), ast[1].block.stats[4].exps[1]._type)
+        assert.same(types.Integer(), ast[1].block.stats[5].exps[1]._type)
+        assert.same(types.Float(), ast[1].block.stats[6].exps[1]._type)
+        assert.same(types.Integer(), ast[1].block.stats[7].exps[1]._type)
+        assert.same(types.Boolean(), ast[1].block.stats[8].exps[1]._type)
+        assert.same(types.Boolean(), ast[1].block.stats[9].exps[1]._type)
+        assert.same(types.Float(), ast[1].block.stats[10].exps[1]._type)
+        assert.same(types.Float(), ast[1].block.stats[12].exps[1]._type)
+        assert.same(types.Value(), ast[1].block.stats[14].exps[1]._type)
+        assert.same(types.Value(), ast[1].block.stats[15].exps[1]._type)
+    end)
 
     for _, op in ipairs({"|", "&", "<<", ">>"}) do
         it("coerces "..op.." to integer if other side is a float", function()
@@ -1081,7 +1112,7 @@ describe("Titan type checker", function()
             ]]
             local ok, err = run_checker(code)
             assert.falsy(ok)
-            assert.match("trying to compare values of different types", err)
+            assert.match("trying to compare values of incomparable types", err)
         end)
 
         it("cannot compare maps of different value types using " .. op, function()
@@ -1092,7 +1123,7 @@ describe("Titan type checker", function()
             ]]
             local ok, err = run_checker(code)
             assert.falsy(ok)
-            assert.match("trying to compare values of different types", err)
+            assert.match("trying to compare values of incomparable types", err)
         end)
 
         it("cannot compare maps of different key types using " .. op, function()
@@ -1103,7 +1134,7 @@ describe("Titan type checker", function()
             ]]
             local ok, err = run_checker(code)
             assert.falsy(ok)
-            assert.match("trying to compare values of different types", err)
+            assert.match("trying to compare values of incomparable types", err)
         end)
     end
 
@@ -1119,7 +1150,7 @@ describe("Titan type checker", function()
                         ]]
                         local ok, err = run_checker(code)
                         assert.falsy(ok)
-                        assert.match("trying to compare values of different types", err)
+                        assert.match("trying to compare values of incomparable types", err)
                     end)
                 end
             end
@@ -1237,21 +1268,51 @@ describe("Titan type checker", function()
         end
     end
 
-    for _, op in ipairs({"and", "or"}) do
-        for _, t1 in ipairs({"{integer}", "integer", "string"}) do
-            for _, t2 in ipairs({"integer", "integer", "string"}) do
-                if t1 ~= t2 then
-                    it("cannot evaluate " .. t1 .. " and " .. t2 .. " using " .. op, function()
-                        local code = [[
-                            function fn(a: ]] .. t1 .. [[, b: ]] .. t2 .. [[): boolean
-                                return a ]] .. op .. [[ b
-                            end
-                        ]]
-                        local ok, err = run_checker(code)
-                        assert.falsy(ok)
-                        assert.match("left hand side of logical expression is a", err)
-                    end)
-                end
+    for _, t1 in ipairs({"{integer}", "integer", "string"}) do
+        for _, t2 in ipairs({"integer", "integer", "string"}) do
+            if t1 ~= t2 then
+                it("cannot evaluate " .. t1 .. " and " .. t2 .. " using 'or'", function()
+                    local code = [[
+                        function fn(a: ]] .. t1 .. [[?, b: ]] .. t2 .. [[): ]] .. t2 .. [[
+                            return a or b
+                        end
+                    ]]
+                    local ok, err = run_checker(code)
+                    assert.falsy(ok)
+                    assert.match("left hand side of 'or' is a", err)
+                end)
+            end
+        end
+    end
+
+    for _, t1 in ipairs({"{integer}", "integer", "string"}) do
+        for _, t2 in ipairs({"integer", "integer", "string"}) do
+            if t1 ~= t2 then
+                it("typechecks " .. t1 .. " and " .. t2 .. " using 'or' in boolean context", function()
+                    local code = [[
+                        function fn(a: ]] .. t1 .. [[, b: ]] .. t2 .. [[): boolean
+                            return a or b
+                        end
+                    ]]
+                    local ok, err = run_checker(code)
+                    assert.truthy(ok, err)
+                end)
+            end
+        end
+    end
+
+    for _, t1 in ipairs({"{integer}", "integer", "string"}) do
+        for _, t2 in ipairs({"integer", "integer", "string"}) do
+            if t1 ~= t2 then
+                it("typechecks " .. t1 .. " and " .. t2 .. " using 'and'", function()
+                    local code = [[
+                        function fn(a: ]] .. t1 .. [[, b: ]] .. t2 .. [[): boolean
+                            return a and b
+                        end
+                    ]]
+                    local ok, err = run_checker(code)
+                    assert.truthy(ok, err)
+                end)
             end
         end
     end

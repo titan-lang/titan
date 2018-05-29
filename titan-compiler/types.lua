@@ -20,6 +20,7 @@ local types = typedecl("Type", {
         ModuleMember = {"modname", "name", "type"},
         ModuleVariable = {"modname", "name", "type"},
         StaticMethod = {"fqtn", "name", "params", "rettypes"},
+        Option       = {"base"}
     }
 })
 
@@ -47,7 +48,8 @@ function types.is_gc(t)
            tag == "Type.Map" or
            tag == "Type.Record" or
            tag == "Type.Interface" or
-           tag == "Type.Nominal"
+           tag == "Type.Nominal" or
+           (tag == "Type.Option" and types.is_gc(t.base))
 end
 
 -- XXX this should be inside typedecl call
@@ -86,6 +88,18 @@ local function is_void_pointer(typ)
     return typ._tag == "Type.Pointer" and typ.type._tag == "Type.Nil"
 end
 
+-- Returns true if type always holds truthy values
+function types.is_truthy(typ)
+    local tag = typ._tag
+    return tag ~= "Type.Nil" and tag ~= "Type.Value" and tag ~= "Type.Option"
+        and tag ~= "Type.Pointer" and tag ~= "Type.Boolean"
+end
+
+-- Returns true if type always holds falsy values
+function types.is_falsy(typ)
+    return typ._tag == "Type.Nil"
+end
+
 function types.explicitly_coerceable(source, target)
     return is_void_pointer(source) and target._tag == "Type.String"
 end
@@ -107,7 +121,16 @@ function types.coerceable(source, target)
             source._tag ~= "Type.Value") or
 
            (source._tag == "Type.Value" and
-            target._tag ~= "Type.Value")
+            target._tag ~= "Type.Value") or
+
+           (target._tag == "Type.Option" and
+            types.equals(source, target.base)) or
+
+           (source._tag == "Type.Option" and
+            types.equals(target, source.base)) or
+
+           (target._tag == "Type.Option" and
+            source._tag == "Type.Nil")
 end
 
 -- The type consistency relation, a-la gradual typing
@@ -195,6 +218,8 @@ function types.equals(t1, t2)
         return true
     elseif tag1 == "Type.Nominal" and tag2 == "Type.Nominal" then
         return t1.fqtn == t2.fqtn
+    elseif tag1 == "Type.Option" and tag2 == "Type.Option" then
+        return types.equals(t1.base, t2.base)
     elseif tag1 == tag2 then
         return true
     else
@@ -224,7 +249,7 @@ function types.tostring(t)
     elseif tag == "Type.Typedef" then
         return t.name
     elseif tag == "Type.Function" then
-        local out = {"function("}
+        local out = {"("}
         local ptypes = {}
         for _, param in ipairs(t.params) do
             table.insert(ptypes, types.tostring(param))
@@ -236,16 +261,16 @@ function types.tostring(t)
             table.insert(rtypes, types.tostring(rettype))
         end
         if #rtypes == 1 then
-            table.insert(out, ":")
+            table.insert(out, " -> ")
             table.insert(out, rtypes[1])
         elseif #rtypes > 1 then
-            table.insert(out, ":(")
+            table.insert(out, " -> (")
             table.insert(out, table.concat(rtypes), ", ")
             table.insert(out, ")")
         end
         return table.concat(out)
     elseif tag == "Type.Method" or tag == "Type.StaticMethod" then
-        local out = {"method", t.fqtn,
+        local out = {t.fqtn,
              tag == "Type.Method" and ":" or ".",
              t.name, "("}
         local ptypes = {}
@@ -259,20 +284,20 @@ function types.tostring(t)
             table.insert(rtypes, types.tostring(rettype))
         end
         if #rtypes == 1 then
-            table.insert(out, ":")
+            table.insert(out, ": ")
             table.insert(out, rtypes[1])
         elseif #rtypes > 1 then
-            table.insert(out, ":(")
+            table.insert(out, ": (")
             table.insert(out, table.concat(rtypes), ", ")
             table.insert(out, ")")
         end
         return table.concat(out)
-    elseif tag == "Type.InitList" then
-        return "initlist" -- TODO implement
     elseif tag == "Type.Record" then
         return t.name
     elseif tag == "Type.Nominal" then
         return t.fqtn
+    elseif tag == "Type.Option" then
+        return types.tostring(t.base) .. "?"
     else
         error("impossible: " .. tostring(tag))
     end
@@ -347,6 +372,8 @@ function types.serialize(t)
             "},{" ..table.concat(functions, ",") .. "}" .. "," ..
             "{" .. table.concat(methods, ",") .. "}" ..
             ")"
+    elseif tag == "Type.Option" then
+        return "Option(" .. types.serialize(t.base) .. ")"
     elseif tag == "Type.Integer"     then return "Integer()"
     elseif tag == "Type.Boolean"     then return "Boolean()"
     elseif tag == "Type.String"      then return "String()"

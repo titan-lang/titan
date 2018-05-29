@@ -55,6 +55,23 @@ local function invalid(errors, loc, ...)
     return types.Invalid()
 end
 
+local function optionize(t)
+    if t._tag == "Type.Option" or t.tag == "Type.Value" then
+        return t
+    else
+        return types.Option(t)
+    end
+end
+
+local function deoptionize(t)
+    if t._tag == "Type.Option" then
+        assert(t.base._tag ~= "Type.Option")
+        return t.base
+    else
+        return t
+    end
+end
+
 -- Converts an AST type declaration into a typechecker type
 --   node: AST node
 --   errors: list of compile-time errors
@@ -98,12 +115,20 @@ typefromnode = util.make_visitor({
     end,
 
     ["Ast.TypeArray"] = function(node, st, errors)
-        return types.Array(typefromnode(node.subtype, st, errors))
+        return types.Array(deoptionize(typefromnode(node.subtype, st, errors)))
     end,
 
     ["Ast.TypeMap"] = function(node, st, errors)
-        return types.Map(typefromnode(node.keystype, st, errors),
-                         typefromnode(node.valuestype, st, errors))
+        local key = typefromnode(node.keystype, st, errors)
+        if key._tag == "Type.Nil" then
+            checker.typeerror(errors, node.loc, "type of map key cannot be nil", node.module)
+            key = types.Invalid()
+        elseif key._tag == "Type.Option" then
+            checker.typeerror(errors, node.loc, "type of map key cannot be option type", node.module)
+            key = deoptionize(key)
+        end
+        return types.Map(key,
+                         deoptionize(typefromnode(node.valuestype, st, errors)))
     end,
 
     ["Ast.TypeFunction"] = function(node, st, errors)
@@ -120,6 +145,10 @@ typefromnode = util.make_visitor({
         end
         return types.Function(ptypes, rettypes, false)
     end,
+
+    ["Ast.TypeOption"] = function(node, st, errors)
+        return optionize(typefromnode(node.basetype, st, errors))
+    end
 })
 
 -- tries to coerce node to target type
@@ -130,6 +159,19 @@ local function trycoerce(node, target, errors)
     if types.coerceable(node._type, target) then
         local n = ast.ExpCast(node.loc, node, target)
         n._type = target
+        return n
+    else
+        return node
+    end
+end
+
+-- force option if present
+--    node: expression node
+--    returns node wrapped in a coercion, or original node
+local function tryforce(node)
+    if node._type._tag == "Type.Option" then
+        local n = ast.ExpCast(node.loc, node, node._type.base)
+        n._type = node._type.base
         return n
     else
         return node
@@ -185,9 +227,12 @@ end
 --   returns whether statement always returns from its function (always false for 'for' loop)
 local function checkfor(node, st, errors)
     checkexp(node.start, st, errors)
+    node.start = tryforce(node.start)
     checkexp(node.finish, st, errors)
+    node.finish = tryforce(node.finish)
     if node.inc then
         checkexp(node.inc, st, errors)
+        node.inc = tryforce(node.inc)
     end
 
     -- Add loop variable to symbol table only after checking expressions
@@ -262,6 +307,7 @@ checkstat = util.make_visitor({
                     checkexp(exp, st, errors, decl._type)
                 else
                     checkexp(exp, st, errors)
+                    exp = tryforce(exp) -- never infer option type
                     decl._type = exp._type
                     checkdecl(decl, st, errors)
                 end
@@ -280,6 +326,7 @@ checkstat = util.make_visitor({
                         checkdecl(decl, st, errors)
                         exp = trycoerce(exp, decl._type, errors)
                     else
+                        exp = tryforce(exp) -- never infer option type
                         decl._type = exp._type
                     end
                     checkmatch("declaration of local variable " .. decl.name,
@@ -345,9 +392,7 @@ checkstat = util.make_visitor({
                     end
                     exp = trycoerce(exp, var._type, errors)
                     node.exps[i] = exp
-                    if var._tag ~= "Ast.VarBracket" or exp._type._tag ~= "Type.Nil" then
-                        checkmatch("assignment", var._type, exp._type, errors, var.loc)
-                    end
+                    checkmatch("assignment", var._type, exp._type, errors, var.loc)
                 end
             end
         end
@@ -419,18 +464,15 @@ checkvar = util.make_visitor({
         end
     end,
 
-    ["Ast.VarDot"] = function(node, st, errors)
-        if node.exp._tag == "Ast.ExpVar" and
-          (node.exp.var._tag == "Ast.VarName" or (node.exp.var._tag == "Ast.VarDot" and
-              node.exp.var.exp._tag == "Ast.ExpVar" and
-              node.exp.var.exp.var._tag == "Ast.VarName" and
-              node.name == "new")) then
+    ["Ast.VarDot"] = function(node, st, errors, context)
+        if node.exp._tag == "Ast.ExpVar" then
             checkvar(node.exp.var, st, errors)
             if node.exp.var._decl then node.exp.var._decl._used = true end
             node.exp._type = node.exp.var._type
         else
             checkexp(node.exp, st, errors)
         end
+        node.exp = tryforce(node.exp)
         local ltype = node.exp._type
         if ltype._tag == "Type.Module" or ltype._tag == "Type.ForeignModule" then
             local mod = ltype
@@ -485,11 +527,11 @@ checkvar = util.make_visitor({
         checkexp(node.exp1, st, errors)
         local keystype, term
         if node.exp1._type._tag == "Type.Array" then
-            node._type = node.exp1._type.elem
+            node._type = optionize(node.exp1._type.elem)
             keystype = types.Integer()
             term = "array indexing"
         elseif node.exp1._type._tag == "Type.Map" then
-            node._type = node.exp1._type.values
+            node._type = optionize(node.exp1._type.values)
             keystype = node.exp1._type.keys
             term = "map indexing"
         else
@@ -629,7 +671,7 @@ checkexp = util.make_visitor({
                 end
             end
 
-            local etype = econtext or etypes[1] or types.Integer()
+            local etype = econtext or (etypes[1] and deoptionize(etypes[1])) or types.Integer()
             node._type = types.Array(etype)
             for i, field in ipairs(node.fields) do
                 if not field.name then
@@ -660,8 +702,8 @@ checkexp = util.make_visitor({
                 end
             end
 
-            local ktype = kcontext or ktypes[1]
-            local vtype = vcontext or vtypes[1]
+            local ktype = kcontext or deoptionize(ktypes[1])
+            local vtype = vcontext or deoptionize(vtypes[1])
             node._type = types.Map(ktype, vtype)
             for i, field in ipairs(node.fields) do
                 if not field.name then
@@ -736,22 +778,28 @@ checkexp = util.make_visitor({
         else
             local isarray = true
             local ismap = false
-            local ktype = types.Integer()
-            local vtype = types.Integer()
-            for _, field in ipairs(node.fields) do
+            local ktype
+            local vtype
+            for i, field in ipairs(node.fields) do
                 checkexp(field.exp, st, errors)
-                vtype = field.exp._type
+                vtype = vtype or deoptionize(field.exp._type)
+                field.exp = trycoerce(field.exp, vtype, errors)
+                checkmatch("value expression no. " .. tostring(i),
+                    vtype, field.exp._type, errors, field.loc)
                 isarray = isarray and not field.name
                 if type(field.name) == "table" then
                     checkexp(field.name, st, errors)
-                    ktype = field.name._type
+                    ktype = ktype or deoptionize(field.name._type)
+                    field.name = trycoerce(field.name, ktype, errors)
+                    checkmatch("key expression no. " .. tostring(i),
+                        ktype, field.name._type, errors, field.loc)
                     ismap = true
                 end
             end
             if ismap then
-                node._type = types.Map(ktype, vtype)
+                node._type = types.Map(ktype, vtype or types.Integer())
             elseif isarray then
-                node._type = types.Array(vtype)
+                node._type = types.Array(vtype or types.Integer())
             else
                 node._type = invalid(errors, node.loc,
                     "no context to provide type for record constructor")
@@ -785,6 +833,8 @@ checkexp = util.make_visitor({
         local texp = node.exp._type
         local loc = node.loc
         if op == "#" then
+            node.exp = tryforce(node.exp)
+            texp = node.exp._type
             if texp._tag ~= "Type.Array" and texp._tag ~= "Type.String" then
                 checker.typeerror(errors, loc,
                     "trying to take the length of a %s instead of an array or string",
@@ -792,6 +842,8 @@ checkexp = util.make_visitor({
             end
             node._type = types.Integer()
         elseif op == "-" then
+            node.exp = tryforce(node.exp)
+            texp = node.exp._type
             if texp._tag ~= "Type.Integer" and texp._tag ~= "Type.Float" then
                 checker.typeerror(errors, loc,
                     "trying to negate a %s instead of a number",
@@ -799,6 +851,8 @@ checkexp = util.make_visitor({
             end
             node._type = texp
         elseif op == "~" then
+            node.exp = tryforce(node.exp)
+            texp = node.exp._type
             -- always tries to coerce floats to integer
             node.exp = node.exp._type._tag == "Type.Float" and trycoerce(node.exp, types.Integer(), errors) or node.exp
             texp = node.exp._type
@@ -820,6 +874,7 @@ checkexp = util.make_visitor({
     ["Ast.ExpConcat"] = function(node, st, errors, context)
         for i, exp in ipairs(node.exps) do
             checkexp(exp, st, errors, types.String())
+            exp = tryforce(exp)
             -- always tries to coerce numbers to string
             exp = trytostr(exp)
             node.exps[i] = exp
@@ -850,6 +905,12 @@ checkexp = util.make_visitor({
                 node.rhs = trycoerce(node.rhs, types.Value(), errors)
                 trhs = node.rhs._type
             end
+            if tlhs._tag == "Type.Option" or trhs._tag == "Type.Option" then
+                node.tlhs = trycoerce(node.lhs, optionize(tlhs), errors)
+                tlhs = node.lhs._type
+                node.trhs = trycoerce(node.rhs, optionize(trhs), errors)
+                trhs = node.rhs._type
+            end
             -- tries to coerce to float if either side is float
             if tlhs._tag == "Type.Float" or trhs._tag == "Type.Float" then
                 node.lhs = trycoerce(node.lhs, types.Float(), errors)
@@ -857,21 +918,20 @@ checkexp = util.make_visitor({
                 node.rhs = trycoerce(node.rhs, types.Float(), errors)
                 trhs = node.rhs._type
             end
-            if not types.compatible(tlhs, trhs) then
+            if (tlhs._tag ~= "Type.Option" or trhs._tag ~= "Type.Option" or
+                ((tlhs.base._tag ~= "Type.Integer" or trhs.base._tag ~= "Type.Float") and
+                 (tlhs.base._tag ~= "Type.Float" or trhs.base._tag ~= "Type.Integer"))) and
+               not types.compatible(tlhs, trhs) then
                 checker.typeerror(errors, loc,
-                    "trying to compare values of different types: %s and %s",
+                    "trying to compare values of incomparable types: %s and %s",
                     types.tostring(tlhs), types.tostring(trhs))
-
             end
             node._type = types.Boolean()
         elseif op == "<" or op == ">" or op == "<=" or op == ">=" then
-            -- tries to coerce to value if either side is value
-            if tlhs._tag == "Type.Value" or trhs._tag == "Type.Value" then
-                node.lhs = trycoerce(node.lhs, types.Value(), errors)
-                tlhs = node.lhs._type
-                node.rhs = trycoerce(node.rhs, types.Value(), errors)
-                trhs = node.rhs._type
-            end
+            node.lhs = tryforce(node.lhs)
+            tlhs = node.lhs._type
+            node.rhs = tryforce(node.rhs)
+            trhs = node.rhs._type
             -- tries to coerce to float if either side is float
             if tlhs._tag == "Type.Float" or trhs._tag == "Type.Float" then
                 node.lhs = trycoerce(node.lhs, types.Float(), errors)
@@ -910,6 +970,10 @@ checkexp = util.make_visitor({
             end
             node._type = types.Boolean()
         elseif op == "+" or op == "-" or op == "*" or op == "%" or op == "//" then
+            node.lhs = tryforce(node.lhs)
+            tlhs = node.lhs._type
+            node.rhs = tryforce(node.rhs)
+            trhs = node.rhs._type
             if not (tlhs._tag == "Type.Integer" or tlhs._tag == "Type.Float") then
                 checker.typeerror(errors, loc,
                     "left hand side of arithmetic expression is a %s instead of a number",
@@ -919,13 +983,6 @@ checkexp = util.make_visitor({
                 checker.typeerror(errors, loc,
                     "right hand side of arithmetic expression is a %s instead of a number",
                     types.tostring(trhs))
-            end
-            -- tries to coerce to value if either side is value
-            if tlhs._tag == "Type.Value" or trhs._tag == "Type.Value" then
-                node.lhs = trycoerce(node.lhs, types.Value(), errors)
-                tlhs = node.lhs._type
-                node.rhs = trycoerce(node.rhs, types.Value(), errors)
-                trhs = node.rhs._type
             end
             -- tries to coerce to float if either side is float
             if tlhs._tag == "Type.Float" or trhs._tag == "Type.Float" then
@@ -943,6 +1000,10 @@ checkexp = util.make_visitor({
                 node._type = invalid(errors, loc, "invalid types in arithmetic expression")
             end
         elseif op == "/" or op == "^" then
+            node.lhs = tryforce(node.lhs)
+            tlhs = node.lhs._type
+            node.rhs = tryforce(node.rhs)
+            trhs = node.rhs._type
             if tlhs._tag == "Type.Integer" then
                 -- always tries to coerce to float
                 node.lhs = trycoerce(node.lhs, types.Float(), errors)
@@ -964,35 +1025,63 @@ checkexp = util.make_visitor({
                     types.tostring(trhs))
             end
             node._type = types.Float()
-        elseif op == "and" or op == "or" then
-            -- tries to coerce to boolean if other side is boolean
-            if tlhs._tag == "Type.Boolean" or trhs._tag == "Type.Boolean" then
+        elseif op == "and" then
+            if context and context._tag == "Type.Boolean" then
+                -- convert everything to boolean if used in boolean context
                 node.lhs = trycoerce(node.lhs, types.Boolean(), errors)
                 tlhs = node.lhs._type
                 node.rhs = trycoerce(node.rhs, types.Boolean(), errors)
                 trhs = node.rhs._type
+                node._type = context
+            elseif types.is_truthy(tlhs) then
+                node._type = trhs
+            elseif types.is_falsy(tlhs) then
+                node._type = tlhs
+            else
+                node.rhs = trycoerce(node.rhs, optionize(trhs), errors)
+                trhs = node.rhs._type
+                node._type = trhs
             end
-            -- tries to coerce to value if other side is value
-            if tlhs._tag == "Type.Value" or trhs._tag == "Type.Value" then
+        elseif op == "or" then
+            if context and context._tag == "Type.Boolean" then
+                -- convert everything to boolean if used in boolean context
+                node.lhs = trycoerce(node.lhs, types.Boolean(), errors)
+                tlhs = node.lhs._type
+                node.rhs = trycoerce(node.rhs, types.Boolean(), errors)
+                trhs = node.rhs._type
+                node._type = context
+            elseif tlhs._tag == "Type.Boolean" or trhs._tag == "Type.Boolean" then
+                -- tries to coerce to boolean if other side is boolean
+                node.lhs = trycoerce(node.lhs, types.Boolean(), errors)
+                tlhs = node.lhs._type
+                node.rhs = trycoerce(node.rhs, types.Boolean(), errors)
+                trhs = node.rhs._type
+                node._type = types.Boolean()
+            elseif types.is_truthy(tlhs) then
+                node._type = tlhs
+            elseif types.is_falsy(tlhs) then
+                node._type = trhs
+            elseif tlhs._tag == "Type.Option" and types.equals(deoptionize(tlhs), trhs) then
+                node._type = trhs
+            elseif tlhs._tag == "Type.Option" and trhs._tag == "Type.Value" then
                 node.lhs = trycoerce(node.lhs, types.Value(), errors)
                 tlhs = node.lhs._type
+                node._type = types.Value()
+            elseif tlhs._tag == "Type.Value" then
                 node.rhs = trycoerce(node.rhs, types.Value(), errors)
                 trhs = node.rhs._type
+                node._type = types.Value()
+            else
+                checker.typeerror(errors, loc,
+                    "left hand side of 'or' is a %s but right hand side is a %s",
+                    types.tostring(tlhs), types.tostring(trhs))
+                node._type = types.Invalid()
             end
-            -- tries to coerce to float if other side is float
-            if tlhs._tag == "Type.Float" or trhs._tag == "Type.Float" then
-              node.lhs = trycoerce(node.lhs, types.Float(), errors)
-              tlhs = node.lhs._type
-              node.rhs = trycoerce(node.rhs, types.Float(), errors)
-              trhs = node.rhs._type
-            end
-            if not types.compatible(tlhs, trhs) then
-              checker.typeerror(errors, loc,
-                  "left hand side of logical expression is a %s but right hand side is a %s",
-                   types.tostring(tlhs), types.tostring(trhs))
-            end
-            node._type = tlhs
         elseif op == "|" or op == "&" or op == "<<" or op == ">>" then
+            node.lhs = tryforce(node.lhs)
+            tlhs = node.lhs._type
+            node.rhs = tryforce(node.rhs)
+            trhs = node.rhs._type
             -- always tries to coerce floats to integer
             node.lhs = node.lhs._type._tag == "Type.Float" and trycoerce(node.lhs, types.Integer(), errors) or node.lhs
             tlhs = node.lhs._type
@@ -1311,6 +1400,7 @@ local toplevel_visitor = util.make_visitor({
                        node._type, node.value._type, errors, node.loc)
         else
             checkexp(node.value, st, errors)
+            node.value = tryforce(node.value)
             node._type = node.value._type
         end
         if not isconst(node.value) then
