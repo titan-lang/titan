@@ -518,6 +518,8 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean, LoopChecker? -> 
     end
 end)
 
+local memoized_linelists = {}
+
 cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filename, fd, ctx)
     if not ctx then
         ctx = {
@@ -547,17 +549,21 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
     end
     table.insert(ctx.current_dir, current_dir)
 
-    local err
-    if not fd then
-        fd, err = io.open(filename, "rb")
-        if not fd then
-            return nil, err
-        end
-    end
-    local linelist = cpp.initial_processing(fd)
+    local linelist, err
 
-    for _, lineitem in ipairs(linelist) do
-        lineitem.tk = cpp.tokenize(lineitem.line)
+    linelist = memoized_linelists[filename]
+    if not linelist then
+        if not fd then
+            fd, err = io.open(filename, "rb")
+            if not fd then
+                return nil, err
+            end
+        end
+        linelist = cpp.initial_processing(fd)
+        for _, lineitem in ipairs(linelist) do
+            lineitem.tk = cpp.tokenize(lineitem.line)
+        end
+        memoized_linelists[filename] = linelist
     end
 
     local ifmode = ctx.ifmode
