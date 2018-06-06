@@ -36,7 +36,7 @@ local function type_from_name(st, typename)
     if typename[#typename] == "*" then -- T*
         table.remove(typename)
         return {
-            _tag = "Type.Pointer",
+            _tag = "Type.ForeignPointer",
             type = type_from_name(st, typename)
         }
     end
@@ -55,7 +55,7 @@ local function type_from_name(st, typename)
         return types.Integer()
     end
 
-    return { _tag = "Type.Unknown", data = typename }
+    return { _tag = "Type.ForeignUnknown", data = typename }
 end
 
 local function convert_function(st, ftype)
@@ -78,7 +78,7 @@ end
 
 local function convert_typedef(st, ftype)
     local decl = {
-        _tag = "Type.Typedef",
+        _tag = "Type.ForeignTypedef",
         name = ftype.name,
     }
     local ttype
@@ -119,7 +119,7 @@ end
 
 local function convert_struct(st, ftype)
     local decl = {
-        _tag = "Struct",
+        _tag = "Type.ForeignStruct",
         name = ftype.name,
         data = ftype,
     }
@@ -129,7 +129,7 @@ end
 
 local function convert_union(st, ftype)
     local decl = {
-        _tag = "Union",
+        _tag = "Type.ForeignUnion",
         name = ftype.name,
         data = ftype,
     }
@@ -139,7 +139,7 @@ end
 
 local function convert_enum(st, ftype)
     local decl = {
-        _tag = "Type.Enum",
+        _tag = "Type.ForeignEnum",
         name = ftype.name,
         data = ftype,
     }

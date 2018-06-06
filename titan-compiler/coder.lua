@@ -366,11 +366,11 @@ local function copyslotwrapped(typ, dst, src)
 end
 
 local function foreignctype(typ --[[:table]])
-    if typ._tag == "Type.Pointer" then
+    if typ._tag == "Type.ForeignPointer" then
         if typ.type._tag == "Type.Nil" then
             return "void*"
         end
-        if typ.type._tag == "Type.Typedef" then
+        if typ.type._tag == "Type.ForeignTypedef" then
             return typ.type.name .. "*"
         end
         return foreignctype(typ.type) .. "*"
@@ -397,7 +397,7 @@ local function ctype(typ --[[:table]])
     elseif typ._tag == "Type.Map" then return "Table*"
     elseif typ._tag == "Type.Value" then return "TValue"
     elseif typ._tag == "Type.Nominal" then return "CClosure*"
-    elseif typ._tag == "Type.Pointer" then return foreignctype(typ)
+    elseif typ._tag == "Type.ForeignPointer" then return foreignctype(typ)
     else error("invalid type " .. types.tostring(typ))
     end
 end
@@ -496,7 +496,7 @@ local function newforeigntmp(ctx --[[:table]], typ --[[:table]])
     local ftype
     if typ._tag == "Type.String" then
         ftype = "char*"
-    elseif typ._tag == "Type.Pointer" then
+    elseif typ._tag == "Type.ForeignPointer" then
         ftype = foreignctype(typ)
     else
         error("don't know how to convert foreign type "..types.tostring(typ))
@@ -986,7 +986,7 @@ local function nativetoforeignexp(ctx, exp, cexp)
     if exp._type._tag == "Type.Integer"
     or exp._type._tag == "Type.Float"
     or exp._type._tag == "Type.Boolean"
-    or exp._type._tag == "Type.Pointer" then
+    or exp._type._tag == "Type.ForeignPointer" then
         return "", cexp
     end
 
@@ -1014,7 +1014,7 @@ local function foreigntonativeexp(ctx, exp, cexp, target)
     if exp._type._tag == "Type.Integer"
     or exp._type._tag == "Type.Float"
     or exp._type._tag == "Type.Boolean"
-    or exp._type._tag == "Type.Pointer" then
+    or exp._type._tag == "Type.ForeignPointer" then
         return "", cexp
     end
 
@@ -1026,7 +1026,7 @@ local function foreigntonativeexp(ctx, exp, cexp, target)
         return makestring(ctx, cexp, target)
     end
 
-    if exp._type._tag == "Type.Typedef" then
+    if exp._type._tag == "Type.ForeignTypedef" then
         return foreigntonativeexp(ctx, exp._type, cexp, target)
     end
 
@@ -2094,7 +2094,7 @@ function codeexp(ctx, node, iscondition, target)
             })
             return code, tmpname
         end
-    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Pointer" then
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.ForeignPointer" then
         local cstats, cexp = codeexp(ctx, node.exp)
         local fstats, fexp = nativetoforeignexp(ctx, node.exp, cexp)
         return cstats .. fstats, foreigncast(fexp, node._type)

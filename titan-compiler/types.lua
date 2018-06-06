@@ -75,7 +75,7 @@ local function can_coerce_pointer(source, target)
             return true
         elseif source.tag == "Type.Nil" then
             return true
-        elseif source._tag == "Type.Pointer" then
+        elseif source._tag == "Type.ForeignPointer" then
             return true
         end
     end
@@ -83,7 +83,7 @@ local function can_coerce_pointer(source, target)
 end
 
 local function is_void_pointer(typ)
-    return typ._tag == "Type.Pointer" and typ.type._tag == "Type.Nil"
+    return typ._tag == "Type.ForeignPointer" and typ.type._tag == "Type.Nil"
 end
 
 function types.explicitly_coerceable(source, target)
@@ -91,10 +91,10 @@ function types.explicitly_coerceable(source, target)
 end
 
 function types.coerceable(source, target)
-    return (target._tag == "Type.Pointer" and
+    return (target._tag == "Type.ForeignPointer" and
             can_coerce_pointer(source, target)) or
 
-           (source._tag == "Type.Enum" and
+           (source._tag == "Type.ForeignEnum" and
             target._tag == "Type.Integer") or
 
            (source._tag == "Type.Integer" and
@@ -120,13 +120,13 @@ end
 function types.compatible(t1, t2)
     if types.equals(t1, t2) then
         return true
-    elseif t1._tag == "Type.Typedef" then
+    elseif t1._tag == "Type.ForeignTypedef" then
         return types.compatible(t1._type, t2)
-    elseif t2._tag == "Type.Typedef" then
+    elseif t2._tag == "Type.ForeignTypedef" then
         return types.compatible(t1, t2._type)
-    elseif t1._tag == "Type.Pointer" and t2._tag == "Type.Nil" then
+    elseif t1._tag == "Type.ForeignPointer" and t2._tag == "Type.Nil" then
         return true -- nullable pointer
-    elseif t1._tag == "Type.Nil" and t2._tag == "Type.Pointer" then
+    elseif t1._tag == "Type.Nil" and t2._tag == "Type.ForeignPointer" then
         return true -- nullable pointer
     elseif t1._tag == "Type.String" and t2._tag == "Type.Nil" then
         return true -- nullable string
@@ -177,9 +177,9 @@ function types.equals(t1, t2)
     elseif tag1 == "Type.Map" and tag2 == "Type.Map" then
         return types.equals(t1.keys, t2.keys) and
                types.equals(t1.values, t2.values)
-    elseif tag1 == "Type.Pointer" and tag2 == "Type.Pointer" then
+    elseif tag1 == "Type.ForeignPointer" and tag2 == "Type.ForeignPointer" then
         return types.equals(t1.type, t2.type)
-    elseif tag1 == "Type.Typedef" and tag2 == "Type.Typedef" then
+    elseif tag1 == "Type.ForeignTypedef" and tag2 == "Type.ForeignTypedef" then
         return t1.name == t2.name
     elseif tag1 == "Type.Function" and tag2 == "Type.Function" then
         if #t1.params ~= #t2.params then
@@ -225,15 +225,15 @@ function types.tostring(t)
         return "{ " .. types.tostring(t.elem) .. " }"
     elseif tag == "Type.Map" then
         return "{ " .. types.tostring(t.keys) .. " : " .. types.tostring(t.values) .. " }"
-    elseif tag == "Type.Pointer" then
+    elseif tag == "Type.ForeignPointer" then
         if is_void_pointer(t) then
             return "void pointer"
         else
             return "pointer to " .. types.tostring(t.type)
         end
-    elseif tag == "Type.Enum" then
+    elseif tag == "Type.ForeignEnum" then
         return t.name and ("enum " .. t.name) or "anonymous enum"
-    elseif tag == "Type.Typedef" then
+    elseif tag == "Type.ForeignTypedef" then
         return t.name
     elseif tag == "Type.Function" then
         local out = {"function("}
