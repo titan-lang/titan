@@ -1016,18 +1016,14 @@ local function foreigntonativeexp(ctx, exp, cexp, target)
     or exp._type._tag == "Type.Boolean"
     or exp._type._tag == "Type.ForeignPointer" then
         return "", cexp
-    end
-
-    if exp._type._tag == "Type.Nil" then
+    elseif exp._type._tag == "Type.Nil" then
         return "", "0"
-    end
-
-    if exp._type._tag == "Type.String" then
+    elseif exp._type._tag == "Type.String" then
         return makestring(ctx, cexp, target)
-    end
-
-    if exp._type._tag == "Type.ForeignTypedef" then
+    elseif exp._type._tag == "Type.ForeignTypedef" then
         return foreigntonativeexp(ctx, exp._type, cexp, target)
+    elseif exp._type._tag == "Type.ForeignEnum" then
+        return "", cexp
     end
 
     error("don't know how to handle type "..types.tostring(exp._type))
