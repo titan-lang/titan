@@ -3,28 +3,9 @@ local cpp = {}
 
 local typed = require("typed")
 local c99 = require("c-parser.c99")
+local exps = require("c-parser.exps")
 
 local SEP = package.config:sub(1,1)
-
-local shl, shr
-if jit then
-    shl = function(a, b)
-        return bit.lshift(a, b)
-    end
-    shr = function(a, b)
-        return bit.rshift(a, b)
-    end
-else
-    shl, shr = load([[
-        local function shl(a, b)
-            return a << b
-        end
-        local function shr(a, b)
-            return a >> b
-        end
-        return shl, shr
-    ]])()
-end
 
 local function debug() end
 --[[
@@ -329,89 +310,6 @@ local function find_file(ctx, filename, mode, is_next)
     return nil, nil, "file not found"
 end
 
-local parse_expression = typed("{string} -> Exp?", function(tokens)
-    local text = table.concat(tokens, " ")
-    local exp, err, _, _, fragment = c99.match_preprocessing_expression_grammar(text)
-    if not exp then
-        print("Error parsing expression: " .. tostring(err) .. ": " .. text .. " AT " .. fragment)
-    end
-    return exp
-end)
-
-local eval_exp
-eval_exp = typed("Ctx, Exp -> number", function(ctx, exp)
-    debug("exp", exp)
-
-    if not exp.op then
-        local val = exp[1]
-        typed.check(val, "string")
-        local defined = ctx.defines[val]
-        if defined then
-            assert(type(defined) == "table")
-            local subexp = parse_expression(defined)
-            if not subexp then
-                return 0 -- FIXME
-            end
-            return eval_exp(ctx, subexp)
-        end
-        val = val:gsub("U*L*$", "")
-        if val:match("^0[xX]") then
-            return tonumber(val) or 0
-        elseif val:sub(1,1) == "0" then
-            return tonumber(val, 8) or 0
-        else
-            return tonumber(val) or 0
-        end
-    elseif exp.op == "+"  then
-        if exp[2] then
-            return eval_exp(ctx, exp[1]) + eval_exp(ctx, exp[2])
-        else
-            return eval_exp(ctx, exp[1])
-        end
-    elseif exp.op == "-"  then
-        if exp[2] then
-            return eval_exp(ctx, exp[1]) - eval_exp(ctx, exp[2])
-        else
-            return -(eval_exp(ctx, exp[1]))
-        end
-    elseif exp.op == "*"  then return eval_exp(ctx, exp[1]) * eval_exp(ctx, exp[2])
-    elseif exp.op == "/"  then return eval_exp(ctx, exp[1]) / eval_exp(ctx, exp[2])
-    elseif exp.op == ">>" then return shr(eval_exp(ctx, exp[1]), eval_exp(ctx, exp[2])) -- FIXME C semantics
-    elseif exp.op == "<<" then return shl(eval_exp(ctx, exp[1]), eval_exp(ctx, exp[2])) -- FIXME C semantics
-    elseif exp.op == "==" then return (eval_exp(ctx, exp[1]) == eval_exp(ctx, exp[2])) and 1 or 0
-    elseif exp.op == "!=" then return (eval_exp(ctx, exp[1]) ~= eval_exp(ctx, exp[2])) and 1 or 0
-    elseif exp.op == ">=" then return (eval_exp(ctx, exp[1]) >= eval_exp(ctx, exp[2])) and 1 or 0
-    elseif exp.op == "<=" then return (eval_exp(ctx, exp[1]) <= eval_exp(ctx, exp[2])) and 1 or 0
-    elseif exp.op == ">"  then return (eval_exp(ctx, exp[1]) > eval_exp(ctx, exp[2])) and 1 or 0
-    elseif exp.op == "<"  then return (eval_exp(ctx, exp[1]) < eval_exp(ctx, exp[2])) and 1 or 0
-    elseif exp.op == "!"  then return (eval_exp(ctx, exp[1]) == 1) and 0 or 1
-    elseif exp.op == "&&" then
-        for _, e in ipairs(exp) do
-            if eval_exp(ctx, e) == 0 then
-                return 0
-            end
-        end
-        return 1
-    elseif exp.op == "||" then
-        for _, e in ipairs(exp) do
-            if eval_exp(ctx, e) ~= 0 then
-                return 1
-            end
-        end
-        return 0
-    elseif exp.op == "?" then
-        if eval_exp(ctx, exp[1]) ~= 0 then
-            return eval_exp(ctx, exp[2])
-        else
-            return eval_exp(ctx, exp[3])
-        end
-    elseif exp.op == "defined" then
-        return (ctx.defines[exp[1][1]] ~= nil) and 1 or 0
-    else
-        error("unimplemented operator " .. tostring(exp.op))
-    end
-end)
-
 local consume_parentheses = typed("{string}, number, LineList, number -> {{string}}, number", function(tokens, start, linelist, curline)
     local args = {}
     local i = start + 1
@@ -621,11 +519,6 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean, LoopChecker? -> 
     end
 end)
 
-local run_expression = typed("Ctx, {string} -> boolean", function(ctx, tks)
-    local exp = parse_expression(tks)
-    return eval_exp(ctx, exp) ~= 0
-end)
-
 cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filename, fd, ctx)
     if not ctx then
         ctx = {
@@ -697,7 +590,7 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
             elseif tk.directive == "ifndef" then
                 table.insert(ifmode, (ctx.defines[tk.id] == nil))
             elseif tk.directive == "if" then
-                table.insert(ifmode, run_expression(ctx, tk.exp))
+                table.insert(ifmode, exps.run_expression(ctx, tk.exp))
             elseif tk.directive == "elif" then
                 ifmode[#ifmode] = "skip"
             elseif tk.directive == "else" then
@@ -727,7 +620,7 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
             elseif tk.directive == "else" then
                 ifmode[#ifmode] = not ifmode[#ifmode]
             elseif tk.directive == "elif" then
-                ifmode[#ifmode] = run_expression(ctx, tk.exp)
+                ifmode[#ifmode] = exps.run_expression(ctx, tk.exp)
             elseif tk.directive == "endif" then
                 table.remove(ifmode, #ifmode)
             end

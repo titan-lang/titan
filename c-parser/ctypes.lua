@@ -2,6 +2,7 @@
 local ctypes = {}
 
 local util = require("titan-compiler.util")
+local exps = require("c-parser.exps")
 local inspect = require("inspect")
 local typed = require("typed")
 
