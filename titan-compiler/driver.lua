@@ -9,8 +9,6 @@ local lfs = require "lfs"
 
 local driver = {}
 
-driver.imported = {}
-
 driver.TITAN_BIN_PATH = os.getenv("TITAN_PATH_0_5") or os.getenv("TITAN_PATH") or ".;/usr/local/lib/titan/0.5"
 driver.TITAN_SOURCE_PATH = "."
 driver.LUA_SOURCE_PATH = "lua-5.3.4/src/"
@@ -47,13 +45,14 @@ end
 
 function driver.defaultloader(static_deps)
     static_deps = static_deps or {}
+    local imported = {}
     local function loader(modname)
-        if driver.imported[modname] == CIRCULAR_MARK then
-            driver.imported[modname] = nil
+        if imported[modname] == CIRCULAR_MARK then
+            imported[modname] = nil
             return false, "circular reference to module"
         end
-        if driver.imported[modname] then
-            local mod = driver.imported[modname]
+        if imported[modname] then
+            local mod = imported[modname]
             if mod.ast then static_deps[modname] = true end
             return true, mod.type, {}
         end
@@ -68,7 +67,7 @@ function driver.defaultloader(static_deps)
             if not modtf then return false, err end
             local ok, modt_or_err = pcall(modtf)
             if not ok then return false, modt_or_err end
-            driver.imported[modname] = { type = modt_or_err, compiled = true }
+            imported[modname] = { type = modt_or_err, compiled = true }
             return true, modt_or_err, {}
         end
         if not mtime_src then return false, "module '" .. modname .. "' not found" end
@@ -76,13 +75,13 @@ function driver.defaultloader(static_deps)
         if not input then return false, err end
         local ast, err = parser.parse(srcf, input)
         if not ast then return false, parser.error_to_string(err, srcf) end
-        driver.imported[modname] = CIRCULAR_MARK
+        imported[modname] = CIRCULAR_MARK
         local modt, errors = checker.check(modname, ast, input, srcf, loader)
-        driver.imported[modname] = { ast = ast, type = modt, filename = srcf }
+        imported[modname] = { ast = ast, type = modt, filename = srcf }
         static_deps[modname] = true
         return true, modt, errors
     end
-    return loader
+    return loader, imported
 end
 
 function driver.tableloader(modtable, imported, deps)
@@ -113,7 +112,7 @@ function driver.tableloader(modtable, imported, deps)
         deps[modname] = true
         return true, modt, errors
     end
-    return loader
+    return loader, imported
 end
 
 local function shared_flag()

@@ -29,15 +29,20 @@ local main_module = nil
 
 local modules = {}
 
+local imports
+
+local static_deps = {}
+
 for _, modname in ipairs(args.module) do
-    local static_deps = {}
-    local ok, errs = checker.checkimport(modname, driver.defaultloader(static_deps))
+    local loader
+    loader, imports = driver.defaultloader(static_deps)
+    local ok, errs = checker.checkimport(modname, loader)
     modules[modname] = static_deps
     if not ok then 
         table.insert(errors, errs)
     else
         if #errs > 0 then table.insert(errors, table.concat(errs, "\n")) end
-        local ast = driver.imported[modname].ast
+        local ast = imports[modname].ast
         if ast and checker.has_main(ast) then
             if main_module then
                 table.insert(errors, modname .. ": multiple main functions found (already declared in " .. main_module ..")")
@@ -51,31 +56,33 @@ for _, modname in ipairs(args.module) do
     end
 end
 
-local libnames = {}
+if #errors > 0 then exit(table.concat(errors, "\n")) end
 
-for name, mod in pairs(driver.imported) do
-    local ok, err, libname = driver.compile_module(name, mod, modules[name], args.verbose)
+local compiled_modules = {}
+
+for modname, mod in pairs(imports) do
+    local ok, err, libname = driver.compile_module(modname, mod, static_deps, args.verbose)
     if not ok then
         table.insert(errors, err)
     else
-        libnames[name] = libname
+        compiled_modules[modname] = libname
     end
 end
 
+if #errors > 0 then exit(table.concat(errors, "\n")) end
+
 if main_module then
     local ofiles = {}
-    for _, ofile in pairs(libnames) do
-        table.insert(ofiles, ofile)
+    for _, mod in pairs(compiled_modules) do
+        table.insert(ofiles, mod)
     end
     driver.compile_program(main_module, ofiles, args.link, args.verbose)
 else
     for modname, depset in pairs(modules) do
         local ofiles = {}
-        for modname, _ in pairs(depset) do
-            table.insert(ofiles, libnames[modname])
+        for name, _ in pairs(depset) do
+            table.insert(ofiles, compiled_modules[name])
         end
         local ok, err = driver.compile_library(modname, ofiles, args.link, args.verbose)
     end
 end
-
-if #errors > 0 then exit(table.concat(errors, "\n")) end
