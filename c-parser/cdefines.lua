@@ -125,7 +125,7 @@ get_type_of_exp = typed("Exp, TypeList -> {string}?", function(exp, lst)
     return nil
 end)
 
-function cdefines.register_define(lst, name, text, define_set)
+function cdefines.register_define(lst, name, text)
     local exp, err, line, col = c99.match_language_expression_grammar(text .. " ")
     if not exp then
         -- failed parsing expression
