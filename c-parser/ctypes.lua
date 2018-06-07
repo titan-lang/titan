@@ -156,14 +156,18 @@ get_fields = function(lst, fields_src)
     return fields
 end
 
-local function get_enum_items(_, values)
-    local items = {}
-    for _, v in ipairs(values) do
-        -- TODO store enum actual values
-        table.insert(items, { name = v.id })
+local get_enum_items = typed("TypeList, array -> array", function(_, items)
+    local out = {}
+    local value = 0
+    for _, item in ipairs(items) do
+        if item.value then
+            value = exps.eval_parsed_expression(item.value)
+        end
+        table.insert(out, { name = item.id, value = value })
+        value = value + 1
     end
-    return items
-end
+    return out
+end)
 
 local get_composite_type = typed("TypeList, string?, string, array, string, function -> CType, string",
                            function(lst, specid, spectype, parts, partsfield, get_parts)
@@ -209,18 +213,17 @@ local function get_structunion(lst, spec)
     return get_composite_type(lst, spec.id, spec.type, spec.fields, "fields", get_fields)
 end
 
-local function get_enum(lst, spec)
-    if spec.values and not spec.values[1] then
-        spec.values = { spec.values }
-    end
+local get_enum = typed("TypeList, table -> CType, string", function(lst, spec)
+    typed.check(spec.values, "array")
     local typ, key = get_composite_type(lst, spec.id, spec.type, spec.values, "values", get_enum_items)
     if typ.values then
         for _, value in ipairs(typ.values) do
             add_type(lst, value.name, typ)
         end
     end
+    typ.name = spec.id
     return typ, key
-end
+end)
 
 local function refer(lst, item, get_fn)
     if item.id and not item.fields then

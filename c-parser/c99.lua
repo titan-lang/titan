@@ -342,8 +342,8 @@ structDeclaratorList <- {| structDeclarator ("," _ structDeclarator)* |}
 structDeclarator <- declarator? ":" _ constantExpression
                   / declarator
 
-enumSpecifier <- {| {:type: enum :} ({:id: IDENTIFIER :})? "{" _ {:values: enumeratorList :} ("," _)? "}" _ |}
-               / {| {:type: enum :}  {:id: IDENTIFIER :}                                                          |}
+enumSpecifier <- {| {:type: enum :} ({:id: IDENTIFIER :})? "{" _ {:values: enumeratorList / empty :} ("," _)? "}" _ |}
+               / {| {:type: enum :}  {:id: IDENTIFIER :}                                                            |}
 
 enum <- { "enum" } _
 
