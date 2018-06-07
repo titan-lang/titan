@@ -139,7 +139,7 @@ end
 
 local function convert_enum(st, ftype)
     local decl = {
-        _tag = "Enum",
+        _tag = "Type.Enum",
         name = ftype.name,
         data = ftype,
     }

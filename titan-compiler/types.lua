@@ -94,6 +94,9 @@ function types.coerceable(source, target)
     return (target._tag == "Type.Pointer" and
             can_coerce_pointer(source, target)) or
 
+           (source._tag == "Type.Enum" and
+            target._tag == "Type.Integer") or
+
            (source._tag == "Type.Integer" and
             target._tag == "Type.Float") or
 
@@ -221,6 +224,8 @@ function types.tostring(t)
         else
             return "pointer to " .. types.tostring(t.type)
         end
+    elseif tag == "Type.Enum" then
+        return t.name and ("enum " .. t.name) or "anonymous enum"
     elseif tag == "Type.Typedef" then
         return t.name
     elseif tag == "Type.Function" then
