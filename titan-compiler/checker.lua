@@ -50,6 +50,11 @@ local function checkmatch(term, expected, found, errors, loc)
     end
 end
 
+local function invalid(errors, loc, ...)
+    checker.typeerror(errors, loc, ...)
+    return types.Invalid()
+end
+
 -- Converts an AST type declaration into a typechecker type
 --   node: AST node
 --   errors: list of compile-time errors
@@ -88,10 +93,8 @@ typefromnode = util.make_visitor({
         if mod and mod._type._tag == "Type.Module" then
             local fqtn = mod._type.name .. "." .. node.name
             return types.Nominal(fqtn)
-        else
-            checker.typeerror(errors, node.loc, "module '%s' referenced by type not found", node.module)
         end
-        return types.Invalid()
+        return invalid(errors, node.loc, "module '%s' referenced by type not found", node.module)
     end,
 
     ["Ast.TypeArray"] = function(node, st, errors)
@@ -408,9 +411,8 @@ checkvar = util.make_visitor({
     ["Ast.VarName"] = function(node, st, errors, context)
         local decl = st:find_symbol(node.name)
         if not decl then
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "variable '%s' not declared", node.name)
-            node._type = types.Invalid()
         else
             node._decl = decl
             node._type = decl._type
@@ -446,16 +448,16 @@ checkvar = util.make_visitor({
                 node._decl = decl
                 node._type = types.Function(decl.params, decl.rettypes, false)
             else
-                checker.typeerror(errors, node.loc,
+                node._type = invalid(errors, node.loc,
                     "trying to access invalid record function '%s'", node.name)
             end
         elseif ltype._tag == "Type.Nominal" then
             local type = types.registry[ltype.fqtn]
             if not type then
-                checker.typeerror(errors, node.loc,
+                node._type = invalid(errors, node.loc,
                     "type '%s' not found", ltype.fqtn)
             elseif type._tag ~= "Type.Record" then
-                checker.typeerror(errors, node.loc,
+                node._type = invalid(errors, node.loc,
                     "trying to access field '%s' of type '%s' that is not a record but '%s'",
                     node.name, ltype.fqtn, type._tag)
             else
@@ -467,17 +469,16 @@ checkvar = util.make_visitor({
                     end
                 end
                 if not node._type then
-                    checker.typeerror(errors, node.loc,
+                    node._type = invalid(errors, node.loc,
                         "field '%s' not found in record '%s'",
                         node.name, ltype.fqtn)
                 end
             end
         else
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "trying to access a member of value of type '%s'",
                 types.tostring(ltype))
         end
-        node._type = node._type or types.Invalid()
     end,
 
     ["Ast.VarBracket"] = function(node, st, errors, context)
@@ -492,10 +493,9 @@ checkvar = util.make_visitor({
             keystype = node.exp1._type.keys
             term = "map indexing"
         else
-            checker.typeerror(errors, node.exp1.loc,
+            node._type = invalid(errors, node.exp1.loc,
                 "expression in indexing is not an array or map but %s",
                 types.tostring(node.exp1._type))
-            node._type = types.Invalid()
             return
         end
 
@@ -678,20 +678,18 @@ checkexp = util.make_visitor({
             end
         elseif expected == "Type.Nominal" then
             if not context then
-                checker.typeerror(errors, node.loc,
+                node._type = invalid(errors, node.loc,
                     "no context to provide type for record constructor")
-                    for _, field in ipairs(node.fields) do
-                        checkexp(field.exp, st, errors)
-                    end
-                    node._type = types.Invalid()
+                for _, field in ipairs(node.fields) do
+                    checkexp(field.exp, st, errors)
+                end
             elseif not types.registry[context.fqtn] then
-                checker.typeerror(errors, node.loc,
+                node._type = invalid(errors, node.loc,
                     "record type '%s' in context of record constructor does not exist",
                     types.tostring(context))
                 for _, field in ipairs(node.fields) do
                     checkexp(field.exp, st, errors)
                 end
-                node._type = types.Invalid()
             else
                 local record = types.registry[context.fqtn]
                 for _, cfield in ipairs(node.fields) do
@@ -755,7 +753,8 @@ checkexp = util.make_visitor({
             elseif isarray then
                 node._type = types.Array(vtype)
             else
-                node._type = types.Invalid()
+                node._type = invalid(errors, node.loc,
+                    "no context to provide type for record constructor")
             end
         end
     end,
@@ -765,19 +764,16 @@ checkexp = util.make_visitor({
         if node.var._decl then node.var._decl._used = true end
         local texp = node.var._type
         if texp._tag == "Type.Module" then
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "trying to access module '%s' as a first-class value",
                 node.var.name)
-            node._type = types.Invalid()
         elseif texp._tag == "Type.Function" then
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "trying to access a function as a first-class value")
-            node._type = types.Invalid()
         elseif texp._tag == "Type.Record" then
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "trying to access record type '%s' as a first-class value",
                 texp.name)
-            node._type = types.Invalid()
         else
             node._type = texp
         end
@@ -944,7 +940,7 @@ checkexp = util.make_visitor({
                 node._type = types.Integer()
             else
                 -- error
-                node._type = types.Invalid()
+                node._type = invalid(errors, loc, "invalid types in arithmetic expression")
             end
         elseif op == "/" or op == "^" then
             if tlhs._tag == "Type.Integer" then
@@ -1039,13 +1035,12 @@ checkexp = util.make_visitor({
                     "first-class functions are not supported in this version of Titan")
             end
             if ftype._tag ~= "Type.Function" then
-                checker.typeerror(errors, node.loc,
+                node._type = invalid(errors, node.loc,
                     "'%s' is not a function but %s",
                     fname, types.tostring(ftype))
                 for _, arg in ipairs(node.args.args) do
                     checkexp(arg, st, errors)
                 end
-                node._type = types.Invalid()
                 return
             end
             checkargs(ftype, node.args.args, node.loc,
@@ -1060,13 +1055,12 @@ checkexp = util.make_visitor({
                types.registry[otype.fqtn]._tag == "Type.Record" then
                 local class = types.registry[otype.fqtn]
                 if not class.methods[node.args.method] then
-                    checker.typeerror(errors, node.loc,
+                    node._type = invalid(errors, node.loc,
                         "method '%s' not found in record '%s'",
                         node.args.method, types.tostring(otype))
                     for _, arg in ipairs(node.args.args) do
                         checkexp(arg, st, errors)
                     end
-                    node._type = types.Invalid()
                     return
                 end
                 local ftype = class.methods[node.args.method]
@@ -1092,7 +1086,7 @@ checkexp = util.make_visitor({
                 for _, arg in ipairs(node.args.args) do
                     checkexp(arg, st, errors)
                 end
-                node._type = types.Invalid()
+                node._type = invalid(errors, node.loc, "expected a record type")
             end
         end
     end,
@@ -1273,8 +1267,7 @@ local toplevel_visitor = util.make_visitor({
                 table.insert(errors, err)
             end
         else
-            node._type = types.Invalid()
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "problem loading module '%s': %s",
                 node.modname, errs)
         end
