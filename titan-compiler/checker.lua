@@ -1096,7 +1096,7 @@ checkexp = util.make_visitor({
         checkexp(node.exp, st, errors, node.target)
         if not (types.explicitly_coerceable(node.exp._type, node.target) or
                 types.coerceable(node.exp._type, node.target))
-           or not types.compatible(node.exp._type, node.target) then
+           and not types.compatible(node.exp._type, node.target) then
             checker.typeerror(errors, node.loc, "cannot cast '%s' to '%s'",
                 types.tostring(node.exp._type), types.tostring(node.target))
         end
