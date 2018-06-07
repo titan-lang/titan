@@ -396,8 +396,7 @@ LoopChecker = {
         local self = {}
         self.tokens = parent and parent.tokens or {}
         self.offset = offset and (offset + parent.offset) or 0
-        typed.set_type(self, "LoopChecker")
-        return setmetatable(self, { __index = LoopChecker })
+        return typed.table("LoopChecker", setmetatable(self, { __index = LoopChecker }))
     end,
     mark = typed("LoopChecker, string, number -> ()", function(self, token, n)
         n = n + self.offset
@@ -408,13 +407,13 @@ LoopChecker = {
             self.tokens[token] = v + n
         end
     end),
-    valid = typed("LoopChecker, string, number -> ()", function(self, token, n)
+    valid = typed("LoopChecker, string, number -> boolean", function(self, token, n)
         n = n + self.offset
         return self.tokens[token] == nil or self.tokens[token] < n
     end),
 }
 
-local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", function(ctx, tokens, args, linelist, curline)
+local replace_args = typed("Ctx, {string}, table, LineList, number, LoopChecker? -> ()", function(ctx, tokens, args, linelist, curline, loopchecker)
     local i = 1
     local hash_next = false
     local join_next = false
@@ -430,7 +429,7 @@ local replace_args = typed("Ctx, {string}, table, LineList, number -> ()", funct
             join_next = true
             table.remove(tokens, i)
         elseif args[token] then
-            macro_expand(ctx, args[token], linelist, curline, false)
+            macro_expand(ctx, args[token], linelist, curline, false, loopchecker)
             if hash_next then
                 tokens[i] = stringify(args[token])
                 hash_next = false
@@ -487,7 +486,7 @@ macro_expand = typed("Ctx, {string}, LineList, number, boolean, LoopChecker? -> 
                         named_args[define.args[i]] = args[i] or {}
                     end
                     local expansion = array_copy(repl)
-                    replace_args(ctx, expansion, named_args, linelist, curline, loopchecker)
+                    replace_args(ctx, expansion, named_args, linelist, curline, nil)
                     local nexpansion = #expansion
                     local n = j - i + 1
                     if nexpansion == 0 then
@@ -572,7 +571,7 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
         end
 
         if tk.exp then
-            macro_expand(ctx, tk.exp, linelist, curline, true)
+            macro_expand(ctx, tk.exp, linelist, curline, true, nil)
         end
 
         if ifmode[#ifmode] == true then
@@ -609,7 +608,7 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
                 end
                 cpp.parse_file(inc_filename, inc_fd, ctx)
             else
-                macro_expand(ctx, tk, linelist, curline, false)
+                macro_expand(ctx, tk, linelist, curline, false, nil)
                 table.insert(ctx.output, table.concat(tk, " "))
             end
         elseif ifmode[#ifmode] == false then
@@ -649,7 +648,7 @@ cpp.expand_macro = typed("string, table -> string", function(macro, define_set)
     }, { __index = error, __newindex = error }))
     local tokens = { macro }
     local linelist = typed.table("LineList", { { nr = 1, line = macro } })
-    macro_expand(ctx, tokens, linelist, 1, false)
+    macro_expand(ctx, tokens, linelist, 1, false, nil)
     return table.concat(tokens, " ")
 end)
 
