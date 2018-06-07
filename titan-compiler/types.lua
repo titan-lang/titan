@@ -106,6 +106,9 @@ function types.coerceable(source, target)
            (target._tag == "Type.Boolean" and
             source._tag ~= "Type.Boolean") or
 
+           (source._tag == "Type.Nil" and
+            target._tag == "Type.String") or
+
            (target._tag == "Type.Value" and
             source._tag ~= "Type.Value") or
 
@@ -125,6 +128,10 @@ function types.compatible(t1, t2)
         return true -- nullable pointer
     elseif t1._tag == "Type.Nil" and t2._tag == "Type.Pointer" then
         return true -- nullable pointer
+    elseif t1._tag == "Type.String" and t2._tag == "Type.Nil" then
+        return true -- nullable string
+    elseif t1._tag == "Type.Nominal" and t2._tag == "Type.Nil" then
+        return true -- nullable record
     elseif types.explicitly_coerceable(t1, t2) then
         return true
     elseif t1._tag == "Type.Value" or t2._tag == "Type.Value" then
