@@ -1739,6 +1739,23 @@ describe("Titan type checker", function()
         assert.match("'foo.a' is not a function", err)
     end)
 
+    it("catches call of undeclared external function", function ()
+        local modules = {
+            foo = [[
+                a: integer = 1
+            ]],
+            bar = [[
+                local foo = import "foo"
+                function bar(): integer
+                    return foo.b()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("member 'b' not found inside module 'foo'", err)
+    end)
+
     it("catches call of non-function function", function ()
         local code = [[
             local a = 2

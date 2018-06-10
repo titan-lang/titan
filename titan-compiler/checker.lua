@@ -435,7 +435,7 @@ checkvar = util.make_visitor({
         if ltype._tag == "Type.Module" or ltype._tag == "Type.ForeignModule" then
             local mod = ltype
             if not mod.members[node.name] then
-                checker.typeerror(errors, node.loc,
+                node._type = invalid(errors, node.loc,
                     "member '%s' not found inside module '%s'",
                     node.name, mod.name)
             else
@@ -1026,6 +1026,10 @@ checkexp = util.make_visitor({
         end
         if node.args._tag == "Ast.ArgsFunc" then
             local ftype = node.exp._type
+            if ftype._tag == "Type.Invalid" then
+                node._type = ftype
+                return
+            end
             local fname = expname(node.exp)
             local var = node.exp.var
             if not (var and var._decl and (var._decl._tag == "Ast.TopLevelFunc" or
