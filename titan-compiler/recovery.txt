@@ -3,6 +3,8 @@
 
 *  The recovery pattern associated with label NameRecord (Err_007) will not work, because
    it is the same pattern (NAME) that failed to match in the regular grammar.
+   Update: it worked. I think it did not work before because I have not annotated all the rules.
+   Nevertheless, the recovery expression does not seem good.
 
 *  The original grammar uses the same set of labels (six in total) for 'import' and 'foreign' rules 
 

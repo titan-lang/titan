@@ -232,7 +232,7 @@ local grammar = re.compile([[
                            / toplevelvar
                            / toplevelrecord
                            / import
-                           / foreign )* |} !.
+                           / foreign )* |} (!. / %{EndInput})
 
     toplevelfunc    <- (P  localopt FUNCTION NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
@@ -506,11 +506,11 @@ local grammar = re.compile([[
 
     --Err_001
     NameFunc        <- ({} '' -> 'NameFunc') -> adderror  NameFuncRec  ('' -> defaultFuncName)
-    NameFuncRec     <- (!'(' .)*
+    NameFuncRec     <- (!'(' eatTk)*
    
     --Err_002: not in parser_spec
     LParPList       <- ({} '' -> 'LParPList') -> adderror  LParPListRec
-    LParPListRec    <- (!(NAME  /  ')') .)*
+    LParPListRec    <- (!(NAME  /  ')') eatTk)*
     
     --Err_003: not in parser_spec
     RParPList       <- ({} '' -> 'RParPList') -> adderror  RParPListRec
@@ -529,7 +529,7 @@ local grammar = re.compile([[
     --ExpVarDec     <-  (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)                   -> number_exp
     --Err_006
     ExpVarDec       <- ({} '' -> 'ExpVarDec') -> adderror  ExpVarDecRec  (P '' -> defaultInt2)  -> number_exp
-    ExpVarDecRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* 
+    ExpVarDecRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)* 
 
     --Err_007: Problem: the recovery pattern will not work, because we reach this label when 'NAME' fails to match (error)
     -- Not using NameRecordRec, after the error just matches the empty string, so we will always get a second error
@@ -623,9 +623,11 @@ local grammar = re.compile([[
 
     --Err_033: The original grammar used TypeReturnTypes here, but the recovery set is different I introduced label TypeReturnTypes
     --TODO: see why the recovery sets were different
+    -- For a test case, the use of '=' in the recovery expression causes an error, because the input left doest is not matched
+    -- as an statment and the repetition block* finishes
     TypeReturnTypes      <- ({} '' -> 'TypeReturnTypes') -> adderror  TypeReturnTypesRec  (P '') -> TypeInteger
-    --TypeReturnTypesRec <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
-    TypeReturnTypesRec   <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
+    TypeReturnTypesRec <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
+    --TypeReturnTypesRec   <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
     --Err_034:
     ColonRecordField    <- ({} '' -> 'ColonRecordField') -> adderror  ColonRecordFieldRec
@@ -840,6 +842,10 @@ local grammar = re.compile([[
 
 ]], defs)
 
+
+local totalErr = 0
+local nSynErr = 0
+
 function parser.parse(filename, input)
     -- Abort if someone calls this non-reentrant parser recursively
     assert(type(filename) == "string")
@@ -854,10 +860,18 @@ function parser.parse(filename, input)
     if ast and #synerr == 0 then
         return ast
     else
-        assert(ast, "Ouch! We did not get an ast for " .. tostring(err))
+        assert(ast, "Ouch! We did not get an ast for " .. tostring(err) ..'\n' .. input)
+        totalErr = totalErr + #synerr
+        nSynErr = nSynErr + 1
+        print("err = ", synerr[1].lab, " #synerr = ", #synerr, " total = ", totalErr, " nErr = ", nSynErr)
+        if #synerr > 1 then
+					for i, v in ipairs(synerr) do
+            print(i, v.lab, syntax_errors.errors[v.lab])
+          end
+				end
         local loc
         if ast then
-            --print(parser.pretty_print_ast(ast))
+            print(parser.pretty_print_ast(ast))
             loc = synerr[1].pos
             err = synerr[1].lab
             --print("loc = ", loc, "err = ", err)
