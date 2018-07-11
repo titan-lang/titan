@@ -5,17 +5,19 @@ local driver = require 'titan-compiler.driver'
 local util = require 'titan-compiler.util'
 
 local function run_checker(code)
+    types.registry = {}
     driver.imported = {}
     local ast = assert(parser.parse("(checker_spec)", code))
-    local t, errs = checker.check("test", ast, code, "test.titan", driver.defaultloader)
+    local t, errs = checker.check("test", ast, code, "test.titan", driver.defaultloader())
     return #errs == 0, table.concat(errs, "\n"), ast, t
 end
 
 local function run_checker_modules(modules, main)
     local imported = {}
     local loader = driver.tableloader(modules, imported)
-    local _, errs = checker.checkimport(main, loader)
-    return #errs == 0, table.concat(errs, "\n"), imported
+    local modt, err = checker.checkimport(main, loader)
+    if not modt then return false, err end
+    return #err == 0, table.concat(err, "\n"), imported
 end
 
 -- Return a version of t2 that only contains fields present in t1 (recursively)
@@ -54,7 +56,6 @@ local function assert_ast(program, expected)
 end
 
 describe("Titan type checker", function()
-
     it("for loop iteration variables don't shadow var limit and step", function()
         local code = [[
             function fn(x: integer): integer
@@ -76,7 +77,7 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("type 'foo' not found", err)
+        assert.match("invalid type 'test%.foo'", err)
     end)
 
     it("coerces to integer", function()
@@ -177,7 +178,7 @@ describe("Titan type checker", function()
         assert.match("variable '%w+' not declared", err)
     end)
 
-    it("catches array expression in indexing is not an array", function()
+    it("catches array expression in indexing is not an array or map", function()
         local code = [[
             function fn(x: integer)
                 x[1] = 2
@@ -185,7 +186,7 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("array expression in indexing is not an array", err)
+        assert.match("expression in indexing is not an array or map", err)
     end)
 
     it("accepts correct use of length operator", function()
@@ -201,6 +202,17 @@ describe("Titan type checker", function()
     it("catches wrong use of length operator", function()
         local code = [[
             function fn(x: integer): integer
+                return #x
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("trying to take the length", err)
+    end)
+
+    it("catches wrong use of length operator in maps", function()
+        local code = [[
+            function fn(x: {integer: integer}): integer
                 return #x
             end
         ]]
@@ -279,6 +291,27 @@ describe("Titan type checker", function()
         assert.truthy(ok, err)
     end)
 
+    it("allows setting element of map as nil", function ()
+        local code = [[
+            function fn()
+                local m: {string: integer} = { ["a"] = 10, ["b"] = 20, ["c"] = 30 }
+                m["a"] = nil
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok, err)
+    end)
+
+    it("coerces map key", function ()
+        assert_type_check([[
+            function fn()
+                local a: { float: string } = {}
+                local s = a[1]
+                a[1] = s
+            end
+        ]])
+    end)
+
     it("typechecks multiple return values in array initialization", function ()
         local code = [[
             function f(): (integer, integer)
@@ -290,6 +323,23 @@ describe("Titan type checker", function()
             function fn()
                 local arr: {integer} = { 10, g(), 30, f() }
                 local arr: {integer} = { 10, g(), 30, (g()) }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok, err)
+    end)
+
+    it("typechecks multiple return values in map initialization", function ()
+        local code = [[
+            function f(): (integer, integer)
+                return 10, 20
+            end
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function fn()
+                local m1: {string: integer} = { ["a"] = 10, ["b"] = g(), ["c"] = 30, ["d"] = f() }
+                local m2: {string: integer} = { ["a"] = 10, ["b"] = g(), ["c"] = 30, ["d"] = (g()) }
             end
         ]]
         local ok, err = run_checker(code)
@@ -310,7 +360,20 @@ describe("Titan type checker", function()
         assert.match("expected integer but found string", err)
     end)
 
-    it("catches wrong type in multiple return values for array initialization", function ()
+    it("drops extra values in multiple return values for map initialization", function ()
+        local code = [[
+            function g(): (integer, string)
+                return 20, "foo"
+            end
+            function fn()
+                local m: {string: integer} = { ["a"] = 10, ["b"] = g() }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.truthy(ok, err)
+    end)
+
+    it("catches wrong type in multiple return values for multiple assignment", function ()
         local code = [[
             function f(x: integer): (integer, string)
                 return x * 2, "foo"
@@ -335,7 +398,30 @@ describe("Titan type checker", function()
         ]]
         local ok, err = run_checker(code)
         assert.falsy(ok)
-        assert.match("expected { integer } but found initlist", err)
+        assert.match("initializing field 'x' when expecting array", err)
+    end)
+
+    it("catches named init list assigned to a map", function()
+        local code = [[
+            function fn(x: integer)
+                local m: {integer: string} = { x = 10 }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("initializing field 'x' when expecting map", err)
+    end)
+
+    -- FIXME should this be allowed?
+    it("catches named init list assigned to a string-keyed map", function()
+        local code = [[
+            function fn(x: integer)
+                local m: {string: integer} = { x = 10 }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("initializing field 'x' when expecting map", err)
     end)
 
     it("type-checks numeric 'for' (integer, implicit step)", function()
@@ -826,6 +912,17 @@ describe("Titan type checker", function()
         assert.match("cannot concatenate with { integer } value", err)
     end)
 
+    it("cannot concatenate with map", function()
+        local code = [[
+            function fn()
+                local s = "foo" .. { [false] = 2 }
+            end
+        ]]
+        local ok, err = run_checker(code)
+        assert.falsy(ok)
+        assert.match("cannot concatenate with { boolean : integer } value", err)
+    end)
+
     it("cannot concatenate with type value", function()
         local code = [[
             function fn()
@@ -858,6 +955,16 @@ describe("Titan type checker", function()
             local ok, err = run_checker(code)
             assert.truthy(ok)
         end)
+
+        it("can compare maps of same type using " .. op, function()
+            local code = [[
+                function fn(a1: {string: integer}, a2: {string: integer}): boolean
+                    return a1 ]] .. op .. [[ a2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.truthy(ok)
+        end)
     end
 
     for _, op in ipairs({"==", "~="}) do
@@ -883,7 +990,7 @@ describe("Titan type checker", function()
                 end
             ]]
             local ok, err = run_checker(code)
-            assert.truthy(ok)
+            assert.truthy(ok, err)
         end)
     end
 
@@ -969,6 +1076,28 @@ describe("Titan type checker", function()
         it("cannot compare arrays of different types using " .. op, function()
             local code = [[
                 function fn(a1: {integer}, a2: {float}): boolean
+                    return a1 ]] .. op .. [[ a2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.falsy(ok)
+            assert.match("trying to compare values of different types", err)
+        end)
+
+        it("cannot compare maps of different value types using " .. op, function()
+            local code = [[
+                function fn(a1: {string: integer}, a2: {string: float}): boolean
+                    return a1 ]] .. op .. [[ a2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.falsy(ok)
+            assert.match("trying to compare values of different types", err)
+        end)
+
+        it("cannot compare maps of different key types using " .. op, function()
+            local code = [[
+                function fn(a1: {integer: string}, a2: {float: string}): boolean
                     return a1 ]] .. op .. [[ a2
                 end
             ]]
@@ -1169,92 +1298,102 @@ describe("Titan type checker", function()
         end
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
+        it("can implicitly cast from value to " .. t, function()
+            assert_type_check([[
+                record Record end
+                function fn(a: value): ]] .. t .. [[
+                    return a
+                end
+            ]])
+        end)
+    end
+
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
         it("can explicitly cast from value to " .. t, function()
-            local code = [[
+            assert_type_check([[
+                record Record end
                 function fn(a: value): ]] .. t .. [[
                     return a as ]] .. t .. [[
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.truthy(ok)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
         it("can explicitly cast from " .. t .. "to value", function()
-            local code = [[
+            assert_type_check([[
+                record Record end
                 function fn(a: ]] .. t .. [[): value
                     return a as value
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.truthy(ok)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"boolean", "float", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "nil", "string", "Record"}) do
+        it("can implicitly cast from " .. t .. "to value", function()
+            assert_type_check([[
+                record Record end
+                function fn(a: ]] .. t .. [[): value
+                    return a
+                end
+            ]])
+        end)
+    end
+
+    for _, t in ipairs({"boolean", "float", "integer", "nil", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to {integer}", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): {integer}
                     return a as {integer}
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "integer", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "integer", "nil", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to float", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): float
                     return a as float
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "nil", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "nil", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to integer", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): integer
                     return a as integer
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "string"}) do
+    for _, t in ipairs({"{integer}", "boolean", "float", "integer", "string", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to nil", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): nil
                     return a as nil
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
-    for _, t in ipairs({"{integer}", "boolean", "nil"}) do
+    for _, t in ipairs({"{integer}", "boolean", "nil", "Record"}) do
         it("cannot explicitly cast from " .. t .. " to string", function()
-            local code = [[
+            assert_type_error("cannot cast", [[
+                record Record end
                 function fn(a: ]] .. t .. [[): string
                     return a as string
                 end
-            ]]
-            local ok, err = run_checker(code)
-            assert.falsy(ok)
-            assert.match("cannot cast", err)
+            ]])
         end)
     end
 
@@ -1273,8 +1412,8 @@ describe("Titan type checker", function()
             _tag = "Type.Module",
             name = "test",
             members = {
-                a = { _tag = "Type.Integer" },
-                geta = { _tag = "Type.Function" }
+                a = { type = {_tag = "Type.Integer"} },
+                geta = { type = {_tag = "Type.Function"} }
             }
         })
         assert.falsy(mods.test.type.members.b)
@@ -1320,8 +1459,8 @@ describe("Titan type checker", function()
             _tag = "Type.Module",
             name = "foo",
             members = {
-                a = { _tag = "Type.Integer" },
-                foo = { _tag = "Type.Function" }
+                a = { type = {_tag = "Type.Integer"} },
+                foo = { type = {_tag = "Type.Function"} }
             }
         })
     end)
@@ -1339,7 +1478,7 @@ describe("Titan type checker", function()
                 _tag = "Type.ForeignModule",
                 members = {
                     printf = {
-                        _tag = "Type.Function"
+                        type = {_tag = "Type.Function"}
                     }
                 }
             }
@@ -1384,7 +1523,7 @@ describe("Titan type checker", function()
             end
         ]]
         local ok, err = run_checker(code)
-        assert.truthy(ok)
+        assert.truthy(ok, err)
     end)
 
     it("can check foreign module variables", function()
@@ -1600,7 +1739,24 @@ describe("Titan type checker", function()
         assert.match("'foo.a' is not a function", err)
     end)
 
-    it("catches call if non-function function", function ()
+    it("catches call of undeclared external function", function ()
+        local modules = {
+            foo = [[
+                a: integer = 1
+            ]],
+            bar = [[
+                local foo = import "foo"
+                function bar(): integer
+                    return foo.b()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("member 'b' not found inside module 'foo'", err)
+    end)
+
+    it("catches call of non-function function", function ()
         local code = [[
             local a = 2
             function foo(): integer
@@ -1772,7 +1928,7 @@ describe("Titan type checker", function()
         for _, c in ipairs(cases) do
             local ok, err = run_checker(c.code)
             assert.falsy(ok)
-            assert.match("function f called with " .. c.args .. " arguments but expects " .. c.params, err)
+            assert.match("function 'f' called with " .. c.args .. " arguments but expects " .. c.params, err)
         end
     end)
 end)
@@ -1788,18 +1944,28 @@ describe("Titan typecheck of records", function()
     end)
 
     it("detects type errors inside record declarations", function()
-        assert_type_error("type 'notfound' not found", [[
+        assert_type_error("invalid type 'test%.notfound'", [[
             record Point
                 x: notfound
             end
         ]])
     end)
 
-    it("doesn't typecheck recursive record declarations", function()
-        -- TODO: it should accept recursive types when we have optional types
-        assert_type_error("type 'List' not found", [[
+    it("typechecks recursive record declarations", function()
+        assert_type_check([[
             record List
                 l: List
+            end
+        ]])
+    end)
+
+    it("typechecks mutually recursive record declarations", function()
+        assert_type_check([[
+            record A
+                l: B
+            end
+            record B
+                l: A
             end
         ]])
     end)
@@ -1820,10 +1986,13 @@ describe("Titan typecheck of records", function()
 
             p = Point.new(1, 2)
         ]])
+        assert_type_error("no context", [[
+            p = { foo = 2 }
+        ]])
     end)
 
     it("doesn't typecheck invalid dot operation in record", function()
-        assert_type_error("invalid record member 'nope'", [[
+        assert_type_error("invalid record function 'nope'", [[
             record Point x: float; y:float end
 
             p = Point.nope(1, 2)
@@ -1843,9 +2012,9 @@ describe("Titan typecheck of records", function()
     it("doesn't typecheck constructor calls with wrong arguments", function()
         assert_type_error("expected float but found string",
                           wrap_record[[ p = Point.new("a", "b") ]])
-        assert_type_error("Point.new called with 1 arguments but expects 2",
+        assert_type_error("'Point.new' called with 1 arguments but expects 2",
                           wrap_record[[ p = Point.new(1) ]])
-        assert_type_error("Point.new called with 3 arguments but expects 2",
+        assert_type_error("'Point.new' called with 3 arguments but expects 2",
                           wrap_record[[ p = Point.new(1, 2, 3) ]])
     end)
 
@@ -1859,18 +2028,398 @@ describe("Titan typecheck of records", function()
 
     it("doesn't typecheck read/write to non existent fields", function()
         local function assert_non_existent(code)
-            assert_type_error("field 'nope' not found in record 'Point'",
+            assert_type_error("field 'nope' not found in record 'test%.Point'",
                               wrap_record(code))
         end
         assert_non_existent([[ p.nope = 10 ]])
         assert_non_existent([[ return p.nope ]])
     end)
 
+    it("doesn't typecheck duplicated field", function ()
+        assert_type_error("redeclaration of field 'foo' in record 'Foo'",
+                          [[
+                              record Foo
+                                foo: integer
+                                foo: string
+                              end
+                          ]])
+    end)
+
+    it("doesn't typecheck method with same name as field", function ()
+        assert_type_error("cannot declare method 'Foo:foo' as field 'foo' exists in record 'Foo'",
+                          [[
+                              record Foo
+                                foo: integer
+                              end
+
+                              function Foo:foo()
+                              end
+                          ]])
+    end)
+
     it("doesn't typecheck read/write with invalid types", function()
-        assert_type_error("expected float but found Point",
+        assert_type_error("expected float but found test%.Point",
                           wrap_record[[ p.x = p ]])
-        assert_type_error("expected Point but found float",
+        assert_type_error("expected test.%Point but found float",
                           wrap_record[[ local p: Point = p.x ]])
+    end)
+
+    it("doesn't typecheck method that does not reference a record", function()
+        assert_type_error("record referenced by method declaration 'Point:foo' does not exist",
+                          [[
+                              function Point:foo()
+                              end
+                          ]])
+        assert_type_error("member referenced by method declaration 'Point:foo' is not a record",
+                          [[
+                              Point = 20
+                              function Point:foo()
+                              end
+                          ]])
+    end)
+
+    it("typechecks body of method declaration", function ()
+        assert_type_error("expected string but found integer", [[
+            record Foo end
+            function Foo:foo(): string
+                return 1
+            end
+        ]])
+    end)
+
+    it("binds self in method declaration", function ()
+        assert_type_check([[
+            record Point
+                x: integer
+                y: integer
+            end
+            function Point:move(dx: integer, dy: integer)
+                self.x = self.x + dx
+                self.y = self.y + dy
+            end
+        ]])
+        assert_type_error("expected string but found test%.Point", [[
+            record Point
+                x: integer
+                y: integer
+            end
+            function Point:foo(): string
+                return self
+            end
+        ]])
+    end)
+
+    it("doesn't typecheck duplicate method declaration", function()
+        assert_type_error("redeclaration of method 'Point:foo'",
+                          [[
+                              record Point end
+                              function Point:foo()
+                              end
+                              function Point:foo()
+                              end
+                          ]])
+    end)
+
+    it("uses external record type wrongly", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(p: f.Point): string
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("expected string but found float", err)
+    end)
+
+    it("uses external record type correctly", function ()
+        local modules = {
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(p: f.Point): float
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok)
+    end)
+
+    it("uses transitive external record type wrongly", function ()
+        local modules = {
+            baz = [[
+              local f = import "foo"
+              function baz(): f.Point
+                return f.Point.new(1,2)
+              end
+            ]],
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local b = import "baz"
+                function bar(): string
+                    local p = b.baz()
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("expected string but found float", err)
+    end)
+
+    it("uses transitive external record type correctly", function ()
+        local modules = {
+            baz = [[
+              local f = import "foo"
+              function baz(): f.Point
+                return f.Point.new(1,2)
+              end
+            ]],
+            foo = [[
+                record Point
+                  x: float
+                  y: float
+                end
+            ]],
+            bar = [[
+                local b = import "baz"
+                function bar(): float
+                    local p = b.baz()
+                    return p.x
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok, err)
+    end)
+
+    it("method can call another method of same record", function()
+        assert_type_check([[
+            record Rec
+            end
+
+            function Rec:fn1()
+              self:fn2()
+            end
+
+            function Rec:fn2()
+            end
+        ]])
+    end)
+
+    it("detects attempts to call non-methods", function()
+        assert_type_error("expected record in receiver of method call but found 'integer'", [[
+            function fn()
+                local i: integer = 0
+                i:m()
+            end
+        ]])
+        assert_type_error("method 'm' not found in record 'test.R'", [[
+            record R end
+            function fn(r: R)
+                r:m()
+            end
+        ]])
+        assert_type_error("record type 'test.R' in receiver of method call does not exist", [[
+            function fn(r: R)
+                r:m()
+            end
+        ]])
+    end)
+
+    it("catches call of external non-method", function ()
+        local modules = {
+            foo = [[
+                a: integer = 1
+                record R end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(r: f.R, p: f.P)
+                    r:m()
+                    p:m()
+                    f.a:m()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.falsy(ok)
+        assert.match("record type 'foo.P' in receiver of method call does not exist", err)
+        assert.match("method 'm' not found in record 'foo.R'", err)
+        assert.match("expected record in receiver of method call but found 'integer'", err)
+    end)
+
+    it("correctly uses external method", function ()
+        local modules = {
+            foo = [[
+                record R end
+                function R:a(): integer
+                    return 42
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(r: f.R): integer
+                    return r:a()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok, err)
+    end)
+
+    it("correctly uses transitive external method", function ()
+        local modules = {
+            baz = [[
+                record R end
+                function R:a(): integer
+                    return 42
+                end
+            ]],
+            foo = [[
+                local b = import "baz"
+                function f(): b.R
+                    return b.R.new()
+                end
+            ]],
+            bar = [[
+                local f = import "foo"
+                function bar(): integer
+                    local r = f.f()
+                    return r:a()
+                end
+            ]]
+        }
+        local ok, err, mods = run_checker_modules(modules, "bar")
+        assert.truthy(ok, err)
+    end)
+
+    it("methods cannot have two parameters with the same name", function()
+        assert_type_error("duplicate parameter", [[
+            record R end
+            function R:f(a: integer, a: integer)
+            end
+        ]])
+    end)
+
+    it("typechecks adjustment of argument lists in methods", function()
+        assert_type_check([[
+            record R end
+            function R:g(): (integer, string)
+                return 20, "foo"
+            end
+            function R:f(x: string, y: integer, z: string)
+            end
+            function R:h()
+                self:f("bar", self:g())
+            end
+        ]])
+    end)
+
+    it("catches methods called with wrong arity", function()
+        local cases = {{ code = [[
+            record R end
+            function R:g(): (integer, integer)
+                return 20, 30
+            end
+            function R:f(x: integer, y: integer, z: integer)
+            end
+            function R:h()
+                self:f(self:g())
+            end
+        ]], args = 2, params = 3 }, { code = [[
+            record R end
+            function R:g(): (integer, integer)
+                return 20, 30
+            end
+            function R:f(x: integer, y: integer, z: integer)
+            end
+            function R:h()
+                self:f(20, 30, self:g())
+            end
+        ]], args = 4, params = 3 }, { code = [[
+            record R end
+            function R:g(): (integer, integer)
+                return 20, 30
+            end
+            function R:f(x: integer, y: integer, z: integer)
+            end
+            function R:h()
+                self:f(20, (self:g()))
+            end
+        ]], args = 2, params = 3 }}
+        for _, c in ipairs(cases) do
+            local ok, err = run_checker(c.code)
+            assert.falsy(ok)
+            assert.match("method 'test.R:f' called with " .. c.args .. " arguments but expects " .. c.params, err)
+        end
+    end)
+
+    it("typechecks initializer list in record context", function ()
+        assert_type_check([[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, y = 2 }
+            end
+        ]])
+        assert_type_error("field 'z' not found in record type 'test.Point'", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, y = 2, z = 3 }
+            end
+        ]])
+        assert_type_error("field 'y' from record type 'test.Point' missing", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1 }
+            end
+        ]])
+        assert_type_error("missing field in initializer for record type 'test.Point'", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, 2 }
+            end
+        ]])
+        assert_type_error("expected float but found string", [[
+            record Point
+                x: float
+                y: float
+            end
+            function f()
+                local p: Point = { x = 1, y = "foo" }
+            end
+        ]])
     end)
 end)
 

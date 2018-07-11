@@ -6,7 +6,7 @@ local ctypes = require("c-parser.ctypes")
 local cdefines = require("c-parser.cdefines")
 
 function cdriver.process_file(filename)
-    local ctx, err = cpp.parse_file(filename)
+    local ctx, err = cpp.parse_file(filename, nil, nil)
     if not ctx then
         return nil, "failed preprocessing '"..filename.."': " .. err
     end
@@ -17,8 +17,6 @@ function cdriver.process_file(filename)
     if not res then
         return nil, ("failed parsing: %s:%d:%d: %s\n"):format(filename, line, col, err)
     end
-
-    res = cpp.remove_wrapping_subtables(res)
 
     local ffi_types, err = ctypes.register_types(res)
     if not ffi_types then

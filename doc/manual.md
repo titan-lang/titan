@@ -47,6 +47,16 @@ dynamically-typed Lua function from Titan, Titan will check whether the Lua
 function returned the correct types and number of arguments and it will raise a
 run-time error if it does not receive what it expected.
 
+If a module contains a function called `main` with the type signature
+`function({string): integer`, then the Titan module will be compiled as a
+stand-alone program, and the Titan compiler will attempt to link all its
+imported Titan modules statically. This main function will act as the entry
+point to the program: the input argument is an array of strings containing the
+command-line arguments, and the integer return value is the exit code of the
+program. Only one of the modules given to the Titan compiler may contain a
+main function. Any other functions called `main` with different type
+signatures do not qualify as main functions.
+
 #### Rules for function arity
 
 Arity rules for calling functions are strict: if you call a Titan function with
@@ -89,7 +99,7 @@ end
 ### Records
 
 Records types in Titan are nominal and should be declared in the top level.
-The following example declare a record `Point` with the fields `x` and `y`
+The following example declares a record `Point` with the fields `x` and `y`
 which are floats.
 
     record Point
@@ -97,20 +107,100 @@ which are floats.
         y: float
     end
 
-You can create records with initializer lists or using the `new` constructor.
-When using initializer lists, you must assign a value to each field of the
-record.
-The `Type.new()` constructor is automatically declared and receive a parameter
-for each field in the order they were declared.
-For instance, you could initialize an instance of the record `Point` with:
-`{ x = 3, y = 5 }`, `{ y = 5, x = 3 }` or `Point.new(3, 5)`.
-In all those cases, the field `x` will receive the value `3` and the field `y`,
-`5`.
-Like arrays constructors, Titan will try to locally infer the type of
-initializer lists.
+You can create records with record constructor expressions or using `new`.
+When using a constructor expression, you must assign a value to each field of the
+record, like `{ x = 2, y = 3 }` or `{ y = 3, x = 2 }` for the `Point` record
+shown above. 
 
-You can read and write from fields of a record instance using the dot operator
-`instance.field`. For example, `local x = p.x` and `p.y = 7`.
+Constructor expressions are only valid in a context that expects
+a record type, like the right-hand side of an assignment where the
+left-hand side has record type, as an argument for a parameter of
+record type, or in the right-hand side of a declaration that has
+been explicitly declared with a record type.
+
+For the `Point` record shown above, you can also use a `Point.new` constructor
+that takes two floats and returns an instance of `Point`, like this: `Point.new(2, 3)`.
+Parameters are positional: they correspond to the fields that you have declared,
+in the same order they appear. You can use a `new` constructor in the right-hand
+side of a declaration that does not have an explicit type, and Titan will infer
+the record type.
+
+You can read and write from fields of a record instance using the dot operator.
+For example, `local x = p.x` and `p.y = 7`, if `p` is an instance of the
+`Point` record type shown above.
+
+Record can have methods, declared with the following syntax:
+
+    function Point:move(dx: float, dy: float)
+        self.x = self.x + dx
+        self.y = self.y + dy
+    end
+
+Methods have an implicit `self` parameter that holds the receiver. You
+call a method with a colon expression, like `p:move(2, 3)`.
+
+Record types are always exported from the module. If you are importing
+a module that declares a record type `Point` and you have given the module
+a local name `mod`, you can use the record type `Point` in type declarations
+as `mod.Point`, and call its `new` constructor with `mod.Point.new`.
+
+You can send a record to Lua and then access its fields and call its
+methods from Lua normally. Lua can send the record back to Titan, as
+well. You can also call the `new` constructor of the record type from
+Lua, to instantiate records from the Lua side:
+
+    -- this is Lua code
+    local mod = require "titan_module"
+    local p = mod.Point.new(2, 3)
+    print(p.x, p.y)
+    p:move(4, 5)
+
+As nominal types, two records types are incompatible even if they have
+the same structure.
+
+### Maps
+
+Titan supports maps (also known as associative arrays). Map types in Titan are
+structural: you declare a map type by listing the type of keys and values. The
+following example declares a map with float keys and boolean arguments:
+
+    local my_map: {float: boolean} = {}
+
+If a map constructor is given, the type can be inferred:
+
+    local my_map = { [2.5] = true, [3.14] = false }
+
+Map constructors need to use the bracketed syntax for keys, even for string
+types. So a map with string keys can be declared like this:
+
+    local a_map = { ["foo"] = 12, ["bar"] = 13 }
+
+Maps can be indexed and assigned to:
+
+    local fs: {float: string} = {}
+    fs[1.5] = "foo "
+    fs[2.5] = "bar"
+    return fs[1.5] .. fs[2.5]
+
+All types other than `nil` can be used as keys, and all types can be used as
+values.
+
+You can send a map to Lua and then access its keys from Lua normally, where it
+will appear as a Lua table. Lua can send the map back to Titan, as well.
+
+    -- this is Titan code
+    function modify_map(m: {string:boolean}): {string:boolean}
+        m["hello"] = true
+        return m
+    end
+
+    -- this is Lua code
+    local mod = require "titan_module"
+    local t = { ["world"] = false }
+    local t2 = mod.modify_map(t)
+    assert(t == t2)
+    assert(t.hello == true)
+    assert(t.world == false)
 
 ### The `value` type
 
@@ -198,14 +288,17 @@ The Titan compiler translates a module name into a file name by converting
 all dots to path separators, and then appending `.so`, for binary modules, or
 `.titan`, for source modules, so the above three
 modules will correspond to `foo.{so|titan}`, `foo/bar.{so|titan}`, and `foo/bar/baz.{so|titan}`.
-The Titan compiler will recompile the module if its source is newer than its binary.
 
-Binary modules are looked up in the *runtime search path*, a semicolon-separated list
-of paths that defaults to `.;/usr/local/lib/titan/0.5`, but can be overriden with a
-`TITAN_PATH_0_5` or `TITAN_PATH` environment variable. Source modules are looked in
-the *source tree*, which defaults to the current working directory, but can be overriden
-with a command-line option to the Titan compiler. Generated binaries are always saved
-in the same path of the source.
+Source modules are looked up in
+the *source tree*, which defaults to the current working directory, but can be overridden
+with a command-line option to the Titan compiler. They are compiled statically
+with the Titan application or the binary module that is being generated.
+
+Binary modules are looked up at runtime in the *runtime search path*, a semicolon-separated list
+of paths that defaults to `.;/usr/local/lib/titan/0.5`, but can be overridden with a
+`TITAN_PATH_0_5` or `TITAN_PATH` environment variable. 
+
+Generated binaries are always saved in the same path of the source.
 
 The `<localname>` can be any valid identifier, and will be the prefix for accessing
 module variables and functions.
@@ -328,7 +421,11 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
 
     parlist ::= Name ':' type {',' Name ':' type}
 
-    type ::= value | integer | float | boolean | string | '{' type '}'
+    type ::= value | integer | float | boolean | string | array | map
+
+    array ::= '{' type '}'
+
+    map ::= '{' type ':' type '}'
 
     recordfields ::= recordfield {recordfield}
 
@@ -353,18 +450,24 @@ Here is the complete syntax of Titan in extended BNF. As usual in extended BNF, 
     explist ::= exp {',' exp}
 
     exp ::= nil | false | true | Numeral | LiteralString |
-        prefixexp | tableconstructor | exp binop exp | unop exp |
+        prefixexp | arrayconstructor | mapconstructor | exp binop exp | unop exp |
         exp as type
 
     prefixexp ::= var | functioncall | '(' exp ')'
 
     functioncall ::= prefixexp args
 
-    args ::= '(' [explist] ')' | tableconstructor | LiteralString
+    args ::= '(' [explist] ')' | arrayconstructor | mapconstructor | LiteralString
 
-    tableconstructor ::= '{' [fieldlist] '}'
+    arrayconstructor ::= '{' [arrayitemlist] '}'
 
-    fieldlist ::= exp {fieldsep exp} [fieldsep]
+    arrayitemlist ::= exp {fieldsep exp} [fieldsep]
+
+    mapconstructor ::= '{' [mapitemlist] '}'
+
+    mapitemlist ::= keyvalue {fieldsep keyvalue} [fieldsep]
+
+    keyvalue :== '[' exp ']' '=' exp
 
     fieldsep ::= ',' | ';'
 

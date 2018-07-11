@@ -28,6 +28,7 @@
 local c99 = {}
 
 local re = require("relabel")
+local typed = require("typed")
 
 local defs = {}
 
@@ -54,10 +55,16 @@ local function elem(xs, e)
     return false
 end
 
-defs["store_typedef"] = function(s, i, decl)
+defs["decl_func"] = typed("string, number, table -> boolean, Decl", function(_, _, decl)
+    typed.set_type(decl, "Decl")
+    return true, decl
+end)
+
+defs["decl_ids"] = typed("string, number, table -> boolean, Decl?", function(_, _, decl)
+    -- store typedef
     if elem(decl.spec, "typedef") then
         if not (decl.ids and decl.ids[1] and decl.ids[1].decl) then
-            return false
+            return false, nil
         end
         for _, id in ipairs(decl.ids) do
             local name = id.decl.name or id.decl.declarator.name
@@ -66,10 +73,11 @@ defs["store_typedef"] = function(s, i, decl)
             end
         end
     end
+    typed.set_type(decl, "Decl")
     return true, decl
-end
+end)
 
-defs["is_typedef"] = function(s, i, id)
+defs["is_typedef"] = function(_, _, id)
     --print("is " .. id .. " a typedef? " .. tostring(not not typedefs[id]))
     return typedefs[id], typedefs[id] and id
 end
@@ -77,6 +85,54 @@ end
 defs["empty_table"] = function()
     return true, {}
 end
+
+-- Flatten nested expression tables
+defs["nest_exp"] = typed("string, number, {Exp} -> boolean, Exp", function(_, _, exp)
+    typed.set_type(exp, "Exp")
+    if not exp.op then
+        return true, exp[1]
+    end
+    return true, exp
+end)
+
+-- Primary expression tables
+defs["prim_exp"] = typed("string, number, {string} -> boolean, Exp", function(_, _, exp)
+    typed.set_type(exp, "Exp")
+    return true, exp
+end)
+
+-- Type tables
+defs["type_exp"] = typed("string, number, table -> boolean, Exp", function(_, _, exp)
+    typed.check(exp[1], "Type")
+    typed.set_type(exp, "Exp")
+    return true, exp
+end)
+
+-- Types
+defs["type"] = typed("string, number, table -> boolean, Type", function(_, _, typ)
+    typed.set_type(typ, "Type")
+    return true, typ
+end)
+
+defs["join"] = typed("string, number, {array} -> boolean, array", function(_, _, xss)
+    -- xss[1] .. xss[2]
+    if xss[2] then
+        table.move(xss[2], 1, #xss[2], #xss[1] + 1, xss[1])
+    end
+    return true, xss[1] or {}
+end)
+
+defs["postfix"] = typed("string, number, table -> boolean, table", function(_, _, pf)
+    typed.check(pf[1], "Exp")
+    if pf.postfix ~= "" then
+        pf[1].postfix = pf.postfix
+    end
+    return true, pf[1]
+end)
+
+defs["litstruct"] = typed("string, number, number -> boolean, string", function(_, _, _)
+    return true, "litstruct"
+end)
 
 --==============================================================================
 -- Lexical Rules (used in both preprocessing and language processing)
@@ -86,7 +142,7 @@ local lexical_rules = [[--lpeg.re
 
 TRACE <- ({} => trace)
 
-EMPTY_TABLE <- ("" => empty_table)
+empty <- ("" => empty_table)
 
 --------------------------------------------------------------------------------
 -- Identifiers
@@ -95,7 +151,7 @@ IDENTIFIER <- { identifierNondigit (identifierNondigit / [0-9])* } _
 identifierNondigit <- [a-zA-Z_]
                     / universalCharacterName
 
-identifierList <- IDENTIFIER ("," _ IDENTIFIER)*
+identifierList <- {| IDENTIFIER ("," _ IDENTIFIER)* |}
 
 --------------------------------------------------------------------------------
 -- Universal Character Names
@@ -184,17 +240,17 @@ local common_expression_rules = [[--lpeg.re
 --------------------------------------------------------------------------------
 -- Common Expression Rules
 
-multiplicativeExpression <- {| castExpression           ({:op: [*/%]                     :} _ castExpression                        )* |}
-additiveExpression       <- {| multiplicativeExpression ({:op: [-+]                      :} _ multiplicativeExpression              )* |}
-shiftExpression          <- {| additiveExpression       ({:op: ("<<" / ">>")             :} _ additiveExpression                    )* |}
-relationalExpression     <- {| shiftExpression          ({:op: (">=" / "<=" / "<" / ">") :} _ shiftExpression                       )* |}
-equalityExpression       <- {| relationalExpression     ({:op: ("==" / "!=")             :} _ relationalExpression                  )* |}
-bandExpression           <- {| equalityExpression       ({:op: "&"                       :} _ equalityExpression                    )* |}
-bxorExpression           <- {| bandExpression           ({:op: "^"                       :} _ bandExpression                        )* |}
-borExpression            <- {| bxorExpression           ({:op: "|"                       :} _ bxorExpression                        )* |}
-andExpression            <- {| borExpression            ({:op: "&&"                      :} _ borExpression                         )* |}
-orExpression             <- {| andExpression            ({:op: "||"                      :} _ andExpression                         )* |}
-conditionalExpression    <- {| orExpression             ({:op: "?"                       :} _ expression ":" _ conditionalExpression)? |}
+multiplicativeExpression <- {| castExpression           ({:op: [*/%]                     :} _ castExpression                        )* |} => nest_exp
+additiveExpression       <- {| multiplicativeExpression ({:op: [-+]                      :} _ multiplicativeExpression              )* |} => nest_exp
+shiftExpression          <- {| additiveExpression       ({:op: ("<<" / ">>")             :} _ additiveExpression                    )* |} => nest_exp
+relationalExpression     <- {| shiftExpression          ({:op: (">=" / "<=" / "<" / ">") :} _ shiftExpression                       )* |} => nest_exp
+equalityExpression       <- {| relationalExpression     ({:op: ("==" / "!=")             :} _ relationalExpression                  )* |} => nest_exp
+bandExpression           <- {| equalityExpression       ({:op: "&"                       :} _ equalityExpression                    )* |} => nest_exp
+bxorExpression           <- {| bandExpression           ({:op: "^"                       :} _ bandExpression                        )* |} => nest_exp
+borExpression            <- {| bxorExpression           ({:op: "|"                       :} _ bxorExpression                        )* |} => nest_exp
+andExpression            <- {| borExpression            ({:op: "&&"                      :} _ borExpression                         )* |} => nest_exp
+orExpression             <- {| andExpression            ({:op: "||"                      :} _ andExpression                         )* |} => nest_exp
+conditionalExpression    <- {| orExpression             ({:op: "?"                       :} _ expression ":" _ conditionalExpression)? |} => nest_exp
 
 constantExpression <- conditionalExpression
 
@@ -214,12 +270,12 @@ translationUnit <- %s* {| externalDeclaration* |} "$EOF$"
 externalDeclaration <- functionDefinition
                      / declaration
 
-functionDefinition <- {| {:spec: {| declarationSpecifier+ |} :} {:func: declarator :} {:decls: declaration* :} {:code: compoundStatement :} |}
+functionDefinition <- {| {:spec: {| declarationSpecifier+ |} :} {:func: declarator :} {:decls: declaration* :} {:code: compoundStatement :} |} => decl_func
 
 --------------------------------------------------------------------------------
 -- Declarations
 
-declaration <- {| {:spec: {| declarationSpecifier+ |} :} ({:ids: initDeclarationList :})? gccExtensionSpecifier* ";" _ |} => store_typedef
+declaration <- {| {:spec: {| declarationSpecifier+ |} :} ({:ids: initDeclarationList :})? gccExtensionSpecifier* ";" _ |} => decl_ids
 
 declarationSpecifier <- storageClassSpecifier
                       / typeSpecifier
@@ -235,7 +291,7 @@ gccExtensionSpecifier <- "__attribute__" _ "(" _ "(" _ gccAttributeList ")" _ ")
 
 gccAsm <- "__asm__" _ "(" _ (STRING_LITERAL / ":" _ / expression)+ ")" _
 
-gccAttributeList <- gccAttributeItem ("," _ gccAttributeItem )*
+gccAttributeList <- {| gccAttributeItem ("," _ gccAttributeItem )* |}
 
 gccAttributeItem <- IDENTIFIER ("(" _ (expression ("," _ expression)*)? ")" _)?
                   / ""
@@ -276,22 +332,22 @@ structOrUnion <- { "struct" } _
 anonymousUnion <- {| {:type: {| {:type: { "union" } :} _ "{" _ {:fields: {| structDeclaration+ |} :} "}" _ |} :} |} ";" _
 
 structDeclaration <- anonymousUnion
-                   / {| {:type: {| specifierQualifier+ |} :} {:ids: {| structDeclaratorList |} :} |} ";" _
+                   / {| {:type: {| specifierQualifier+ |} :} {:ids: structDeclaratorList :} |} ";" _
 
 specifierQualifier <- typeSpecifier
                     / typeQualifier
 
-structDeclaratorList <- structDeclarator ("," _ structDeclarator)*
+structDeclaratorList <- {| structDeclarator ("," _ structDeclarator)* |}
 
 structDeclarator <- declarator? ":" _ constantExpression
                   / declarator
 
-enumSpecifier <- {| {:type: enum :} ({:id: IDENTIFIER :})? "{" _ {:values: {| enumeratorList |} :} ("," _)? "}" _ |}
+enumSpecifier <- {| {:type: enum :} ({:id: IDENTIFIER :})? "{" _ {:values: enumeratorList :} ("," _)? "}" _ |}
                / {| {:type: enum :}  {:id: IDENTIFIER :}                                                          |}
 
 enum <- { "enum" } _
 
-enumeratorList <- enumerator ("," _ enumerator)*
+enumeratorList <- {| enumerator ("," _ enumerator)* |}
 
 enumerator <- {| {:id: enumerationConstant :} ("=" _ {:value: constantExpression :})? |}
 
@@ -303,19 +359,20 @@ ddRec <- "[" _ {| {:idx: typeQualifier* assignmentExpression?          :} |} "]"
        / "[" _ {| {:idx: { "static" } _ typeQualifier* assignmentExpression :} |} "]" _ ddRec
        / "[" _ {| {:idx: typeQualifier+ { "static" } _ assignmentExpression :} |} "]" _ ddRec
        / "[" _ {| {:idx: typeQualifier* { "*" } _                           :} |} "]" _ ddRec
-       / "(" _ {:params: {| parameterTypeList |} :} ")" _ ddRec
-       / "(" _ {:params: {| identifierList?   |} :} ")" _ ddRec
+       / "(" _ {:params: parameterTypeList / empty :} ")" _ ddRec
+       / "(" _ {:params: identifierList / empty :} ")" _ ddRec
        / ""
 
 pointer <- {| ({ "*" } _ typeQualifier*)+ |}
 
-parameterTypeList <- parameterList ("," _ { "..." } _)?
+parameterTypeList <- {| parameterList "," _ {| { "..." } |} _ |} => join
+                   / parameterList
 
-parameterList <- parameterDeclaration ("," _ parameterDeclaration)*
+parameterList <- {| parameterDeclaration ("," _ parameterDeclaration)* |}
 
 parameterDeclaration <- {| {:param: {| {:type: {| declarationSpecifier+ |} :} {:id: (declarator / abstractDeclarator?) :} |} :} |}
 
-typeName <- specifierQualifier+ abstractDeclarator?
+typeName <- {| specifierQualifier+ abstractDeclarator? |} => type
 
 abstractDeclarator <- pointer? directAbstractDeclarator
                     / pointer
@@ -324,14 +381,14 @@ directAbstractDeclarator <- ("(" _ abstractDeclarator ")" _) directAbstractDecla
                           / directAbstractDeclarator2+
 directAbstractDeclarator2 <- "[" _ assignmentExpression? "]" _
                            / "[" _ "*" _ "]" _
-                           / "(" _ parameterTypeList? ")" _
+                           / "(" _ (parameterTypeList / empty) ")" _
 
 typedefName <- IDENTIFIER => is_typedef
 
 initializer <- assignmentExpression
-             / {| "{" _ initializerList ("," _)? "}" |} _
+             / "{" _ initializerList ("," _)? "}" _
 
-initializerList <- initializerList2 ("," _ initializerList2)*
+initializerList <- {| initializerList2 ("," _ initializerList2)* |}
 initializerList2 <- designation? initializer
 
 designation <- designator+ "=" _
@@ -379,14 +436,14 @@ jumpStatement <- "goto" _ IDENTIFIER ";" _
 -- Advanced Language Expression Rules
 -- (which require type names)
 
-postfixExpression <- {| "(" _ {:struct: typeName :} ")" _ "{" _ initializerList ("," _)? "}" _ peRec |}
-                   / {| primaryExpression peRec |}
+postfixExpression <- {| {:op: {} => litstruct :} "(" _ {:struct: typeName :} ")" _ "{" _ {:vals: initializerList :} ("," _)? "}" _ peRec |} => nest_exp
+                   / {| primaryExpression {:postfix: peRec :} |} => postfix
 
-sizeofOrPostfixExpression <- {| {:op: "sizeof" :} _ "(" _ typeName ")" _ |}
-                           / {| {:op: "sizeof" :} _ unaryExpression      |}
+sizeofOrPostfixExpression <- {| {:op: "sizeof" :} _ "(" _ typeName ")" _ |} => type_exp
+                           / {| {:op: "sizeof" :} _ unaryExpression |} => nest_exp
                            / postfixExpression
 
-castExpression <- "(" _ typeName ")" _ castExpression
+castExpression <- {| "(" _ typeName ")" _ castExpression |} => type_exp
                 / unaryExpression
 
 ]]
@@ -401,7 +458,7 @@ local language_expression_rules = [[--lpeg.re
 -- Language Expression Rules
 -- (rules which differ from preprocessing stage)
 
-expression <- {| assignmentExpression ("," _ assignmentExpression)* |}
+expression <- {| assignmentExpression ({:op: "," :} _ assignmentExpression)* |} => nest_exp
 
 constant <- ( FLOATING_CONSTANT
             / INTEGER_CONSTANT
@@ -409,23 +466,23 @@ constant <- ( FLOATING_CONSTANT
             / enumerationConstant
             )
 
-primaryExpression <- constant
-                   / IDENTIFIER
-                   / STRING_LITERAL+
+primaryExpression <- {| constant |} => prim_exp
+                   / {| IDENTIFIER |} => prim_exp
+                   / {| STRING_LITERAL+ |} => prim_exp
                    / "(" _ expression ")" _
 
 peRec <- {| "[" _ {:idx: expression :} "]" _ peRec |}
-       / {| "(" _ {:args: (argumentExpressionList / EMPTY_TABLE) :} ")" _ peRec |}
+       / {| "(" _ {:args: argumentExpressionList / empty :} ")"  _ peRec |}
        / {| "." _ {:dot: IDENTIFIER :} peRec |}
        / {| "->" _ {:arrow: IDENTIFIER :} peRec |}
-       / { "++" } _ peRec
-       / { "--" } _ peRec
+       / {| "++" _ peRec |}
+       / {| "--" _ peRec |}
        / ""
 
-argumentExpressionList <- assignmentExpression ("," _ assignmentExpression)*
+argumentExpressionList <- {| assignmentExpression ("," _ assignmentExpression)* |}
 
-unaryExpression <- {| {:preop: prefixOp :} unaryExpression     |}
-                 / {| {:unop: unaryOperator :} castExpression  |}
+unaryExpression <- {| {:op: prefixOp :} unaryExpression     |} => nest_exp
+                 / {| {:op: unaryOperator :} castExpression  |} => nest_exp
                  / sizeofOrPostfixExpression
 
 prefixOp <- { "++" } _
@@ -462,7 +519,7 @@ local simplified_language_expression_rules = [[--lpeg.re
 -- Simplified Language Expression Rules
 -- (versions that do not require knowledge of type names)
 
-postfixExpression <- {| primaryExpression peRec |}
+postfixExpression <- {| primaryExpression {:postfix: peRec :} |} => postfix
 
 sizeofOrPostfixExpression <- postfixExpression
 
@@ -476,34 +533,38 @@ castExpression <- unaryExpression
 
 local preprocessing_rules = [[--lpeg.re
 
-preprocessingLine <- _ ( "#" _ {| directive |} _
-                       / {| preprocessingTokens? |} _
-                       / "#" _ preprocessingTokens? _ -- non-directive, ignore
+preprocessingLine <- _ ( "#" _ directive _
+                       / "#" _ preprocessingTokenList? {| _ |} -- non-directive, ignore
+                       / preprocessingTokenList
+                       / empty
                        )
 
-preprocessingTokens <- {| (preprocessingToken _)+ |}
+preprocessingTokenList <- {| (preprocessingToken _)+ |}
 
-directive <- {:directive: "if"      :} S {:exp: preprocessingTokens :}
-           / {:directive: "ifdef"   :} S {:id: IDENTIFIER :}
-           / {:directive: "ifndef"  :} S {:id: IDENTIFIER :}
-           / {:directive: "elif"    :} S {:exp: preprocessingTokens :}
-           / {:directive: "else"    :}
-           / {:directive: "endif"   :}
-           / {:directive: "include" :} S {:exp: headerName :}
-           / {:directive: "define"  :} S {:id: IDENTIFIER :} "(" _ {:args: {| defineArgs |} :} _ ")" _ {:repl: replacementList :}
-           / {:directive: "define"  :} S {:id: IDENTIFIER :} _ {:repl: replacementList :}
-           / {:directive: "undef"   :} S {:id: IDENTIFIER :}
-           / {:directive: "line"    :} S {:line: preprocessingTokens :}
-           / {:directive: "error"   :} S {:error: preprocessingTokens? :}
-           / {:directive: "pragma"  :} S {:pragma: preprocessingTokens? :}
+directive <- {| {:directive: "if"      :} S {:exp: preprocessingTokenList :} |}
+           / {| {:directive: "ifdef"   :} S {:id: IDENTIFIER :} |}
+           / {| {:directive: "ifndef"  :} S {:id: IDENTIFIER :} |}
+           / {| {:directive: "elif"    :} S {:exp: preprocessingTokenList :} |}
+           / {| {:directive: "else"    :} |}
+           / {| {:directive: "endif"   :} |}
+           / {| {:directive: "include" :} S {:exp: headerName :} |}
+           / {| {:directive: "define"  :} S {:id: IDENTIFIER :} "(" _ {:args: defineArgList :} _ ")" _ {:repl: replacementList :} |}
+           / {| {:directive: "define"  :} S {:id: IDENTIFIER :} _ {:repl: replacementList :} |}
+           / {| {:directive: "undef"   :} S {:id: IDENTIFIER :} |}
+           / {| {:directive: "line"    :} S {:line: preprocessingTokenList :} |}
+           / {| {:directive: "error"   :} S {:error: preprocessingTokenList / empty :} |}
+           / {| {:directive: "error"   :} |}
+           / {| {:directive: "pragma"  :} S {:pragma: preprocessingTokenList / empty :} |}
            / gccDirective
            / ""
 
-gccDirective <- {:directive: "include_next" :} S {:exp: headerName :}
+gccDirective <- {| {:directive: "include_next" :} S {:exp: headerName :} |}
+              / {| {:directive: "warning" :} S {:exp: preprocessingTokenList / empty :} |}
 
-defineArgs <- { "..." }
-            / identifierList _ "," _ { "..." }
-            / identifierList?
+defineArgList <- {| { "..." } |}
+               / {| identifierList _ "," _ {| { "..." } |} |} => join
+               / identifierList
+               / empty
 
 replacementList <- {| (preprocessingToken _)* |}
 
@@ -515,6 +576,7 @@ preprocessingToken <- preprocessingNumber
 
 headerName <- {| {:mode: "<" -> "system" :} { (![%nl>] .)+ } ">" |}
             / {| {:mode: '"' -> "quote" :} { (![%nl"] .)+ } '"' |}
+            / {| IDENTIFIER |} -- macro
 
 preprocessingNumber <- { ("."? digit) ( digit
                                       / [eEpP] [-+]
@@ -560,17 +622,17 @@ constant <- FLOATING_CONSTANT
           / INTEGER_CONSTANT
           / CHARACTER_CONSTANT
 
-primaryExpression <- IDENTIFIER
-                   / constant
-                   / {| "(" _ expression _ ")" _ |}
+primaryExpression <- {| IDENTIFIER |} => prim_exp
+                   / {| constant |} => prim_exp
+                   / "(" _ expression _ ")" _
 
 postfixExpression <- primaryExpression peRec
-peRec <- "(" _ argumentExpressionList? ")" _ peRec
+peRec <- "(" _ (argumentExpressionList / empty) ")" _ peRec
        / ""
 
-argumentExpressionList <- {| { expression } ("," _ { expression } )* |}
+argumentExpressionList <- {| expression ("," _ expression )* |}
 
-unaryExpression <- {| {:op: unaryOperator :} {:exp: unaryExpression :} |}
+unaryExpression <- {| {:op: unaryOperator :} unaryExpression |} => nest_exp
                  / primaryExpression
 
 unaryOperator <- { [-+~!] } _

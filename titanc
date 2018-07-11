@@ -9,7 +9,8 @@ local driver = require 'titan-compiler.driver'
 local p = argparse('titan', 'Titan compiler')
 p:argument('module', 'Names of the modules to compile.'):args("+")
 p:flag('--print-ast', 'Print the AST.')
-p:option('-u --lua', 'Path to Lua source tree (to find Lua headers, defaults to "lua/src").')
+p:flag('-v --verbose', 'Be verbose about compiler invocations.')
+p:option('-u --lua', 'Path to Lua source tree (to find Lua headers, defaults to "lua-5.3.4/src").')
 p:option('-t --tree', 'Root of the source tree, used for looking for source modules (defaults to ".").')
 p:option('-l --link', 'Comma-separated list of additional libraries to link into module.')
 local args = p:parse()
@@ -24,25 +25,57 @@ driver.TITAN_SOURCE_PATH = args.tree or driver.TITAN_SOURCE_PATH
 driver.LUA_SOURCE_PATH = args.lua or driver.LUA_SOURCE_PATH
 
 local errors = {}
+local main_module = nil
+
+local modules = {}
 
 for _, modname in ipairs(args.module) do
-    local ok, errs = checker.checkimport(modname, driver.defaultloader)
+    local static_deps = {}
+    local ok, errs = checker.checkimport(modname, driver.defaultloader(static_deps))
+    modules[modname] = static_deps
     if not ok then 
         table.insert(errors, errs)
     else
         if #errs > 0 then table.insert(errors, table.concat(errs, "\n")) end
         local ast = driver.imported[modname].ast
+        if ast and checker.has_main(ast) then
+            if main_module then
+                table.insert(errors, modname .. ": multiple main functions found (already declared in " .. main_module ..")")
+            else
+                main_module = modname
+            end
+        end
         if args.print_ast and ast then
             print(parser.pretty_print_ast(ast))
         end
     end
 end
 
-if #errors > 0 then exit(table.concat(errors, "\n")) end
+local libnames = {}
 
 for name, mod in pairs(driver.imported) do
-    local ok, err = driver.compile_module(name, mod, args.link)
-    if not ok then table.insert(errors, err) end
+    local ok, err, libname = driver.compile_module(name, mod, modules[name], args.verbose)
+    if not ok then
+        table.insert(errors, err)
+    else
+        libnames[name] = libname
+    end
+end
+
+if main_module then
+    local ofiles = {}
+    for _, ofile in pairs(libnames) do
+        table.insert(ofiles, ofile)
+    end
+    driver.compile_program(main_module, ofiles, args.link, args.verbose)
+else
+    for modname, depset in pairs(modules) do
+        local ofiles = {}
+        for modname, _ in pairs(depset) do
+            table.insert(ofiles, libnames[modname])
+        end
+        local ok, err = driver.compile_library(modname, ofiles, args.link, args.verbose)
+    end
 end
 
 if #errors > 0 then exit(table.concat(errors, "\n")) end

@@ -225,14 +225,35 @@ function defs.exp_is_call(_, pos, exp)
     end
 end
 
+function defs.recorddecl(pos, name, fields)
+    local params, initlist = {}, {}
+    for _, field in ipairs(fields) do
+        table.insert(params, ast.Decl(field.loc, field.name, field.type))
+        table.insert(initlist, ast.Field(field.loc, field.name,
+            ast.ExpVar(field.loc, ast.VarName(field.loc, field.name))))
+    end
+    local body = ast.StatBlock(pos, {
+        ast.StatReturn(pos, {
+            ast.ExpInitList(pos, initlist)
+        })
+    })
+    return ast.TopLevelRecord(pos, name, fields),
+           ast.TopLevelStatic(pos, name, "new", params, { ast.TypeName(pos, name) }, body)
+end
+
 local grammar = re.compile([[
 
     program         <-  SKIP*
-                        {| ( toplevelfunc
+                        {| ( method
+                           / toplevelfunc
                            / toplevelvar
                            / toplevelrecord
                            / import
                            / foreign )* |} (!. / %{EndInput})
+
+    method          <- (P  FUNCTION NAME COLON NAME^NameMethod
+                           LPAREN^LParPList paramlist RPAREN^RParPList
+                           rettypeopt block END^EndFunc)         -> TopLevelMethod
 
     toplevelfunc    <- (P  localopt FUNCTION NAME^NameFunc
                            LPAREN^LParPList paramlist RPAREN^RParPList
@@ -242,8 +263,9 @@ local grammar = re.compile([[
                            !(IMPORT / FOREIGN)
                            exp^ExpVarDec)                        -> TopLevelVar
 
-    toplevelrecord  <- (P  RECORD NAME^NameRecord recordfields^FieldRecord
-                           END^EndRecord)                        -> TopLevelRecord
+    toplevelrecord  <- (P  RECORD NAME^NameRecord
+                           recordfields^FieldRecord
+                           END^EndRecord)                        -> recorddecl
 
     localopt        <- (LOCAL)?                                  -> boolopt
 
@@ -274,7 +296,12 @@ local grammar = re.compile([[
                      / (P  FLOAT)                                -> TypeFloat
                      / (P  STRING)                               -> TypeString
                      / (P  VALUE)                                -> TypeValue
+                     / (P  NAME DOT NAME^QualName)               -> TypeQualName
                      / (P  NAME)                                 -> TypeName
+                     / (P  LCURLY type^TypeType
+                           COLON
+                           type^TypeType
+                           RCURLY^RCurlyType)                    -> TypeMap
                      / (P  LCURLY type^TypeType
                            RCURLY^RCurlyType)                    -> TypeArray
 
@@ -295,7 +322,7 @@ local grammar = re.compile([[
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / simpletype
 
-    recordfields    <- {| recordfield+ |}                        -- produces {Decl}
+    recordfields    <- {| recordfield* |}                        -- produces {Decl}
 
     recordfield     <- (P  NAME COLON^ColonRecordField
                            type^TypeRecordField SEMICOLON?)      -> Decl
@@ -406,7 +433,11 @@ local grammar = re.compile([[
                           !RCURLY %{ExpFieldList}))*
                         fieldsep?)                          -- produces Field...
 
-    field           <- (P  (NAME ASSIGN)? -> opt exp)       -> Field
+    field           <- (P  (key ASSIGN)? -> opt exp)       -> Field
+
+    key             <- NAME
+                     / LBRACKET exp^ExpExpSuf
+                                RBRACKET^RBracketExpSuf
 
     fieldsep        <- SEMICOLON / COMMA
 

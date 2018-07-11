@@ -11,6 +11,7 @@ describe("Titan types", function()
     it("checks if a type is garbage collected", function()
         assert.truthy(types.is_gc(types.String()))
         assert.truthy(types.is_gc(types.Array(types.Integer())))
+        assert.truthy(types.is_gc(types.Map(types.Integer(), types.Integer())))
         assert.truthy(types.is_gc(types.Function({}, {}, false)))
     end)
 

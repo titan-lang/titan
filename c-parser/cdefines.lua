@@ -3,6 +3,7 @@ local cdefines = {}
 
 local c99 = require("c-parser.c99")
 local cpp = require("c-parser.cpp")
+local typed = require("typed")
 
 local function add_type(lst, name, typ)
     lst[name] = typ
@@ -57,24 +58,24 @@ local bitop_set = {
 }
 
 -- Best-effort assessment of the type of a #define
-local function get_type_of_exp(exp, lst)
-    if type(exp) == "string" then
-        if exp:sub(1,1) == '"' or exp:sub(1,2) == 'L"' then
+local get_type_of_exp
+get_type_of_exp = typed("Exp, TypeList -> {string}?", function(exp, lst)
+    if type(exp[1]) == "string" and exp[2] == nil then
+        local val = exp[1]
+        if val:sub(1,1) == '"' or val:sub(1,2) == 'L"' then
             return base_c_types.CONST_CHAR_PTR
-        elseif exp:sub(1,1) == "'" or exp:sub(1,2) == "L'" then
+        elseif val:sub(1,1) == "'" or val:sub(1,2) == "L'" then
             return base_c_types.CONST_CHAR
-        elseif exp:match("^[0-9]*LL$") then
+        elseif val:match("^[0-9]*LL$") then
             return base_c_types.LONG_LONG
-        elseif exp:match("^[0-9]*L$") then
+        elseif val:match("^[0-9]*L$") then
             return base_c_types.LONG
-        elseif exp:match("%.") then
+        elseif val:match("%.") then
             return base_c_types.DOUBLE
         else
             return base_c_types.INT
         end
     end
-
-    assert(type(exp) == "table")
 
     if type(exp[1]) == "string" and exp[2] and exp[2].args then
         local fn = lst[exp[1]]
@@ -88,7 +89,7 @@ local function get_type_of_exp(exp, lst)
     if exp.unop == "*" then
         local etype = get_type_of_exp(exp[1], lst)
         if not etype then
-            return
+            return nil
         end
         local rem = table.remove(etype)
         assert(rem == "*")
@@ -97,16 +98,23 @@ local function get_type_of_exp(exp, lst)
         return get_type_of_exp(exp[1], lst)
     elseif exp.op == "?" then
         return get_type_of_exp(exp[2], lst)
+    elseif exp.op == "," then
+        return get_type_of_exp(exp[#exp], lst)
     elseif binop_set[exp.op] then
         local e1 = get_type_of_exp(exp[1], lst)
         if not e1 then
-            return
+            return nil
         end
-        local e2 = get_type_of_exp(exp[2], lst)
-        if not e2 then
-            return
+        -- some binops are also unops (e.g. - and *)
+        if exp[2] then
+            local e2 = get_type_of_exp(exp[2], lst)
+            if not e2 then
+                return nil
+            end
+            return get_binop_type(e1, e2)
+        else
+            return e1
         end
-        return get_binop_type(e1, e2)
     elseif relop_set[exp.op] then
         return base_c_types.INT
     elseif bitop_set[exp.op] then
@@ -114,7 +122,8 @@ local function get_type_of_exp(exp, lst)
     elseif exp.op then
         print("FIXME unsupported op", exp.op)
     end
-end
+    return nil
+end)
 
 function cdefines.register_define(lst, name, text, define_set)
     local exp, err, line, col = c99.match_language_expression_grammar(text .. " ")
@@ -123,8 +132,7 @@ function cdefines.register_define(lst, name, text, define_set)
         -- print(("failed parsing: %d:%d: %s\n"):format(line, col, text))
         return
     end
-    exp = cpp.remove_wrapping_subtables(exp)
-    local typ = get_type_of_exp(exp, lst, name, define_set)
+    local typ = get_type_of_exp(exp, lst)
     if typ then
         add_type(lst, name, { type = typ })
     end

@@ -27,6 +27,15 @@ function checker.typeerror(errors, loc, fmt, ...)
     table.insert(errors, errmsg)
 end
 
+-- Checks if a nominal type 'type' is valid
+local function checktype(type, loc, errors)
+    if type._tag == "Type.Nominal" and
+        not types.registry[type.fqtn] then
+        checker.typeerror(errors, loc,
+            "invalid type '%s' in type declaration", type.fqtn)
+    end
+end
+
 -- Checks if two types are the same, and logs an error message otherwise
 --   term: string describing what is being compared
 --   expected: type that is expected
@@ -39,6 +48,11 @@ local function checkmatch(term, expected, found, errors, loc)
         msg = string.format(msg, term, types.tostring(expected), types.tostring(found))
         checker.typeerror(errors, loc, msg)
     end
+end
+
+local function invalid(errors, loc, ...)
+    checker.typeerror(errors, loc, ...)
+    return types.Invalid()
 end
 
 -- Converts an AST type declaration into a typechecker type
@@ -71,23 +85,25 @@ typefromnode = util.make_visitor({
     end,
 
     ["Ast.TypeName"] = function(node, st, errors)
-        local name = node.name
-        local sym = st:find_symbol(name)
-        if sym then
-            if sym._type._tag == "Type.Type" then
-                return sym._type.type
-            else
-                checker.typeerror(errors, node.loc, "%s isn't a type", name)
-                return types.Invalid()
-            end
-        else
-            checker.typeerror(errors, node.loc, "type '%s' not found", name)
-            return types.Invalid()
+        return types.Nominal(st.modname .. "." .. node.name)
+    end,
+
+    ["Ast.TypeQualName"] = function(node, st, errors)
+        local mod = st:find_symbol(node.module)
+        if mod and mod._type._tag == "Type.Module" then
+            local fqtn = mod._type.name .. "." .. node.name
+            return types.Nominal(fqtn)
         end
+        return invalid(errors, node.loc, "module '%s' referenced by type not found", node.module)
     end,
 
     ["Ast.TypeArray"] = function(node, st, errors)
         return types.Array(typefromnode(node.subtype, st, errors))
+    end,
+
+    ["Ast.TypeMap"] = function(node, st, errors)
+        return types.Map(typefromnode(node.keystype, st, errors),
+                         typefromnode(node.valuestype, st, errors))
     end,
 
     ["Ast.TypeFunction"] = function(node, st, errors)
@@ -138,6 +154,7 @@ end
 
 checkdecl = function(node, st, errors)
     node._type = node._type or typefromnode(node.type, st, errors)
+    checktype(node._type, node.loc, errors)
 end
 
 local function declare(node, st)
@@ -394,9 +411,8 @@ checkvar = util.make_visitor({
     ["Ast.VarName"] = function(node, st, errors, context)
         local decl = st:find_symbol(node.name)
         if not decl then
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "variable '%s' not declared", node.name)
-            node._type = types.Invalid()
         else
             node._decl = decl
             node._type = decl._type
@@ -404,79 +420,142 @@ checkvar = util.make_visitor({
     end,
 
     ["Ast.VarDot"] = function(node, st, errors)
-        local var = assert(node.exp.var, "left side of dot is not var")
-        checkvar(var, st, errors)
-        node.exp._type = var._type
-        local vartype = var._type
-        if vartype._tag == "Type.Module" or vartype._tag == "Type.ForeignModule" then
-            local mod = vartype
+        if node.exp._tag == "Ast.ExpVar" and
+          (node.exp.var._tag == "Ast.VarName" or (node.exp.var._tag == "Ast.VarDot" and
+              node.exp.var.exp._tag == "Ast.ExpVar" and
+              node.exp.var.exp.var._tag == "Ast.VarName" and
+              node.name == "new")) then
+            checkvar(node.exp.var, st, errors)
+            if node.exp.var._decl then node.exp.var._decl._used = true end
+            node.exp._type = node.exp.var._type
+        else
+            checkexp(node.exp, st, errors)
+        end
+        local ltype = node.exp._type
+        if ltype._tag == "Type.Module" or ltype._tag == "Type.ForeignModule" then
+            local mod = ltype
             if not mod.members[node.name] then
-                checker.typeerror(errors, node.loc,
-                    "variable '%s' not found inside module '%s'",
+                node._type = invalid(errors, node.loc,
+                    "member '%s' not found inside module '%s'",
                     node.name, mod.name)
             else
-                local decl = mod.members[node.name]
+                node._decl = mod.members[node.name]
+                node._type = node._decl.type
+            end
+        elseif ltype._tag == "Type.Record" then
+            local decl = ltype.functions[node.name]
+            if decl then
                 node._decl = decl
-                node._type = decl
-            end
-        elseif vartype._tag == "Type.Type" then
-            local typ = vartype.type
-            if typ._tag == "Type.Record" then
-                if node.name == "new" then
-                    local params = {}
-                    for _, field in ipairs(typ.fields) do
-                        table.insert(params, field.type)
-                    end
-                    node._decl = typ
-                    node._type = types.Function(params, {typ}, false)
-                else
-                    checker.typeerror(errors, node.loc,
-                        "trying to access invalid record member '%s'", node.name)
-                end
+                node._type = types.Function(decl.params, decl.rettypes, false)
             else
-                checker.typeerror(errors, node.loc,
-                    "invalid access to type '%s'", types.tostring(type))
+                node._type = invalid(errors, node.loc,
+                    "trying to access invalid record function '%s'", node.name)
             end
-        elseif vartype._tag == "Type.Record" then
-            for _, field in ipairs(vartype.fields) do
-                if field.name == node.name then
-                    node._type = field.type
-                    break
+        elseif ltype._tag == "Type.Nominal" then
+            local type = types.registry[ltype.fqtn]
+            if not type then
+                node._type = invalid(errors, node.loc,
+                    "type '%s' not found", ltype.fqtn)
+            elseif type._tag ~= "Type.Record" then
+                node._type = invalid(errors, node.loc,
+                    "trying to access field '%s' of type '%s' that is not a record but '%s'",
+                    node.name, ltype.fqtn, type._tag)
+            else
+                for _, field in ipairs(type.fields) do
+                    if field.name == node.name then
+                        node._decl = field
+                        node._type = field.type
+                        break
+                    end
                 end
-            end
-            if not node._type then
-                checker.typeerror(errors, node.loc,
-                    "field '%s' not found in record '%s'",
-                    node.name, vartype.name)
+                if not node._type then
+                    node._type = invalid(errors, node.loc,
+                        "field '%s' not found in record '%s'",
+                        node.name, ltype.fqtn)
+                end
             end
         else
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "trying to access a member of value of type '%s'",
-                types.tostring(vartype))
+                types.tostring(ltype))
         end
-        node._type = node._type or types.Invalid()
     end,
 
     ["Ast.VarBracket"] = function(node, st, errors, context)
-        checkexp(node.exp1, st, errors, context and types.Array(context))
-        if node.exp1._type._tag ~= "Type.Array" then
-            checker.typeerror(errors, node.exp1.loc,
-                "array expression in indexing is not an array but %s",
-                types.tostring(node.exp1._type))
-            node._type = types.Invalid()
-        else
+        checkexp(node.exp1, st, errors)
+        local keystype, term
+        if node.exp1._type._tag == "Type.Array" then
             node._type = node.exp1._type.elem
+            keystype = types.Integer()
+            term = "array indexing"
+        elseif node.exp1._type._tag == "Type.Map" then
+            node._type = node.exp1._type.values
+            keystype = node.exp1._type.keys
+            term = "map indexing"
+        else
+            node._type = invalid(errors, node.exp1.loc,
+                "expression in indexing is not an array or map but %s",
+                types.tostring(node.exp1._type))
+            return
         end
-        checkexp(node.exp2, st, errors, types.Integer())
-        -- always try to coerce index to integer
-        node.exp2 = trycoerce(node.exp2, types.Integer(), errors)
-        checkmatch("array indexing", types.Integer(), node.exp2._type, errors, node.exp2.loc)
+
+        checkexp(node.exp2, st, errors, keystype)
+        -- always try to coerce index key to key type
+        node.exp2 = trycoerce(node.exp2, keystype, errors)
+        checkmatch(term, keystype, node.exp2._type, errors, node.exp2.loc)
     end,
 })
 
 --
 -- Exp
 --
+
+-- Returns best guess of expression name
+local function expname(node)
+    if node._tag == "Ast.ExpVar" then
+        if node.var._tag == "Ast.VarName" then
+            return node.var.name
+        elseif node.var._tag == "Ast.VarDot" then
+            return expname(node.var.exp) .. "." .. node.var.name
+        else
+            return "(expression)"
+        end
+    else
+        return "(expression)"
+    end
+end
+
+-- Typechecks and argument list for a function or method call
+local function checkargs(ftype, args, loc, fname, st, errors)
+    local nparams = #ftype.params
+    local nargs = #args
+    local lastarg = args[nargs]
+    for i = 1, nargs do
+        local arg = args[i]
+        local ptype = ftype.params[i]
+        checkexp(arg, st, errors, ptype)
+        ptype = ptype or arg._type
+        args[i] = trycoerce(args[i], ptype, errors)
+        local atype = args[i]._type
+        checkmatch("argument " .. i .. " of call to " .. fname, ptype, atype, errors, arg.loc)
+    end
+    if lastarg and lastarg._types then
+        for i = 2, #lastarg._types do
+            local pidx = nargs + i - 1
+            local ptype = ftype.params[pidx]
+            local exp = ast.ExpExtra(lastarg.loc, lastarg, i, lastarg._types[i])
+            ptype = ptype or exp._type
+            exp = trycoerce(exp, ptype, errors)
+            table.insert(args, exp)
+            checkmatch("argument " .. pidx .. " of call to " .. fname, ptype, exp._type, errors, exp.loc)
+        end
+    end
+    if not (#args == nparams or (ftype.vararg and #args > nparams)) then
+        checker.typeerror(errors, loc,
+            "%s called with %d arguments but expects %d.\n%s",
+            fname, #args, nparams, types.tostring(ftype))
+    end
+end
 
 -- Typechecks an expression
 --   node: Exp_* AST node
@@ -506,35 +585,177 @@ checkexp = util.make_visitor({
     end,
 
     ["Ast.ExpInitList"] = function(node, st, errors, context)
-        local econtext = context and context.elem
-        local etypes = {}
-        local isarray = true
-        for _, field in ipairs(node.fields) do
-            local exp = field.exp
-            checkexp(exp, st, errors, econtext)
-            table.insert(etypes, exp._type)
-            isarray = isarray and not field.name
-        end
-        local lastfield = node.fields[#node.fields]
-        if lastfield and not lastfield.name and lastfield.exp._types and #lastfield.exp._types > 1 then
-            for i = 2, #lastfield.exp._types do
-                table.insert(node.fields,
-                    ast.Field(lastfield.loc, nil,
-                        ast.ExpExtra(lastfield.loc, lastfield.exp,
-                            i, lastfield.exp._types[i])))
+        local expected = context and context._tag
+        if not expected then
+            -- try to detect from contents
+            local elem = node.fields[1]
+            if elem then
+                if elem.name and type(elem.name) == "table" then
+                    expected = "Type.Map"
+                elseif elem.name and type(elem.name) == "string" then
+                    expected = "Type.Nominal"
+                end
+            end
+            -- fall back to array if not detected otherwise
+            if not expected then
+                expected = "Type.Array"
             end
         end
-        if isarray then
+
+        if expected == "Type.Array" then
+            local econtext = context and context.elem
+            local etypes = {}
+            for _, field in ipairs(node.fields) do
+                if field.name then
+                    checker.typeerror(errors, field.loc,
+                        "initializing field '%s' when expecting array", field.name)
+                    checkexp(field.exp, st, errors)
+                else
+                    local exp = field.exp
+                    checkexp(exp, st, errors, econtext)
+                    table.insert(etypes, exp._type)
+                end
+            end
+
+            -- adjust last entry if it's a function call that expands to multiple values
+            -- e.g. { 1, 2, f() }
+            local lastfield = node.fields[#node.fields]
+            if lastfield and not lastfield.name and lastfield.exp._types and #lastfield.exp._types > 1 then
+                for i = 2, #lastfield.exp._types do
+                    table.insert(node.fields,
+                        ast.Field(lastfield.loc, nil,
+                            ast.ExpExtra(lastfield.loc, lastfield.exp,
+                                i, lastfield.exp._types[i])))
+                end
+            end
+
             local etype = econtext or etypes[1] or types.Integer()
             node._type = types.Array(etype)
             for i, field in ipairs(node.fields) do
-                field.exp = trycoerce(field.exp, etype, errors)
-                local exp = field.exp
-                checkmatch("array initializer at position " .. i, etype,
-                           exp._type, errors, exp.loc)
+                if not field.name then
+                    field.exp = trycoerce(field.exp, etype, errors)
+                    local exp = field.exp
+                    checkmatch("array initializer at position " .. i, etype,
+                               exp._type, errors, exp.loc)
+                end
+            end
+        elseif expected == "Type.Map" then
+            local kcontext = context and context.keys
+            local vcontext = context and context.values
+            local ktypes = {}
+            local vtypes = {}
+            for _, field in ipairs(node.fields) do
+                if type(field.name) == "string" then
+                    checker.typeerror(errors, field.loc,
+                        "initializing field '%s' when expecting map", field.name)
+                    checkexp(field.exp, st, errors)
+                else
+                    local kexp = field.name
+                    checkexp(kexp, st, errors, kcontext)
+                    table.insert(ktypes, kexp._type)
+
+                    local vexp = field.exp
+                    checkexp(vexp, st, errors, vcontext)
+                    table.insert(vtypes, vexp._type)
+                end
+            end
+
+            local ktype = kcontext or ktypes[1]
+            local vtype = vcontext or vtypes[1]
+            node._type = types.Map(ktype, vtype)
+            for i, field in ipairs(node.fields) do
+                if not field.name then
+                    field.name = trycoerce(field.name, ktype, errors)
+                    local kexp = field.name
+                    checkmatch("map key initializer at position " .. i, ktype,
+                               kexp._type, errors, kexp.loc)
+
+                    field.exp = trycoerce(field.exp, vtype, errors)
+                    local vexp = field.exp
+                    checkmatch("map value initializer at position " .. i, vtype,
+                               vexp._type, errors, vexp.loc)
+                end
+            end
+        elseif expected == "Type.Nominal" then
+            if not context then
+                node._type = invalid(errors, node.loc,
+                    "no context to provide type for record constructor")
+                for _, field in ipairs(node.fields) do
+                    checkexp(field.exp, st, errors)
+                end
+            elseif not types.registry[context.fqtn] then
+                node._type = invalid(errors, node.loc,
+                    "record type '%s' in context of record constructor does not exist",
+                    types.tostring(context))
+                for _, field in ipairs(node.fields) do
+                    checkexp(field.exp, st, errors)
+                end
+            else
+                local record = types.registry[context.fqtn]
+                for _, cfield in ipairs(node.fields) do
+                    local found
+                    for _, rfield in ipairs(record.fields) do
+                        if rfield.name == cfield.name then
+                            found = rfield
+                        end
+                    end
+                    if not found then
+                        if cfield.name then
+                            checker.typeerror(errors, cfield.loc,
+                                "field '%s' not found in record type '%s'",
+                                cfield.name, types.tostring(context))
+                        else
+                            checker.typeerror(errors, cfield.loc,
+                                "missing field in initializer for record type '%s'",
+                                types.tostring(context))
+                        end
+                        checkexp(cfield.exp, st, errors)
+                    else
+                        checkexp(cfield.exp, st, errors, found.type)
+                        cfield.exp = trycoerce(cfield.exp, found.type, errors)
+                        checkmatch("field " .. cfield.name,
+                            found.type, cfield.exp._type, errors, cfield.loc)
+                        cfield._field = found
+                    end
+                end
+                for _, rfield in ipairs(record.fields) do
+                    local found
+                    for _, cfield in ipairs(node.fields) do
+                        if rfield.name == cfield.name then
+                            found = cfield
+                        end
+                    end
+                    if not found then
+                        checker.typeerror(errors, node.loc,
+                            "field '%s' from record type '%s' missing in constructor",
+                            rfield.name, types.tostring(context))
+                    end
+                end
+                node._type = types.Nominal(context.fqtn)
             end
         else
-            node._type = types.InitList(etypes)
+            local isarray = true
+            local ismap = false
+            local ktype = types.Integer()
+            local vtype = types.Integer()
+            for _, field in ipairs(node.fields) do
+                checkexp(field.exp, st, errors)
+                vtype = field.exp._type
+                isarray = isarray and not field.name
+                if type(field.name) == "table" then
+                    checkexp(field.name, st, errors)
+                    ktype = field.name._type
+                    ismap = true
+                end
+            end
+            if ismap then
+                node._type = types.Map(ktype, vtype)
+            elseif isarray then
+                node._type = types.Array(vtype)
+            else
+                node._type = invalid(errors, node.loc,
+                    "no context to provide type for record constructor")
+            end
         end
     end,
 
@@ -543,14 +764,16 @@ checkexp = util.make_visitor({
         if node.var._decl then node.var._decl._used = true end
         local texp = node.var._type
         if texp._tag == "Type.Module" then
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "trying to access module '%s' as a first-class value",
                 node.var.name)
-            node._type = types.Invalid()
         elseif texp._tag == "Type.Function" then
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "trying to access a function as a first-class value")
-            node._type = types.Invalid()
+        elseif texp._tag == "Type.Record" then
+            node._type = invalid(errors, node.loc,
+                "trying to access record type '%s' as a first-class value",
+                texp.name)
         else
             node._type = texp
         end
@@ -717,7 +940,7 @@ checkexp = util.make_visitor({
                 node._type = types.Integer()
             else
                 -- error
-                node._type = types.Invalid()
+                node._type = invalid(errors, loc, "invalid types in arithmetic expression")
             end
         elseif op == "/" or op == "^" then
             if tlhs._tag == "Type.Integer" then
@@ -793,52 +1016,82 @@ checkexp = util.make_visitor({
     end,
 
     ["Ast.ExpCall"] = function(node, st, errors, context)
-        assert(node.exp._tag == "Ast.ExpVar", "function calls are first-order only!")
-        local var = node.exp.var
-        checkvar(var, st, errors)
-        node.exp._type = var._type
-        local fname = var._tag == "Ast.VarName" and var.name or (var.exp.var.name .. "." .. var.name)
-        if var._type._tag == "Type.Function" then
-            local ftype = var._type
-            local nparams = #ftype.params
-            local args = node.args.args
-            local nargs = #args
-            local lastarg = args[nargs]
-            for i = 1, nargs do
-                local arg = args[i]
-                local ptype = ftype.params[i]
-                checkexp(arg, st, errors, ptype)
-                ptype = ptype or arg._type
-                args[i] = trycoerce(args[i], ptype, errors)
-                local atype = args[i]._type
-                checkmatch("argument " .. i .. " of call to function '" .. fname .. "'", ptype, atype, errors, arg.loc)
+        if node.exp._tag == "Ast.ExpVar" then
+            local var = node.exp.var
+            checkvar(var, st, errors)
+            if var._decl then var._decl._used = true end
+            node.exp._type = var._type
+        else
+            checkexp(node.exp, st, errors)
+        end
+        if node.args._tag == "Ast.ArgsFunc" then
+            local ftype = node.exp._type
+            if ftype._tag == "Type.Invalid" then
+                node._type = ftype
+                return
             end
-            if lastarg and lastarg._types then
-                for i = 2, #lastarg._types do
-                    local pidx = nargs + i - 1
-                    local ptype = ftype.params[pidx]
-                    local exp = ast.ExpExtra(lastarg.loc, lastarg, i, lastarg._types[i])
-                    ptype = ptype or exp._type
-                    exp = trycoerce(exp, ptype, errors)
-                    table.insert(args, exp)
-                    checkmatch("argument " .. pidx .. " of call to function '" .. fname .. "'", ptype, exp._type, errors, exp.loc)
-                end
-            end
-            if not (#args == nparams or (ftype.vararg and #args > nparams)) then
+            local fname = expname(node.exp)
+            local var = node.exp.var
+            if not (var and var._decl and (var._decl._tag == "Ast.TopLevelFunc" or
+              var._decl._tag == "Type.ModuleMember" or
+              var._decl._tag == "Type.StaticMethod")) then
                 checker.typeerror(errors, node.loc,
-                    "function %s called with %d arguments but expects %d.\n%s",
-                    fname, #args, nparams, types.tostring(ftype))
+                    "first-class functions are not supported in this version of Titan")
             end
+            if ftype._tag ~= "Type.Function" then
+                node._type = invalid(errors, node.loc,
+                    "'%s' is not a function but %s",
+                    fname, types.tostring(ftype))
+                for _, arg in ipairs(node.args.args) do
+                    checkexp(arg, st, errors)
+                end
+                return
+            end
+            checkargs(ftype, node.args.args, node.loc,
+                "function '" .. fname .. "'", st, errors)
             node._type = ftype.rettypes[1]
             node._types = ftype.rettypes
         else
-            checker.typeerror(errors, node.loc,
-                "'%s' is not a function but %s",
-                fname, types.tostring(var._type))
-            for _, arg in ipairs(node.args.args) do
-                checkexp(arg, st, errors)
+            assert(node.args._tag == "Ast.ArgsMethod")
+            local otype = node.exp._type
+            if otype._tag == "Type.Nominal" and
+               types.registry[otype.fqtn] and
+               types.registry[otype.fqtn]._tag == "Type.Record" then
+                local class = types.registry[otype.fqtn]
+                if not class.methods[node.args.method] then
+                    node._type = invalid(errors, node.loc,
+                        "method '%s' not found in record '%s'",
+                        node.args.method, types.tostring(otype))
+                    for _, arg in ipairs(node.args.args) do
+                        checkexp(arg, st, errors)
+                    end
+                    return
+                end
+                local ftype = class.methods[node.args.method]
+                checkargs(ftype, node.args.args, node.loc,
+                    "method '" .. class.name .. ":" .. node.args.method .. "'", st, errors)
+                node._method = ftype
+                node._type = ftype.rettypes[1]
+                node._types = ftype.rettypes
+            else
+                if otype._tag ~= "Type.Nominal" then
+                    checker.typeerror(errors, node.loc,
+                        "expected record in receiver of method call but found '%s'",
+                        types.tostring(otype))
+                elseif not types.registry[otype.fqtn] then
+                    checker.typeerror(errors, node.loc,
+                        "record type '%s' in receiver of method call does not exist",
+                        types.tostring(otype))
+                elseif types.registry[otype.fqtn]._tag ~= "Type.Record" then
+                    checker.typeerror(errors, node.loc,
+                        "expected record in receiver of method call but found '%s'",
+                        types.tostring(types.registry[otype.fqtn]))
+                end
+                for _, arg in ipairs(node.args.args) do
+                    checkexp(arg, st, errors)
+                end
+                node._type = invalid(errors, node.loc, "expected a record type")
             end
-            node._type = types.Invalid()
         end
     end,
 
@@ -872,9 +1125,13 @@ local function checkfunc(node, st, errors)
     st:add_symbol("$function", node) -- for return type
     local ptypes = node._type.params
     local pnames = {}
+    for i, rettype in ipairs(node._type.rettypes) do
+        checktype(rettype, node.rettypes[i].loc, errors)
+    end
     for i, param in ipairs(node.params) do
         st:add_symbol(param.name, param)
         param._type = ptypes[i]
+        checktype(param._type, param.loc, errors)
         if pnames[param.name] then
             checker.typeerror(errors, node.loc,
                 "duplicate parameter '%s' in declaration of function '%s'",
@@ -890,21 +1147,47 @@ local function checkfunc(node, st, errors)
     end
 end
 
+-- Typechecks a method body, binding self to the first parameter
+--   node: TopLevelMethod AST node
+--   st: symbol table
+--   errors: list of compile-time errors
+local function checkmethod(node, st, errors)
+    local self = ast.Decl(node.loc, "self", ast.TypeName(node.loc, node._record.name))
+    node._self = self
+    self._type = typefromnode(self.type, st, errors)
+    st:add_symbol("self", self)
+    checkfunc(node, st, errors)
+end
+
 -- Checks function bodies
 --   ast: AST for the whole module
 --   st: symbol table
 --   errors: list of compile-time errors
 local function checkbodies(ast, st, errors)
     for _, node in ipairs(ast) do
-        if not node._ignore and
-           node._tag == "Ast.TopLevelFunc" then
-            st:with_block(checkfunc, node, st, errors)
+        if not node._ignore then
+            if node._tag == "Ast.TopLevelFunc" then
+                st:with_block(checkfunc, node, st, errors)
+            elseif node._tag == "Ast.TopLevelMethod" then
+                st:with_block(checkmethod, node, st, errors)
+            elseif node._tag == "Ast.TopLevelStatic" then
+                st:with_block(checkfunc, node, st, errors)
+            elseif node._tag == "Ast.TopLevelRecord" then
+                local fields = node._type.fields
+                for i, field in ipairs(fields) do
+                    local ftype = field.type
+                    checktype(ftype, node.fields[i].loc, errors)
+                end
+            end
         end
     end
 end
 
 local function isconstructor(node)
-    return node.var and node.var._decl and node.var._decl._tag == "Type.Record"
+    return node.var and node.var._decl and node.var._decl._tag == "Type.StaticMethod"
+        and #node.var._decl.rettypes == 1
+        and node.var._decl.rettypes[1]._tag == "Type.Nominal"
+        and node.var._decl.rettypes[1].fqtn == node.var._decl.fqtn
 end
 
 -- Verify if an expression is constant
@@ -971,6 +1254,8 @@ local function toplevel_name(node)
     elseif tag == "Ast.TopLevelFunc" or
            tag == "Ast.TopLevelRecord" then
         return node.name
+    elseif tag == "Ast.TopLevelMethod" or tag == "Ast.TopLevelStatic" then
+        return nil
     else
         error("tag not found " .. tag)
     end
@@ -986,8 +1271,7 @@ local toplevel_visitor = util.make_visitor({
                 table.insert(errors, err)
             end
         else
-            node._type = types.Nil()
-            checker.typeerror(errors, node.loc,
+            node._type = invalid(errors, node.loc,
                 "problem loading module '%s': %s",
                 node.modname, errs)
         end
@@ -1003,7 +1287,7 @@ local toplevel_visitor = util.make_visitor({
                 local ftype = item.type
                 local decl, err = foreigntypes.convert(st, ftype)
                 if decl then
-                    members[fname] = decl
+                    members[fname] = types.ModuleMember(name, fname, decl)
                     st:add_foreign_type(fname, decl)
                 else
                     checker.typeerror(errors, err, node._pos)
@@ -1049,11 +1333,128 @@ local toplevel_visitor = util.make_visitor({
 
     ["Ast.TopLevelRecord"] = function(node, st, errors)
         local fields = {}
-        for _, field in ipairs(node.fields) do
-            local typ = typefromnode(field.type, st, errors)
-            table.insert(fields, {type = typ, name = field.name})
+        local nameset = {}
+        local fqtn = st.modname .. "." .. node.name
+        local ftypes = {}
+        for i, field in ipairs(node.fields) do
+            if nameset[field.name] then
+                checker.typeerror(errors, field.loc,
+                "redeclaration of field '%s' in record '%s'",
+                field.name, node.name)
+            else
+                nameset[field.name] = true
+                local ftype = typefromnode(field.type, st, errors)
+                table.insert(ftypes, ftype)
+                table.insert(fields,
+                    types.Field(fqtn, field.name, ftype, i))
+            end
         end
-        node._type = types.Type(types.Record(node.name, fields))
+        node._type = types.Record(fqtn, fields, {}, {})
+        types.registry[fqtn] = node._type
+    end,
+
+    ["Ast.TopLevelStatic"] = function(node, st, errors)
+        local record = st:find_symbol(node.class)
+        if not record then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "record referenced by static method declaration '%s.%s' does not exist",
+                node.class, node.name)
+            return
+        end
+        if record._tag ~= "Ast.TopLevelRecord" then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "member referenced by static method declaration '%s.%s' is not a record",
+                node.class, node.name)
+            return
+        end
+        local rectype = record._type
+        for _, field in ipairs(rectype.fields) do
+            if field.name == node.name then
+                node._ignore = true
+                checker.typeerror(errors, node.loc,
+                "cannot declare static method '%s.%s' as field '%s' exists in record '%s'",
+                    node.class, node.name, field.name, node.class)
+                return
+            end
+        end
+        if rectype.methods[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "cannot declare static method '%s.%s' as method '%s:%s' exists in record '%s'",
+                    node.class, node.name, node.class, node.name, node.class)
+            return
+        end
+        if rectype.functions[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "redeclaration of static method '%s.%s'", node.class, node.name)
+            return
+        end
+        node._record = record
+        local ptypes = {}
+        for _, pdecl in ipairs(node.params) do
+            table.insert(ptypes, typefromnode(pdecl.type, st, errors))
+        end
+        local rettypes = {}
+        for _, rt in ipairs(node.rettypes) do
+            table.insert(rettypes, typefromnode(rt, st, errors))
+        end
+        node._type = types.StaticMethod(rectype.name, node.name, ptypes, rettypes)
+        rectype.functions[node.name] = node._type
+    end,
+
+    ["Ast.TopLevelMethod"] = function(node, st, errors)
+        local record = st:find_symbol(node.class)
+        if not record then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "record referenced by method declaration '%s:%s' does not exist",
+                node.class, node.name)
+            return
+        end
+        if record._tag ~= "Ast.TopLevelRecord" then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "member referenced by method declaration '%s:%s' is not a record",
+                node.class, node.name)
+            return
+        end
+        local rectype = record._type
+        for _, field in ipairs(rectype.fields) do
+            if field.name == node.name then
+                node._ignore = true
+                checker.typeerror(errors, node.loc,
+                "cannot declare method '%s:%s' as field '%s' exists in record '%s'",
+                    node.class, node.name, field.name, node.class)
+                return
+            end
+        end
+        if rectype.functions[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "cannot declare method '%s:%s' as static method '%s.%s' exists in record '%s'",
+                    node.class, node.name, node.class, node.name, node.class)
+            return
+        end
+        if rectype.methods[node.name] then
+            node._ignore = true
+            checker.typeerror(errors, node.loc,
+                "redeclaration of method '%s:%s'", node.class, node.name)
+            return
+        end
+        node._record = record
+        local ptypes = {}
+        for _, pdecl in ipairs(node.params) do
+            table.insert(ptypes, typefromnode(pdecl.type, st, errors))
+        end
+        local rettypes = {}
+        for _, rt in ipairs(node.rettypes) do
+            table.insert(rettypes, typefromnode(rt, st, errors))
+        end
+        node._type = types.Method(rectype.name, node.name, ptypes, rettypes)
+        rectype.methods[node.name] = node._type
     end,
 })
 
@@ -1067,7 +1468,7 @@ local toplevel_visitor = util.make_visitor({
 local function checktoplevel(ast, st, errors, loader)
     for _, node in ipairs(ast) do
         local name = toplevel_name(node)
-        local dup = st:find_dup(name)
+        local dup = name and st:find_dup(name)
         if dup then
             checker.typeerror(errors, node.loc,
                 "duplicate declaration for %s, previous one at line %d",
@@ -1075,16 +1476,58 @@ local function checktoplevel(ast, st, errors, loader)
             node._ignore = true
         else
             toplevel_visitor(node, st, errors, loader)
-            st:add_symbol(name, node)
+            if name and not node._ignore then
+                st:add_symbol(name, node)
+            end
         end
     end
+end
+
+function checker.has_main(ast)
+    for _, node in ipairs(ast) do
+        local name = toplevel_name(node)
+        if name == "main"
+           and node._tag == "Ast.TopLevelFunc"
+           and #node.params == 1
+           and node.params[1]._type._tag == "Type.Array"
+           and node.params[1]._type.elem._tag == "Type.String"
+           and #node.rettypes == 1
+           and node.rettypes[1]._tag == "Ast.TypeInteger" then
+            return true
+        end
+    end
+    return false
 end
 
 function checker.checkimport(modname, loader)
     local ok, type_or_error, errors = loader(modname)
     if not ok then return nil, type_or_error end
+    for name, type in pairs(type_or_error.members) do
+        if type._tag == "Type.Record" or type._tag == "Type.Interface" then
+            types.registry[modname .. "." .. name] = type
+        end
+    end
     return type_or_error, errors
 end
+
+-- Builds a type for the module from the types of its public members
+--   modast: AST for the module
+--   returns "Type.Module" type
+local function makemoduletype(modname, modast)
+    local members = {}
+    for _, tlnode in ipairs(modast) do
+        if tlnode._tag ~= "Ast.TopLevelImport" and not tlnode.islocal and not tlnode._ignore then
+            local tag = tlnode._tag
+            if tag == "Ast.TopLevelVar" then
+                table.insert(members, types.ModuleVariable(modname, tlnode.decl.name, tlnode._type))
+            elseif tag == "Ast.TopLevelFunc" or tag == "Ast.TopLevelRecord" then
+                table.insert(members, types.ModuleMember(modname, tlnode.name, tlnode._type))
+            end
+        end
+    end
+    return types.Module(modname, members)
+end
+
 
 -- Entry point for the typechecker
 --   ast: AST for the whole module
@@ -1101,11 +1544,12 @@ function checker.check(modname, ast, subject, filename, loader)
     loader = loader or function ()
         return nil, "you must pass a loader to import modules"
     end
-    local st = symtab.new()
+    local st = symtab.new(modname)
     local errors = {subject = subject, filename = filename}
     checktoplevel(ast, st, errors, loader)
     checkbodies(ast, st, errors)
-    return types.makemoduletype(modname, ast), errors
+    ast._type = makemoduletype(modname, ast)
+    return ast._type, errors
 end
 
 return checker

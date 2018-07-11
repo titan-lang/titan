@@ -2,10 +2,11 @@ local symtab = {}
 
 symtab.__index = symtab
 
-function symtab.new()
+function symtab.new(modname)
     local self = {
         blocks = { {} },
         foreign_types = {},
+        modname = modname
     }
     return setmetatable(self, symtab)
 end
