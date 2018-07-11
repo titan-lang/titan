@@ -545,7 +545,7 @@ local grammar = re.compile([[
     
     --Err_003: not in parser_spec
     RParPList       <- ({} '' -> 'RParPList') -> adderror  RParPListRec
-    RParPListRec    <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  ':'  /  '(') .)*
+    RParPListRec    <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  ':'  /  '(') eatTk)*
    
     --Err_004:
     EndFunc         <- ({} '' -> 'EndFunc') -> adderror  EndFuncRec
@@ -555,12 +555,9 @@ local grammar = re.compile([[
     AssignVar       <- ({} '' -> 'AssignVar') -> adderror  AssignVarRec
     AssignVarRec    <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT)  eatTk)*
  
-    --ExpVarDec     <- (P '' -> '52')                   -> number_exp
-    --ExpVarDec     <- (P '' -> defaultInt)                   -> number_exp
-    --ExpVarDec     <-  (!('record'  /  'local'  /  'function'  /  NAME  /  !.) .)* (P '' -> defaultInt2)                   -> number_exp
-    --Err_006
-    ExpVarDec       <- ({} '' -> 'ExpVarDec') -> adderror  ExpVarDecRec  (P '' -> defaultInt2)  -> number_exp
-    ExpVarDecRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)* 
+    --Err_006: use EndFuncRec, which is equal to ExpVarDecRec
+    ExpVarDec       <- ({} '' -> 'ExpVarDec') -> adderror  EndFuncRec  (P '' -> defaultInt2)  -> number_exp
+    --ExpVarDecRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)* 
 
     --Err_007: Problem: the recovery pattern will not work, because we reach this label when 'NAME' fails to match (error)
     -- Not using NameRecordRec, after the error just matches the empty string, so we will always get a second error
@@ -571,9 +568,9 @@ local grammar = re.compile([[
     FieldRecord     <- ({} '' -> 'FieldRecord') -> adderror (!END eatTk)*  ('' -> defaultFieldRec)
     --FieldRecordRec  <- (!END eatTk)*
 
-    --Err_009:
-    EndRecord       <- ({} '' -> 'EndRecord') -> adderror  EndRecordRec
-    EndRecordRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
+    --Err_009: use EndFuncRec, which is equal to EndRecordRec
+    EndRecord       <- ({} '' -> 'EndRecord') -> adderror  EndFuncRec
+    --EndRecordRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
     --Err_010: do not use NameImportRec
     NameImport      <- ({} '' -> 'NameImport') -> adderror (!'=' eatTk)*  ('' -> defaultImportName)
@@ -591,9 +588,9 @@ local grammar = re.compile([[
     StringLParImport     <- ({} '' -> 'StringLParImport') -> adderror  StringLParImportRec  ('' -> defaultStringImportName)
     StringLParImportRec  <- (!')' eatTk)* 
 
-    --Err_014: 
-    RParImport      <- ({} '' -> 'RParImport') -> adderror  RParImportRec
-    RParImportRec   <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
+    --Err_014: use EndFuncRec, which is equal to RParImportRec
+    RParImport      <- ({} '' -> 'RParImport') -> adderror  EndFuncRec
+    --RParImportRec   <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
     --Err_015
     StringImport     <- ({} '' -> 'StringImport') -> adderror  StringImportRec  ('' -> defaultStringImportName)
@@ -609,8 +606,9 @@ local grammar = re.compile([[
     --Err_023: DeclParList -> ParamList
     --The label DeclParList was used by rules decllist and paramlist. I am using distinct labels for each now,
     --because they have different recovery expressions. (It seems ',' should be in both recovery expressions. TODO: check 'first.lua')
-    ParamList       <- ({} '' -> 'ParamList') -> adderror  ParamListRec
-    ParamListRec    <- (!')' eatTk)*
+    -- use StringLParImportRec, which is equal to ParamListRec
+    ParamList       <- ({} '' -> 'ParamList') -> adderror StringLParImportRec 
+    --ParamListRec    <- (!')' eatTk)*
 
      --Err_024:
     ParamSemicolon    <- ({} '' -> 'ParamSemicolon') -> adderror  ParamSemicolonRec
@@ -625,9 +623,9 @@ local grammar = re.compile([[
     TypeDecl        <- ({} '' -> 'TypeDecl') -> adderror  TypeDeclRec  (P '') -> TypeInteger
     TypeDeclRec     <-  (!('='  /  ',') eatTk)*
 
-    --Err_027:
-    DeclParList     <- ({} '' -> 'DeclParList') -> adderror  DeclParListRec
-    DeclParListRec  <- (!'=' eatTk)*
+    --Err_027: do not use DeclParListRec
+    DeclParList     <- ({} '' -> 'DeclParList') -> adderror  (!'=' eatTk)*
+    --DeclParListRec  <- (!'=' eatTk)*
 
     --Err_028:
     TypeType        <- ({} '' -> 'TypeType') -> adderror  TypeTypeRec (P '') -> TypeInteger
@@ -649,8 +647,9 @@ local grammar = re.compile([[
     --We use recovery expression of Err_033 for all occurrences of TypeReturnTypes
 
     --Err_032: The original grammar does not have this label
-    Err_032         <- ({} '' -> 'Err_032') -> adderror  Err_032Rec
-    Err_032Rec      <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
+    -- Use ParamSemicolonRec, which is equal to Err_032Rec 
+    Err_032         <- ({} '' -> 'Err_032') -> adderror  ParamSemicolonRec
+    --Err_032Rec      <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
 
     --Err_033: The original grammar used TypeReturnTypes here, but the recovery set is different I introduced label TypeReturnTypes
     --TODO: see why the recovery sets were different
@@ -660,9 +659,9 @@ local grammar = re.compile([[
     TypeReturnTypesRec <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
     --TypeReturnTypesRec   <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
-    --Err_034:
-    ColonRecordField    <- ({} '' -> 'ColonRecordField') -> adderror  ColonRecordFieldRec
-    ColonRecordFieldRec <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
+    --Err_034: Use ParamSemicolonRec, which is equal to ColonRecordFieldRec
+    ColonRecordField    <- ({} '' -> 'ColonRecordField') -> adderror  ParamSemicolonRec 
+    --ColonRecordFieldRec <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
     
     --Err_035:
     TypeRecordField    <- ({} '' -> 'TypeRecordField') -> adderror  TypeRecordFieldRec  (P '') -> TypeInteger
@@ -676,31 +675,31 @@ local grammar = re.compile([[
     ExpWhile        <- ({} '' -> 'ExpWhile') -> adderror (!'do' eatTk)*  (P '' -> defaultInt2)  -> number_exp
     --ExpWhileRec     <- (!'do' eatTk)*
 
-    --Err_038:
-    DoWhile         <- ({} '' -> 'DoWhile') -> adderror  DoWhileRec
-    DoWhileRec      <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_038: use TypeFuncRec, which is equal to DoWhileRec
+    DoWhile         <- ({} '' -> 'DoWhile') -> adderror  TypeFuncRec
+    --DoWhileRec      <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_039: uses EndBlockRec
+    --Err_039: uses EndBlockRec, which is equal to EndWhileRec
     EndWhile        <- ({} '' -> 'EndWhile') -> adderror  EndBlockRec
     --EndWhileRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_040:
-    UntilRepeat     <- ({} '' -> 'UntilRepeat') -> adderror  UntilRepeatRec
-    UntilRepeatRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)* 
+    --Err_040: use AssignVarRec, which is equal to UntilRepeatRec
+    UntilRepeat     <- ({} '' -> 'UntilRepeat') -> adderror  AssignVarRec
+    --UntilRepeatRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)* 
 
-    --Err_041: uses EndBlockRec
+    --Err_041: uses EndBlockRec, which is equal to ExpRepeatRec
     ExpRepeat       <- ({} '' -> 'ExpRepeat') -> adderror  EndBlockRec  (P '' -> defaultInt2)  -> number_exp
     --ExpRepeatRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_042:
-    ExpIf           <- ({} '' -> 'ExpIf') -> adderror  ExpIfRec  (P '' -> defaultInt2)  -> number_exp
-    ExpIfRec        <- (!'then' eatTk)*
+    --Err_042: does not use ExpIfRec
+    ExpIf           <- ({} '' -> 'ExpIf') -> adderror  (!'then' eatTk)*  (P '' -> defaultInt2)  -> number_exp
+    --ExpIfRec        <- (!'then' eatTk)*
 
     --Err_043:
     ThenIf          <- ({} '' -> 'ThenIf') -> adderror  ThenIfRec
     ThenIfRec       <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_044: -- uses EndBlockRec
+    --Err_044: uses EndBlockRec, which is equal to EndIfRec
     EndIf           <- ({} '' -> 'EndIf') -> adderror  EndBlockRec
     --EndIfRec        <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
@@ -708,9 +707,9 @@ local grammar = re.compile([[
     DeclFor         <- ({} '' -> 'DeclFor') -> adderror  (!'=' eatTk)*  (P '' -> defaultDeclName (P '') -> TypeInteger) -> Decl
     --DeclForRec      <- (!'=' eatTk)*
 
-    --Err_046:
-    AssignFor       <- ({} '' -> 'AssignFor') -> adderror  AssignForRec
-    AssignForRec    <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
+    --Err_046: use AssignVarRec
+    AssignFor       <- ({} '' -> 'AssignFor') -> adderror  AssignVarRec
+    --AssignForRec    <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
 
     --Err_047: does not use Exp1ForRec
     Exp1For         <- ({} '' -> 'Exp1For') -> adderror (!',' eatTk)*  (P '' -> defaultInt2)  -> number_exp
