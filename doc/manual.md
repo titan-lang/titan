@@ -92,7 +92,7 @@ function just_div(a: integer, b: integer): integer
 end
 
 function too_few(a: integer, b: integer): (integer, integer, integer)
-    return divmod(a, b) -- error, too many return values
+    return divmod(a, b) -- error, too few return values
 end
 ```
 
