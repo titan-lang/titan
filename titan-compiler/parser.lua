@@ -35,6 +35,8 @@ end
 
 defs['defaultInt'] = 52
 defs['defaultInt2'] = function () return 52 end
+defs['defaultMethName'] = 'm42'
+defs['defaultQualName'] = 'q42'
 defs['defaultFuncName'] = 'f42'
 defs['defaultRecName'] = 'rec42'
 defs['defaultFieldRec'] = function() return 'field42'  end
@@ -316,7 +318,7 @@ local grammar = re.compile([[
                      / typelist
                      / {| simpletype |}
 
-    type            <- (P  typelist RARROW^Err_032
+    type            <- (P  typelist RARROW^Err_037
                            rettype^TypeReturnTypes)              -> TypeFunction
                      / (P  {| simpletype |} RARROW
                            rettype^TypeReturnTypes)              -> TypeFunction
@@ -437,7 +439,7 @@ local grammar = re.compile([[
 
     key             <- NAME
                      / LBRACKET exp^ExpExpSuf
-                                RBRACKET^RBracketExpSuf
+                                RBRACKET^RBracketExpKey
 
     fieldsep        <- SEMICOLON / COMMA
 
@@ -535,228 +537,216 @@ local grammar = re.compile([[
 
     eatTk           <- NAMEREC  /  AND  /  BREAK  /  DO  /  ELSEIF  /  END  /  FALSE  /  FOR  /  FUNCTION  /  GOTO  /  IF  /  IN  /  LOCAL  /  NIL  /  NOT  /  OR  /  RECORD  /  REPEAT  /  RETURN  /  THEN  /  TRUE  /  UNTIL  /  WHILE  /  IMPORT  /  AS  /  FOREIGN  /  BOOLEAN  /  INTEGER  /  FLOAT  /  STRING  /  VALUE  /  .
 
-    --Err_001
-    NameFunc        <- ({} '' -> 'NameFunc') -> adderror  NameFuncRec  ('' -> defaultFuncName)
-    NameFuncRec     <- (!'(' eatTk)*
-   
-    --Err_002: not in parser_spec
+    --Err_003:
+    NameMethod        <- ({} '' -> 'NameMethod') -> adderror  NameMethodRec  ('' -> defaultMethName)
+    NameMethodRec     <- (!'(' eatTk)*
+
+    --Err_004: not in parser_spec
     LParPList       <- ({} '' -> 'LParPList') -> adderror  LParPListRec
     LParPListRec    <- (!(NAME  /  ')') eatTk)*
     
-    --Err_003: not in parser_spec
+    --Err_005: not in parser_spec
     RParPList       <- ({} '' -> 'RParPList') -> adderror  RParPListRec
     RParPListRec    <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  ':'  /  '(') eatTk)*
    
-    --Err_004:
+    --Err_006:
     EndFunc         <- ({} '' -> 'EndFunc') -> adderror  EndFuncRec
     EndFuncRec      <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
-    --Err_005:
+    --Err_007: use NameMethodRec (Err_003)
+    NameFunc        <- ({} '' -> 'NameFunc') -> adderror  NameMethodRec  ('' -> defaultFuncName)
+
+    --Err_008, Err_009, and Err_010 refer, respectively, to labels
+    --LParPList, RParPlist, and EndFunc, which were also used by rule 'method'
+    --and have the same recovery set
+
+    --Err_011:
     AssignVar       <- ({} '' -> 'AssignVar') -> adderror  AssignVarRec
     AssignVarRec    <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT)  eatTk)*
  
-    --Err_006: use EndFuncRec, which is equal to ExpVarDecRec
+    --Err_012: use EndFuncRec (Err_006)
     ExpVarDec       <- ({} '' -> 'ExpVarDec') -> adderror  EndFuncRec  (P '' -> defaultInt2)  -> number_exp
-    --ExpVarDecRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)* 
 
-    --Err_007: Problem: the recovery pattern will not work, because we reach this label when 'NAME' fails to match (error)
-    -- Not using NameRecordRec, after the error just matches the empty string, so we will always get a second error
+    --Err_013: Problem: the recovery pattern will not work well, because we reach this label when 'NAME' fails to match (error)
     NameRecord     <- ({} '' -> 'NameRecord') -> adderror  NameRecordRec  ('' -> defaultRecName)
-    NameRecordRec  <- (!NAME eatTk)*
- 
-    --Err_008: do not use FieldRecordRec
-    FieldRecord     <- ({} '' -> 'FieldRecord') -> adderror (!END eatTk)*  ('' -> defaultFieldRec)
-    --FieldRecordRec  <- (!END eatTk)*
+    NameRecordRec  <- (!('end' / NAME) eatTk)*
 
-    --Err_009: use EndFuncRec, which is equal to EndRecordRec
+    --Err_014: use EndFuncRec (Err_006)
     EndRecord       <- ({} '' -> 'EndRecord') -> adderror  EndFuncRec
-    --EndRecordRec    <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
-    --Err_010: do not use NameImportRec
-    NameImport      <- ({} '' -> 'NameImport') -> adderror (!'=' eatTk)*  ('' -> defaultImportName)
-    --NameImportRec   <- (!'=' eatTk)*
+    --Err_015:
+    NameImport      <- ({} '' -> 'NameImport') -> adderror  NameImportRec  ('' -> defaultImportName)
+    NameImportRec   <- (!'=' eatTk)*
+
  
-    --Err_011: not in parser_spec
+    --Err_016: not in parser_spec
     AssignImport     <- ({} '' -> 'AssignImport') -> adderror  AssignImportRec
     AssignImportRec  <- (!'import' eatTk)*
  
-    --Err_012: not in parser_spec
+    --Err_017: not in parser_spec
     ImportImport     <- ({} '' -> 'ImportImport') -> adderror  ImportImportRec
     ImportImportRec  <- (!('(' / STRINGLIT) eatTk)* 
 
-    --Err_013
+    --Err_018:
     StringLParImport     <- ({} '' -> 'StringLParImport') -> adderror  StringLParImportRec  ('' -> defaultStringImportName)
     StringLParImportRec  <- (!')' eatTk)* 
 
-    --Err_014: use EndFuncRec, which is equal to RParImportRec
+    --Err_019: use EndFuncRec (Err_006)
     RParImport      <- ({} '' -> 'RParImport') -> adderror  EndFuncRec
-    --RParImportRec   <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
 
-    --Err_015
-    StringImport     <- ({} '' -> 'StringImport') -> adderror  StringImportRec  ('' -> defaultStringImportName)
-    StringImportRec  <- (!('record'  /  'local'  /  'function'  /  NAME  /  !.) eatTk)*
+    --Err_020: use EndFuncRec (Err_006)
+    StringImport     <- ({} '' -> 'StringImport') -> adderror  EndFuncRec  ('' -> defaultStringImportName)
 
-    --Err_016, Err_017, Err_018, Err_019, Err_020, Err_021: not in parser_spec
-    --There are no specific labels for 'foreign'. The same errors from 'import' are used
+    --Err_021, Err_022, Err_023, Err_024, Err_025, Err_026: not in parser_spec
+    --There are no specific labels for 'foreign'. The same labels from 'import' are used
  
-    --Err_022: TypeFunc
+    --Err_027: TypeFunc
     TypeFunc        <- ({} '' -> 'TypeFunc') -> adderror  TypeFuncRec  (P '') -> TypeInteger
     TypeFuncRec     <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_023: DeclParList -> ParamList
+    --Err_028: DeclParList -> ParamList
     --The label DeclParList was used by rules decllist and paramlist. I am using distinct labels for each now,
     --because they have different recovery expressions. (It seems ',' should be in both recovery expressions. TODO: check 'first.lua')
-    -- use StringLParImportRec, which is equal to ParamListRec
+    -- use StringLParImportRec (Err_018)
     ParamList       <- ({} '' -> 'ParamList') -> adderror StringLParImportRec 
-    --ParamListRec    <- (!')' eatTk)*
 
-     --Err_024:
+     --Err_029:
     ParamSemicolon    <- ({} '' -> 'ParamSemicolon') -> adderror  ParamSemicolonRec
     ParamSemicolonRec <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
 
-    --Err_025: TypeDecl -> TypeParam
+    --Err_030: TypeDecl -> TypeParam
     --Same reasoning of DeclParList
     TypeParam       <- ({} '' -> 'TypeParam') -> adderror  TypeParamRec  (P '') -> TypeInteger
     TypeParamRec    <- (!(','  /  ')') eatTk)*
 
-    --Err_026: not in parser_spec
+    --Err_031: not in parser_spec
     TypeDecl        <- ({} '' -> 'TypeDecl') -> adderror  TypeDeclRec  (P '') -> TypeInteger
     TypeDeclRec     <-  (!('='  /  ',') eatTk)*
 
-    --Err_027: do not use DeclParListRec
-    DeclParList     <- ({} '' -> 'DeclParList') -> adderror  (!'=' eatTk)*
-    --DeclParListRec  <- (!'=' eatTk)*
+    --Err_032: use NameImportRec (Err_015)
+    DeclParList     <- ({} '' -> 'DeclParList') -> adderror  NameImportRec
 
-    --Err_028:
+    --Err_XXX: the algorithm did not insert the label corresponding to QualName in rule 'simpletype'
+    -- use RCurlyTypeRec (Err_034)
+    QualName          <- ({} '' -> 'QualName') -> adderror RCurlyTypeRec  ('' -> defaultQualName)
+
+    --Err_XXX: The algorithm did not insert the first labels TypeType and RCurlyType in the penultimate
+    --alternative of 'simpletype', just in the last one. I am using an union of what be the recovery set
+    --of all labels TypeType
+    --Err_033:
     TypeType        <- ({} '' -> 'TypeType') -> adderror  TypeTypeRec (P '') -> TypeInteger
-    TypeTypeRec     <- (!'}' eatTk)*
+    TypeTypeRec     <- (!('}' / '.') eatTk)*
 
-    --Err_029:
+    --Err_XXX: See above. Both labels RCurlyType have the same recovery set
+    --Err_034:
     RCurlyType      <- ({} '' -> 'RCurlyType') -> adderror  RCurlyTypeRec
-    RCurlyTypeRec   <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '->'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
+    RCurlyTypeRec   <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '->'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
-    --Err_030: do not use TypelistTypeRec
-    TypelistType    <- ({} '' -> 'TypelistType') -> adderror  (!')' eatTk)*
-    --TypelistTypeRec <- (!')' eatTk)*
+    --Err_035: use StringLParImportRec (Err_018)
+    TypelistType    <- ({} '' -> 'TypelistType') -> adderror StringLParImportRec
 
-    RParenTypelist    <- ({} '' -> 'RParenTypelist') -> adderror  RParenTypelistRec
-    RParenTypelistRec <- (!(NAME / '->') eatTk)*
+    --Err_036: use RCurlyTypeRec (Err_034)
+    RParenTypelist    <- ({} '' -> 'RParenTypelist') -> adderror  RCurlyTypeRec
 
     --Err_XXX: the algorithm did not insert the two labels corresponding to TypeReturnTypes in rule 'rettype'
-    --Label TypeReturnTypes is also used in rule 'rettype' and its first occurrence in this rule corresponds to Err_033
-    --We use recovery expression of Err_033 for all occurrences of TypeReturnTypes
+    --Label TypeReturnTypes is also used in rule 'type' and its first occurrence in this rule corresponds to Err_038
+    --We use recovery expression of Err_038 for all occurrences of TypeReturnTypes
 
-    --Err_032: The original grammar does not have this label
-    -- Use ParamSemicolonRec, which is equal to Err_032Rec 
-    Err_032         <- ({} '' -> 'Err_032') -> adderror  ParamSemicolonRec
-    --Err_032Rec      <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
+    --Err_037: The original grammar does not have this label
+    -- Use ParamSemicolonRec (Err_029)
+    Err_037         <- ({} '' -> 'Err_037') -> adderror  ParamSemicolonRec
 
-    --Err_033: The original grammar used TypeReturnTypes here, but the recovery set is different I introduced label TypeReturnTypes
+    --Err_038: The original grammar used TypeReturnTypes here, but the recovery set is different so I introduced label TypeReturnTypes
     --TODO: see why the recovery sets were different
-    -- For a test case, the use of '=' in the recovery expression causes an error, because the input left doest is not matched
-    -- as an statment and the repetition block* finishes
+    -- Original recovery expression failed: For a test case, the use of '=' in the recovery expression causes an error, because
+    --the input left is not matched as an statment and the repetition block* finishes
     TypeReturnTypes      <- ({} '' -> 'TypeReturnTypes') -> adderror  TypeReturnTypesRec  (P '') -> TypeInteger
-    TypeReturnTypesRec <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
-    --TypeReturnTypesRec   <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
+    --TypeReturnTypesRec <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
+    TypeReturnTypesRec   <-	(!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
-    --Err_034: Use ParamSemicolonRec, which is equal to ColonRecordFieldRec
+    --Err_039: Use ParamSemicolonRec (Err_029)
     ColonRecordField    <- ({} '' -> 'ColonRecordField') -> adderror  ParamSemicolonRec 
-    --ColonRecordFieldRec <- (!('{'  /  'value'  /  'string'  /  'nil'  /  'integer'  /  'float'  /  'boolean'  /  NAME  /  '(') eatTk)*
     
-    --Err_035:
+    --Err_040:
     TypeRecordField    <- ({} '' -> 'TypeRecordField') -> adderror  TypeRecordFieldRec  (P '') -> TypeInteger
     TypeRecordFieldRec <- (!('end'  /  NAME  /  ';') eatTk)*
  
-    --Err_036:
+    --Err_041:
     EndBlock        <- ({} '' -> 'EndBlock') -> adderror  EndBlockRec
     EndBlockRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_037: does not use ExpWhileRec
-    ExpWhile        <- ({} '' -> 'ExpWhile') -> adderror (!'do' eatTk)*  (P '' -> defaultInt2)  -> number_exp
-    --ExpWhileRec     <- (!'do' eatTk)*
+    --Err_042:
+    ExpWhile        <- ({} '' -> 'ExpWhile') -> adderror  ExpWhileRec  (P '' -> defaultInt2)  -> number_exp
+    ExpWhileRec     <- (!'do' eatTk)*
 
-    --Err_038: use TypeFuncRec, which is equal to DoWhileRec
+    --Err_043: use TypeFuncRec (Err_027)
     DoWhile         <- ({} '' -> 'DoWhile') -> adderror  TypeFuncRec
-    --DoWhileRec      <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_039: uses EndBlockRec, which is equal to EndWhileRec
+    --Err_044: use EndBlockRec (Err_041)
     EndWhile        <- ({} '' -> 'EndWhile') -> adderror  EndBlockRec
-    --EndWhileRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_040: use AssignVarRec, which is equal to UntilRepeatRec
+    --Err_045: use AssignVarRec (Err_011)
     UntilRepeat     <- ({} '' -> 'UntilRepeat') -> adderror  AssignVarRec
-    --UntilRepeatRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)* 
 
-    --Err_041: uses EndBlockRec, which is equal to ExpRepeatRec
+    --Err_046: use EndBlockRec (Err_041)
     ExpRepeat       <- ({} '' -> 'ExpRepeat') -> adderror  EndBlockRec  (P '' -> defaultInt2)  -> number_exp
-    --ExpRepeatRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_042: does not use ExpIfRec
-    ExpIf           <- ({} '' -> 'ExpIf') -> adderror  (!'then' eatTk)*  (P '' -> defaultInt2)  -> number_exp
-    --ExpIfRec        <- (!'then' eatTk)*
+    --Err_047:
+    ExpIf           <- ({} '' -> 'ExpIf') -> adderror  ExpIfRec  (P '' -> defaultInt2)  -> number_exp
+    ExpIfRec        <- (!'then' eatTk)*
 
-    --Err_043:
+    --Err_048:
     ThenIf          <- ({} '' -> 'ThenIf') -> adderror  ThenIfRec
     ThenIfRec       <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_044: uses EndBlockRec, which is equal to EndIfRec
+    --Err_049: use EndBlockRec (Err_041)
     EndIf           <- ({} '' -> 'EndIf') -> adderror  EndBlockRec
-    --EndIfRec        <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_045: does not use DeclForRec
-    DeclFor         <- ({} '' -> 'DeclFor') -> adderror  (!'=' eatTk)*  (P '' -> defaultDeclName (P '') -> TypeInteger) -> Decl
-    --DeclForRec      <- (!'=' eatTk)*
+    --Err_050: use NameImportRec (Err_015)
+    DeclFor         <- ({} '' -> 'DeclFor') -> adderror  NameImportRec  (P '' -> defaultDeclName (P '') -> TypeInteger) -> Decl
 
-    --Err_046: use AssignVarRec
+    --Err_051: use AssignVarRec (Err_011)
     AssignFor       <- ({} '' -> 'AssignFor') -> adderror  AssignVarRec
-    --AssignForRec    <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
 
-    --Err_047: does not use Exp1ForRec
-    Exp1For         <- ({} '' -> 'Exp1For') -> adderror (!',' eatTk)*  (P '' -> defaultInt2)  -> number_exp
-    --Exp1ForRec      <- (!',' eatTk)*
+    --Err_052:
+    Exp1For         <- ({} '' -> 'Exp1For') -> adderror  Exp1ForRec  (P '' -> defaultInt2)  -> number_exp
+    Exp1ForRec      <- (!',' eatTk)*
 
-    --Err_048:
-    CommaFor        <- ({} '' -> 'CommaFor') -> adderror  CommaForRec
-    CommaForRec     <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
+    --Err_053: use AssignVarRec (Err_011)
+    CommaFor        <- ({} '' -> 'CommaFor') -> adderror  AssignVarRec
 
-    --Err_049:
+    --Err_054:
     Exp2For         <- ({} '' -> 'Exp2For') -> adderror  Exp2ForRec  (P '' -> defaultInt2)  -> number_exp
     Exp2ForRec      <- (!('do'  /  ',') eatTk)*
 
-    --Err_050: does not use Exp3ForRec
-    Exp3For         <- ({} '' -> 'Exp3For') -> adderror (!'do' eatTk)*  (P '' -> defaultInt2)  -> number_exp
-    --Exp3ForRec      <- (!'do' eatTk)*
+    --Err_055: use ExpWhileRec (Err_042)
+    Exp3For         <- ({} '' -> 'Exp3For') -> adderror  ExpWhileRec  (P '' -> defaultInt2)  -> number_exp
 
-    --Err_051:
-    DoFor           <- ({} '' -> 'DoFor') -> adderror  DoForRec
-    DoForRec        <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_056: use TypeFuncRec (Err_027)
+    DoFor           <- ({} '' -> 'DoFor') -> adderror  TypeFuncRec
 
-    --Err_052: uses EndBlockRec
+    --Err_057: uses EndBlockRec (Err_041)
     EndFor          <- ({} '' -> 'EndFor') -> adderror  EndBlockRec
-    --EndForRec       <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_053: does not use DeclLocalRec
-    DeclLocal       <- ({} '' -> 'DeclLocal') -> adderror  (!'=' eatTk)*  {| (P ('' -> defaultDeclName) (P '') -> TypeInteger) -> Decl |}
-    --DeclLocalRec    <- (!'=' eatTk)*
+    --Err_058: use NameImportRec (Err_015)
+    DeclLocal       <- ({} '' -> 'DeclLocal') -> adderror  NameImportRec  {| (P ('' -> defaultDeclName) (P '') -> TypeInteger) -> Decl |}
 
-    --Err_054:
-    AssignLocal     <- ({} '' -> 'AssignLocal') -> adderror  AssignLocalRec
-    AssignLocalRec  <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
+    --Err_059: use AssignVarRec (Err_011)
+    AssignLocal     <- ({} '' -> 'AssignLocal') -> adderror  AssignVarRec
 
-    --Err_055: uses EndBlockRec
+    --Err_060: uses EndBlockRec (Err_041)
     ExpLocal        <- ({} '' -> 'ExpLocal') -> adderror  EndBlockRec  (P '' -> defaultInt2)  -> number_exp
-    --ExpLocalRec     <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_XXX: the algorithm did not insert the label corresponding to AssignAssign in rule 'statement'
     AssignAssign    <- ({} '' -> 'AssignAssign') -> adderror  AssignAssignRec
     AssignAssignRec <- (!('~'  /  '{'  /  'true'  /  'not'  /  'nil'  /  'false'  /  NAME  /  NUMBER  /  '-'  /  '('  /  '#'  /  STRINGLIT) eatTk)*
 
     --Err_XXX: the algorithm did not insert the two labels corresponding to ExpAssign in rule 'statement'
-    -- uses EndBlockRec
+    -- use EndBlockRec (Err_041)
     ExpAssign       <- ({} '' -> 'ExpAssign') -> adderror EndBlockRec  {| (P '' -> defaultInt2)  -> number_exp |}
-    --ExpAssignRec    <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
     --Err_XXX: I renamed the label ExpAssign used in the predicate to ExpAssignPred, since its recovery rule is different
+    -- use EndBlockRec (Err_041)
     ExpAssignPred       <- ({} '' -> 'ExpAssignPred') -> adderror (exp ASSIGN) EndBlockRec
 
     --Err_XXX: the algorithm did not insert the label corresponding to ExpStat in rule 'statement'
@@ -764,111 +754,71 @@ local grammar = re.compile([[
     ExpStat         <- ({} '' -> 'ExpStat') -> adderror (exp) EndBlockRec
     --ExpStatRec      <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
 
-    --Err_056: does not use ExpElseIfRec
-    ExpElseIf       <- ({} '' -> 'ExpElseIf') -> adderror  (!'then' eatTk)*  (P '' -> defaultInt2)  -> number_exp
-    --ExpElseIfRec    <- (!'then' eatTk)*
+    --Err_061: use ExpIfRec (Err_047)
+    ExpElseIf       <- ({} '' -> 'ExpElseIf') -> adderror  ExpIfRec  (P '' -> defaultInt2)  -> number_exp
 
-    --Err_057:
-    ThenElseIf      <- ({} '' -> 'ThenElseIf') -> adderror  ThenElseIfRec
-    ThenElseIfRec   <- (!('while'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  '(') eatTk)*
+    --Err_062: use ThenIfRec (Err_048)
+    ThenElseIf      <- ({} '' -> 'ThenElseIf') -> adderror  ThenIfRec
 
-    --Err_058: OpExp rule 'e1'
-    --OpExp2          <- ({} '' -> 'OpExp2') -> adderror  OpExp10Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp2Rec       <- (!('}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
-
-    --Err_059: OpExp rule 'e2'
-    --OpExp3          <- ({} '' -> 'OpExp3') -> adderror  OpExp3Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp3Rec       <- (!('}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
-
-    --Err_060: OpExp rule 'e3'
-    --OpExp4          <- ({} '' -> 'OpExp4') -> adderror  OpExp4Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp4Rec       <- (!('}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+    -- Titan grammar use a unique label (OpExp) to expressions e2 (Err_063), e3 (Err_064), e4 (Err_065), e5 (Err_066),
+    -- e6 (Err_067), e7 (Err_068), e8 (Err_069, Err_070)), e10 (Err_071), e11 (Err_072, Err_073)
+    -- Use the recovery set of e11 in rule e12 (Err_073)
  
- 
-    --Err_061: OpExp rule 'e4'
-    --OpExp5          <- ({} '' -> 'OpExp5') -> adderror  OpExp5Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp5Rec       <- (!('~='  /  '}'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
+    --Err_73: OpExp (e11 in rule e12)
+    OpExp     <- ({} '' -> 'OpExp') -> adderror  OpExpRec  (P '' -> defaultInt2)  -> number_exp
+    OpExpRec  <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
-
-    --Err_062: OpExp rule 'e5'
-    --OpExp6          <- ({} '' -> 'OpExp6') -> adderror  OpExp6Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp6Rec       <- (!('~='  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
-
-    --Err_063: OpExp rule 'e6'
-    --OpExp7          <- ({} '' -> 'OpExp7') -> adderror  OpExp7Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp7Rec       <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  !.) eatTk)*
- 
-    --Err_064: OpExp rule 'e7'
-    --OpExp87         <- ({} '' -> 'OpExp87') -> adderror  OpExp87Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp87Rec      <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>='  /  '>'  /  '=='  /  '<='  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
- 
-    --Err_065: OpExp rule 'e8'
-    --OpExp88         <- ({} '' -> 'OpExp88') -> adderror  OpExp88Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp88Rec      <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ','  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
-
-    --Err_066: OpExp rule 'e9'
-    OpExp         <- ({} '' -> 'OpExp') -> adderror  OpExpRec  (P '' -> defaultInt2)  -> number_exp
-    OpExpRec      <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  ','  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
- 
-    --Err_067: OpExp rule 'e10'
-    --OpExp1110       <- ({} '' -> 'OpExp1110') -> adderror  OpExp1110Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp1110Rec    <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  '-'  /  ','  /  '+'  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
-
-    --Err_068: OpExp rule 'e12'
-    --OpExp1112       <- ({} '' -> 'OpExp1112') -> adderror  OpExp1112Rec  (P '' -> defaultInt2)  -> number_exp
-    --OpExp1112Rec    <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
-
-    --Err_069:
+    --Err_074:
     NameColonExpSuf    <- ({} '' -> 'NameColonExpSuf') -> adderror  NameColonExpSufRec  ('' -> defaultColonName)
     NameColonExpSufRec <- (!('{'  /  '('  /  STRINGLIT) eatTk)*
 
-    --Err_070:
+    --Err_075:
     FuncArgsExpSuf    <- ({} '' -> 'FuncArgsExpSuf') -> adderror  FuncArgsExpSufRec  {| (P '' -> defaultInt2)  -> number_exp |}
     FuncArgsExpSufRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  '{'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'as'  /  'and'  /  '^'  /  ']'  /  '['  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '.'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.  /  STRINGLIT) eatTk)*
 
-    --Err_071: does not use ExpExpSufRec
-    ExpExpSuf       <- ({} '' -> 'ExpExpSuf') -> adderror  (!']' eatTk)*  (P '' -> defaultInt2)  -> number_exp
-    --ExpExpSufRec    <- (!']' eatTk)*
+    --Err_076 and Err_085:
+    ExpExpSuf       <- ({} '' -> 'ExpExpSuf') -> adderror  ExpExpSufRec  (P '' -> defaultInt2)  -> number_exp
+    ExpExpSufRec    <- (!']' eatTk)*
 
-    --Err_072:
+    --Err_077: use FuncArgsExpSufRec (Err_075)
     RBracketExpSuf    <- ({} '' -> 'RBracketExpSuf') -> adderror  FuncArgsExpSufRec
-    --RBracketExpSufRec <- uses FuncArgsExpSufRec
 
-    --Err_073:
+    --Err_078: use FuncArgsExpSufRec (Err_075)
     NameDotExpSuf    <- ({} '' -> 'NameDotExpSuf') -> adderror  FuncArgsExpSufRec  ('' -> defaultDotName)
-    --NameDotExpSufRec: uses FuncArgsExpSufRec
 
-    --Err_074: Not using ExpSimpleRec
-    ExpSimpleExp     <- ({} '' -> 'ExpSimpleExp') -> adderror  (!')' eatTk)*  (P '' -> defaultInt2)  -> number_exp
-    --ExpSimpleExpRec  <- (!')' eatTk)*
+    --Err_079: use StringLParImportRec (Err_018)
+    ExpSimpleExp     <- ({} '' -> 'ExpSimpleExp') -> adderror  StringLParImportRec  (P '' -> defaultInt2)  -> number_exp
 
-    --Err_075:
+    --Err_080:
     RParSimpleExp    <- ({} '' -> 'RParSimpleExp') -> adderror  RParSimpleExpRec
     RParSimpleExpRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  '{'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'as'  /  'and'  /  '^'  /  ']'  /  '['  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '.'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.  /  STRINGLIT) eatTk)*
 
-   --Err_XXX: the algorithm did not insert the label corresponding to CastMissingType in rule 'castexp'
+   --Err_XXX: the algorithm did not insert the label corresponding to CastMissingType in rule 'castexp' (using the FOLLOW of castexp in recovery rule)
    CastMissingType    <- ({} '' -> 'CastMissingType') -> adderror  CastMissingTypeRec  (P '' -> defaultInt2  (P '') -> TypeInteger) -> ExpCast
-   CastMissingTypeRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  / ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '..'  /  ','  /  ')'  /  '('  /  '&'  /  !.) eatTk)*
+   CastMissingTypeRec <- (!('~='  /  '~'  /  '}'  /  '|'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'and'  /  '^'  /  ']'  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '<='  /  '<<'  /  '<'  /  ';'  /  '//'  /  '/'  /  '..'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.) eatTk)*
 
-   --Err_076: Not using ExpVarListRec
-   ExpVarList       <- ({} '' -> 'ExpVarList') -> adderror  (!'=' eatTk)*
-   --ExpVarListRec    <- (!'=' eatTk)*
+   --Err_081: use NameImportRec (Err_015)
+   ExpVarList       <- ({} '' -> 'ExpVarList') -> adderror  NameImportRec
 
-   --Err_077:
-   RParFuncArgs     <- ({} '' -> 'RParFuncArgs') -> adderror RParFuncArgsRec
-   RParFuncArgsRec  <- (!('~='  /  '~'  /  '}'  /  '|'  /  '{'  /  'while'  /  'until'  /  'then'  /  'return'  /  'repeat'  /  'record'  /  'or'  /  'local'  /  'if'  /  'function'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  'as'  /  'and'  /  '^'  /  ']'  /  '['  /  NAME  /  '>>'  /  '>='  /  '>'  /  '=='  /  '='  /  '<='  /  '<<'  /  '<'  /  ';'  /  ':'  /  '//'  /  '/'  /  '..'  /  '.'  /  '-'  /  ','  /  '+'  /  '*'  /  ')'  /  '('  /  '&'  /  '%%'  /  !.  /  STRINGLIT) eatTk)*
+   --Err_082: use FuncArgsExpSufRec (Err_075)
+   RParFuncArgs     <- ({} '' -> 'RParFuncArgs') -> adderror  FuncArgsExpSufRec
 
-   --Err_078:
+   --Err_083:
    ExpExpList      <- ({} '' -> 'ExpExpList') -> adderror  ExpExpListRec  (P '' -> defaultInt2)  -> number_exp
    ExpExpListRec   <- (!('while'  /  'until'  /  'return'  /  'repeat'  /  'local'  /  'if'  /  'for'  /  'end'  /  'elseif'  /  'else'  /  'do'  /  NAME  /  ';'  /  ')'  /  '(') eatTk)*
 
-   --Err_079: uses RParFuncArgsRec
-   RCurlyInitList <- ({} '' -> 'RCurlyInitList') -> adderror RParFuncArgsRec
+   --Err_084: use FuncArgsExpSufRec (Err_075)
+   RCurlyInitList <- ({} '' -> 'RCurlyInitList') -> adderror  FuncArgsExpSufRec
 
    --Err_XXX: the algorithm did not insert the label corresponding to ExpFieldList in rule 'fieldlist'
-   -- uses RParFuncArgsRec
-   ExpFieldList <- ({} '' -> 'ExpFieldList') -> adderror RParFuncArgsRec (P '' -> defaultInt2)  -> number_exp
-   
+   --use FuncArgsExpSufRec (Err_075)
+   ExpFieldList <- ({} '' -> 'ExpFieldList') -> adderror FuncArgsExpSufRec  (P '' -> defaultInt2)  -> number_exp
+
+    --Err_085: the grammar uses ExpExpSuf (Err_076) again. Both uses of this label have the same recovery set
+
+    --Err_086: the grammar used to use RBracketExpSuff, but this instance has very difference recovery set
+    --Created label RBracketExpKey: not in parser spec. Use NameImportRec (Err_015)
+    RBracketExpKey  <-  ({} '' -> 'RBracketExpKey') -> adderror  NameImportRec
 
 ]], defs)
 
@@ -893,15 +843,15 @@ function parser.parse(filename, input)
         assert(ast, "Ouch! We did not get an ast for " .. tostring(err) ..'\n' .. input)
         totalErr = totalErr + #synerr
         nSynErr = nSynErr + 1
-        print("err = ", synerr[1].lab, " #synerr = ", #synerr, " total = ", totalErr, " nErr = ", nSynErr)
-        if #synerr > 1 then
-					for i, v in ipairs(synerr) do
-            print(i, v.lab, syntax_errors.errors[v.lab])
-          end
-				end
+        --print("err = ", synerr[1].lab, " #synerr = ", #synerr, " total = ", totalErr, " nErr = ", nSynErr)
+        --if #synerr > 1 then
+				--	for i, v in ipairs(synerr) do
+        --    print(i, v.lab, syntax_errors.errors[v.lab])
+        --  end
+				--end
         local loc
         if ast then
-            print(parser.pretty_print_ast(ast))
+            --print(parser.pretty_print_ast(ast))
             loc = synerr[1].pos
             err = synerr[1].lab
             --print("loc = ", loc, "err = ", err)
