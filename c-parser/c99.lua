@@ -64,7 +64,7 @@ defs["decl_ids"] = typed("string, number, table -> boolean, Decl?", function(_, 
     -- store typedef
     if elem(decl.spec, "typedef") then
         if not (decl.ids and decl.ids[1] and decl.ids[1].decl) then
-            return false, nil
+            return true
         end
         for _, id in ipairs(decl.ids) do
             local name = id.decl.name or id.decl.declarator.name
@@ -275,7 +275,7 @@ functionDefinition <- {| {:spec: {| declarationSpecifier+ |} :} {:func: declarat
 --------------------------------------------------------------------------------
 -- Declarations
 
-declaration <- {| {:spec: {| declarationSpecifier+ |} :} ({:ids: initDeclarationList :})? gccExtensionSpecifier* ";" _ |} => decl_ids
+declaration <- {| gccExtensionSpecifier? {:spec: {| declarationSpecifier+ |} :} ({:ids: initDeclarationList :})? gccExtensionSpecifier* ";" _ |} => decl_ids
 
 declarationSpecifier <- storageClassSpecifier
                       / typeSpecifier
@@ -288,12 +288,18 @@ initDeclarator <- {| {:decl: declarator :} ("=" _ {:value: initializer :} )? |}
 
 gccExtensionSpecifier <- "__attribute__" _ "(" _ "(" _ gccAttributeList ")" _ ")" _
                        / gccAsm
+                       / clangAsm
+                       / "__DARWIN_ALIAS_STARTING_MAC_1060" _ "(" _ clangAsm ")" _
+                       / "__AVAILABILITY_INTERNAL" [a-zA-Z0-9_]+ _ ("(" _ STRING_LITERAL ")" _ )?
 
 gccAsm <- "__asm__" _ "(" _ (STRING_LITERAL / ":" _ / expression)+ ")" _
 
+clangAsm <- "__asm" _ "(" _ (STRING_LITERAL / ":" _ / expression)+ ")" _
+
 gccAttributeList <- {| gccAttributeItem ("," _ gccAttributeItem )* |}
 
-gccAttributeItem <- IDENTIFIER ("(" _ (expression ("," _ expression)*)? ")" _)?
+gccAttributeItem <- clangAsm
+                  / IDENTIFIER ("(" _ (expression ("," _ expression)*)? ")" _)?
                   / ""
 
 storageClassSpecifier <- { "typedef"  } _
@@ -363,7 +369,7 @@ ddRec <- "[" _ {| {:idx: typeQualifier* assignmentExpression?          :} |} "]"
        / "(" _ {:params: identifierList / empty :} ")" _ ddRec
        / ""
 
-pointer <- {| ({ "*" } _ typeQualifier*)+ |}
+pointer <- {| ({ "*"/"^" } _ typeQualifier*)+ |}
 
 parameterTypeList <- {| parameterList "," _ {| { "..." } |} _ |} => join
                    / parameterList
