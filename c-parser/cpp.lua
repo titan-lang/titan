@@ -704,6 +704,11 @@ cpp.parse_file = typed("string, FILE*?, Ctx? -> Ctx?, string?", function(filenam
                 local is_next = (tk.directive == "include_next")
                 local inc_filename, inc_fd, err = find_file(ctx, name, mode, is_next)
                 if not inc_filename then
+                    -- fall back to trying to load an #include "..." as #include <...>;
+                    -- this is necessary for Mac system headers
+                    inc_filename, inc_fd, err = find_file(ctx, name, "system", is_next)
+                end
+                if not inc_filename then
                     return nil, name..":"..err
                 end
                 cpp.parse_file(inc_filename, inc_fd, ctx)

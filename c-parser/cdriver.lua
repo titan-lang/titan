@@ -13,9 +13,9 @@ function cdriver.process_file(filename)
 
     local srccode = table.concat(ctx.output, "\n").." $EOF$"
 
-    local res, err, line, col = c99.match_language_grammar(srccode)
+    local res, err, line, col, fragment = c99.match_language_grammar(srccode)
     if not res then
-        return nil, ("failed parsing: %s:%d:%d: %s\n"):format(filename, line, col, err)
+        return nil, ("failed parsing: %s:%d:%d: %s\n%s"):format(filename, line, col, err, fragment)
     end
 
     local ffi_types, err = ctypes.register_types(res)
