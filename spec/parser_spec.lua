@@ -143,13 +143,59 @@ describe("Titan parser", function()
         assert_program_ast([[ local x=17 ]], {
             { _tag = "Ast.TopLevelVar",
                 islocal = true,
-                decl = { name = "x", type = false } }
+                decl = { name = "x", type = false, option = false } }
         })
 
         assert_program_ast([[ y = 18 ]], {
             { _tag = "Ast.TopLevelVar",
                 islocal = false,
-                decl = { name = "y", type = false } }
+                decl = { name = "y", type = false, option = false } }
+        })
+
+        assert_program_ast([[ local x?=17 ]], {
+            { _tag = "Ast.TopLevelVar",
+                islocal = true,
+                decl = { name = "x", type = false, option = true } }
+        })
+
+        assert_program_ast([[ y? = 18 ]], {
+            { _tag = "Ast.TopLevelVar",
+                islocal = false,
+                decl = { name = "y", type = false, option = true } }
+        })
+
+        assert_program_ast([[ local x?: integer =17 ]], {
+            { _tag = "Ast.TopLevelVar",
+                islocal = true,
+                decl = { name = "x", type = {_tag = "Ast.TypeOption", basetype = {_tag = "Ast.TypeInteger"}}, option = false } }
+        })
+
+        assert_program_ast([[ y?: integer = 18 ]], {
+            { _tag = "Ast.TopLevelVar",
+                islocal = false,
+                decl = { name = "y", type = {_tag = "Ast.TypeOption", basetype = {_tag = "Ast.TypeInteger"}}, option = false } }
+        })
+    end)
+
+    it("can parse local var declarations", function()
+        assert_statements_ast([[ local x=17 ]], {
+            { _tag = "Ast.StatDecl",
+                decls = { { name = "x", type = false, option = false } } }
+        })
+
+        assert_statements_ast([[ local x?=17 ]], {
+            { _tag = "Ast.StatDecl",
+                decls = { { name = "x", type = false, option = true } } }
+        })
+
+        assert_statements_ast([[ local x: integer=17 ]], {
+            { _tag = "Ast.StatDecl",
+                decls = { { name = "x", type = { _tag = "Ast.TypeInteger" }, option = false } } }
+        })
+
+        assert_statements_ast([[ local x?: integer=17 ]], {
+            { _tag = "Ast.StatDecl",
+                decls = { { name = "x", type = { _tag = "Ast.TypeOption", basetype = {_tag = "Ast.TypeInteger"} }, option = false } } }
         })
     end)
 

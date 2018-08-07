@@ -130,7 +130,20 @@ function types.coerceable(source, target)
             types.equals(target, source.base)) or
 
            (target._tag == "Type.Option" and
-            source._tag == "Type.Nil")
+            source._tag == "Type.Nil") or
+
+           (target._tag == "Type.Option" and
+            source._tag == "Type.Option" and
+            types.coerceable(source.base, target.base)) or
+
+           (target._tag == "Type.Option" and
+            source._tag ~= "Type.Option" and
+            types.coerceable(source, target.base)) or
+
+           (source._tag == "Type.Option" and
+            target._tag ~= "Type.Option" and
+            types.coerceable(target, source.base))
+
 end
 
 -- The type consistency relation, a-la gradual typing

@@ -178,6 +178,19 @@ describe("Titan type checker", function()
         assert.match("variable '%w+' not declared", err)
     end)
 
+    it("reads from array", function()
+        assert_type_check([[
+            function fn(): integer
+                local arr: {integer} = {}
+                local x = arr[1]
+                local y? = arr[1]
+                local z: integer = arr[1]
+                local w: float = arr[1]
+                return x + y
+            end
+        ]])
+    end)
+
     it("catches array expression in indexing is not an array or map", function()
         local code = [[
             function fn(x: integer)
