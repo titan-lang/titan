@@ -155,13 +155,24 @@ typefromnode = util.make_visitor({
 --    node: expression node
 --    target: target type
 --    returns node wrapped in a coercion, or original node
-local function trycoerce(node, target, errors)
-    if types.coerceable(node._type, target) then
-        local n = ast.ExpCast(node.loc, node, target)
+local function trycoerce(source, target, errors)
+    if types.coerceable(source._type, target) then
+        local n
+        if source._type._tag == "Type.Option" and
+           target._tag ~= "Type.Boolean" and
+           target._tag ~= "Type.Value" then
+            local inner = ast.ExpCast(source.loc, source, source._type.base)
+            inner._type = source._type.base
+            n = trycoerce(inner, target, errors)
+        elseif target._tag == "Type.Option" then
+            n = ast.ExpCast(source.loc, trycoerce(source, target.base, errors), target)
+        else
+            n = ast.ExpCast(source.loc, source, target)
+        end
         n._type = target
         return n
     else
-        return node
+        return source
     end
 end
 
@@ -307,8 +318,12 @@ checkstat = util.make_visitor({
                     checkexp(exp, st, errors, decl._type)
                 else
                     checkexp(exp, st, errors)
-                    exp = tryforce(exp) -- never infer option type
-                    decl._type = exp._type
+                    if not decl.option then
+                        exp = tryforce(exp) -- never infer option type
+                        decl._type = exp._type
+                    else
+                        decl._type = optionize(exp._type)
+                    end
                     checkdecl(decl, st, errors)
                 end
                 exp = trycoerce(exp, decl._type, errors)
@@ -1242,7 +1257,7 @@ end
 --   st: symbol table
 --   errors: list of compile-time errors
 local function checkmethod(node, st, errors)
-    local self = ast.Decl(node.loc, "self", ast.TypeName(node.loc, node._record.name))
+    local self = ast.Decl(node.loc, "self", ast.TypeName(node.loc, node._record.name), false)
     node._self = self
     self._type = typefromnode(self.type, st, errors)
     st:add_symbol("self", self)

@@ -27,7 +27,7 @@ return typedecl("Ast", {
     },
 
     Decl = {
-        Decl = {"loc", "name", "type"},
+        Decl = {"loc", "name", "type", "option"},
     },
 
     Stat = {

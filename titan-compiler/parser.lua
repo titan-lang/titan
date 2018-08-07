@@ -215,7 +215,7 @@ end
 function defs.recorddecl(pos, name, fields)
     local params, initlist = {}, {}
     for _, field in ipairs(fields) do
-        table.insert(params, ast.Decl(field.loc, field.name, field.type))
+        table.insert(params, ast.Decl(field.loc, field.name, field.type, false))
         table.insert(initlist, ast.Field(field.loc, field.name,
             ast.ExpVar(field.loc, ast.VarName(field.loc, field.name))))
     end
@@ -226,6 +226,22 @@ function defs.recorddecl(pos, name, fields)
     })
     return ast.TopLevelRecord(pos, name, fields),
            ast.TopLevelStatic(pos, name, "new", params, { ast.TypeName(pos, name) }, body)
+end
+
+function defs.typeddecl(pos, name, type)
+    return ast.Decl(pos, name, type, false)
+end
+
+function defs.optiondecl(pos, name, type)
+    if type then
+        return ast.Decl(pos, name, ast.TypeOption(type.loc, type), false)
+    else
+        return ast.Decl(pos, name, false, true)
+    end
+end
+
+function defs.inferreddecl(pos, name)
+    return ast.Decl(pos, name, false, false)
 end
 
 local grammar = re.compile([[
@@ -271,9 +287,12 @@ local grammar = re.compile([[
     paramlist       <- {| (param (COMMA param^DeclParList)*)? |} -- produces {Decl}
 
     param           <- (P  NAME COLON^ParamSemicolon
-                           type^TypeDecl)                        -> Decl
+                           type^TypeDecl)                        -> typeddecl
 
-    decl            <- (P  NAME (COLON type^TypeDecl)? -> opt)   -> Decl
+    decl            <- (P  NAME COLON type^TypeDecl)             -> typeddecl
+                     / (P  NAME OPT COLON type^TypeDecl)         -> optiondecl
+                     / (P  NAME OPT)                             -> optiondecl
+                     / (P  NAME)                                 -> inferreddecl
 
     decllist        <- {| decl (COMMA decl^DeclParList)* |}      -- produces {Decl}
 
@@ -313,7 +332,7 @@ local grammar = re.compile([[
     recordfields    <- {| recordfield* |}                        -- produces {Decl}
 
     recordfield     <- (P  NAME COLON^ColonRecordField
-                           type^TypeRecordField SEMICOLON?)      -> Decl
+                           type^TypeRecordField SEMICOLON?)      -> typeddecl
 
     block           <- (P  {| statement* returnstat? |})         -> StatBlock
 
