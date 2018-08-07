@@ -68,8 +68,24 @@ local function getslot(typ --[[:table]], dst --[[:string?]], src --[[:string]])
     elseif typ._tag == "Type.Map" then tmpl = "$DST hvalue($SRC)"
     elseif typ._tag == "Type.Value" then tmpl = "$DST *($SRC)"
     elseif typ._tag == "Type.Nominal" then tmpl = "$DST clCvalue($SRC)"
+    elseif typ._tag == "Type.Option" then tmpl = "$DST *($SRC)"
     else error("invalid type " .. types.tostring(typ)) end
     return render(tmpl, { DST = dst, SRC = src })
+end
+
+local function toboolean(typ --[[:table]], src --[[:string]])
+    local tmpl
+    if types.is_truthy(typ) then return "1"
+    elseif types.is_falsy(typ) then return "0"
+    elseif typ._tag == "Type.Boolean" then return src
+    elseif typ._tag == "Type.Value" then
+        tmpl = "!l_isfalse(&$SRC)"
+    elseif typ._tag == "Type.Option" and typ.base._tag == "Type.Boolean" then
+        tmpl = "!l_isfalse(&$SRC)"
+    elseif typ._tag == "Type.Option" and typ.base._tag ~= "Type.Boolean" then
+        tmpl = "!ttisnil(&$SRC)"
+    else error("invalid type " .. types.tostring(typ)) end
+    return render(tmpl, { SRC = src })
 end
 
 -- Get the next local state slot for this module
@@ -144,6 +160,8 @@ local function type2metatable(ctx, typ --[[:table]])
     return ctx.metatables[typ.fqtn]
 end
 
+local checkandset
+
 local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:string]], loc --[[:table]])
     local tag
     if typ._tag == "Type.Integer" then
@@ -206,6 +224,18 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
             EXP = exp,
             VAR = cvar
         })
+    elseif typ._tag == "Type.Option" then
+        return render([[
+            if(ttisnil($EXP)) {
+                setnilvalue(&$VAR);
+            } else {
+                $CHECKANDSET
+            }
+        ]], {
+            VAR = cvar,
+            EXP = exp,
+            CHECKANDSET = checkandset(ctx, typ.base, "&" .. cvar, exp, loc)
+        })
     elseif typ._tag == "Type.Nominal" then
         return render([[
             if (TITAN_LIKELY(ttisfulluserdata($EXP))) {
@@ -254,7 +284,7 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
 })
 end
 
-local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]], loc --[[:table]])
+function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]], loc --[[:table]])
     local tag
     if typ._tag == "Type.Integer" then tag = "integer"
     elseif typ._tag == "Type.Float" then
@@ -284,6 +314,18 @@ local function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:st
         ]], {
             SRC = src,
             DST = dst,
+        })
+    elseif typ._tag == "Type.Option" then
+        return render([[
+            if(ttisnil($SRC)) {
+                setnilvalue($DST);
+            } else {
+                $CHECKANDSET
+            }
+        ]], {
+            SRC = src,
+            DST = dst,
+            CHECKANDSET = checkandset(ctx, typ.base, dst, src, loc)
         })
     elseif typ._tag == "Type.Nominal" then
         return render([[
@@ -327,6 +369,7 @@ local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
     elseif typ._tag == "Type.Map" then tmpl = "sethvalue(L, $DST, $SRC);"
     elseif typ._tag == "Type.Value" then tmpl = "setobj2t(L, $DST, &$SRC);"
     elseif typ._tag == "Type.Nominal" then tmpl = "setclCvalue(L, $DST, $SRC);"
+    elseif typ._tag == "Type.Option" then tmpl = "setobj2t(L, $DST, &$SRC);"
     else
         error("invalid type " .. types.tostring(typ))
     end
@@ -342,6 +385,17 @@ local function setwrapped(typ --[[:table]], dst --[[:string]], src --[[:string]]
             DST = dst,
             SRC = src
         })
+    elseif typ._tag == "Type.Option" and typ.base._tag == "Type.Nominal" then
+        return render([[
+            if(ttisnil(&$SRC)) {
+                setnilvalue($DST);
+            } else {
+                setobj2t(L, $DST, &(clCvalue(&$SRC)->upvalue[0]));
+            }
+        ]], {
+            DST = dst,
+            SRC = src
+        })
     else
         return setslot(typ, dst, src)
     end
@@ -351,6 +405,17 @@ local function copyslotwrapped(typ, dst, src)
     if typ._tag == "Type.Nominal" then
         return render([[
             setobj2t(L, $DST, &(clCvalue($SRC)->upvalue[0]));
+        ]], {
+            DST = dst,
+            SRC = src
+        })
+    elseif typ._tag == "Type.Option" and typ.base._tag == "Type.Nominal" then
+        return render([[
+            if(ttisnil($SRC)) {
+                setnilvalue($DST);
+            } else {
+                setobj2t(L, $DST, &(clCvalue($SRC)->upvalue[0]));
+            }
         ]], {
             DST = dst,
             SRC = src
@@ -398,12 +463,13 @@ local function ctype(typ --[[:table]])
     elseif typ._tag == "Type.Value" then return "TValue"
     elseif typ._tag == "Type.Nominal" then return "CClosure*"
     elseif typ._tag == "Type.Pointer" then return foreignctype(typ)
+    elseif typ._tag == "Type.Option" then return "TValue"
     else error("invalid type " .. types.tostring(typ))
     end
 end
 
 local function initval(typ --[[:table]])
-    if typ._tag == "Type.Value" then return "{ {0}, 0 }"
+    if typ._tag == "Type.Value" or typ._tag == "Type.Option" then return "{ {0}, 0 }"
     else return "0" end
 end
 
@@ -611,7 +677,7 @@ local function codeif(ctx, node, idx)
         }
     ]], {
         CSTATS = cstats,
-        CEXP = cexp,
+        CEXP = toboolean(node.thens[idx].condition._type, cexp),
         CTHN = cthn,
         CELS = cels
     })
@@ -800,7 +866,7 @@ local function codeassignment(ctx, var, cexp, etype)
             })
         elseif var._decl._tag == "Ast.TopLevelVar" then
             return setslot(var._type, var._decl._slot, cexp)
-        elseif var._decl._used then
+        elseif var._decl._used and cexp ~= var._decl._cvar then
             local cset = ""
             if types.is_gc(var._type) then
                 cset = setslot(var._type, var._decl._slot, var._decl._cvar)
@@ -1719,20 +1785,29 @@ local function codebinaryop(ctx, node, iscondition)
     local op = node.op
     if op == "~=" then op = "!=" end
     if op == "and" then
-        local lstats, lcode = codeexp(ctx, node.lhs, iscondition)
-        local rstats, rcode = codeexp(ctx, node.rhs, iscondition)
-        if lstats == "" and rstats == "" and iscondition then
-            return "", "(" .. lcode .. " && " .. rcode .. ")"
+        if node._type._tag == "Type.Boolean" then
+            local lstats, lcode = codeexp(ctx, node.lhs)
+            local rstats, rcode = codeexp(ctx, node.rhs)
+            return lstats .. rstats, "(" .. lcode .. " && " .. rcode .. ")"
+        elseif types.is_truthy(node.lhs._type) then
+            local rstats, rcode = codeexp(ctx, node.rhs)
+            return rstats, rcode
+        elseif types.is_falsy(node.lhs._type) then
+            local lstats, lcode = codeexp(ctx, node.lhs)
+            return lstats, lcode
         else
+            local lstats, lcode = codeexp(ctx, node.lhs)
+            local rstats, rcode = codeexp(ctx, node.rhs)
             local ctmp, tmpname, tmpslot = newtmp(ctx, node._type, types.is_gc(node._type))
             local tmpset = types.is_gc(node._type) and setslot(node._type, tmpslot, tmpname) or ""
             local code = render([[
                 $LSTATS
                 $CTMP
-                $TMPNAME = $LCODE;
-                if($TMPNAME) {
-                  $RSTATS
-                  $TMPNAME = $RCODE;
+                if(l_isfalse(&$LCODE)) {
+                    setnilvalue(&$TMPNAME);
+                } else {
+                    $RSTATS;
+                    $TMPNAME = $RCODE;
                 }
                 $TMPSET;
             ]], {
@@ -1747,18 +1822,54 @@ local function codebinaryop(ctx, node, iscondition)
             return code, tmpname
         end
     elseif op == "or" then
-        local lstats, lcode = codeexp(ctx, node.lhs, true)
-        local rstats, rcode = codeexp(ctx, node.rhs, iscondition)
-        if lstats == "" and rstats == "" and iscondition then
-            return "", "(" .. lcode .. " || " .. rcode .. ")"
-        else
+        if node._type._tag == "Type.Boolean" then
+            local lstats, lcode = codeexp(ctx, node.lhs)
+            local rstats, rcode = codeexp(ctx, node.rhs)
+            return lstats .. rstats, "(" .. lcode .. " || " .. rcode .. ")"
+        elseif types.is_truthy(node.lhs._type) then
+            local lstats, lcode = codeexp(ctx, node.lhs)
+            return lstats, lcode
+        elseif types.is_falsy(node.lhs._type) then
+            local rstats, rcode = codeexp(ctx, node.rhs)
+            return rstats, rcode
+        elseif node.lhs._type._tag == "Type.Option" then
+            assert(types.equals(node.lhs._type.base, node.rhs._type))
+            local lstats, lcode = codeexp(ctx, node.lhs)
+            local rstats, rcode = codeexp(ctx, node.rhs)
             local ctmp, tmpname, tmpslot = newtmp(ctx, node._type, types.is_gc(node._type))
             local tmpset = types.is_gc(node._type) and setslot(node._type, tmpslot, tmpname) or ""
             local code = render([[
                 $LSTATS
                 $CTMP
+                if(l_isfalse(&$LCODE)) {
+                    $RSTATS;
+                    $TMPNAME = $RCODE;
+                } else {
+                    $GETL;
+                }
+                $TMPSET;
+            ]], {
+                CTMP = ctmp,
+                TMPNAME = tmpname,
+                LSTATS = lstats,
+                LCODE = lcode,
+                RSTATS = rstats,
+                RCODE = rcode,
+                TMPSET = tmpset,
+                GETL = getslot(node._type, tmpname, "&" .. lcode),
+            })
+            return code, tmpname
+        else
+            assert(node._type._tag == "Type.Value")
+            local lstats, lcode = codeexp(ctx, node.lhs)
+            local rstats, rcode = codeexp(ctx, node.rhs)
+            local ctmp, tmpname, tmpslot = newtmp(ctx, types.Value(), true)
+            local tmpset = setslot(types.Value(), tmpslot, tmpname)
+            local code = render([[
+                $LSTATS
+                $CTMP
                 $TMPNAME = $LCODE;
-                if(!$TMPNAME) {
+                if(l_isfalse(&$TMPNAME)) {
                     $RSTATS;
                     $TMPNAME = $RCODE;
                 }
@@ -1820,7 +1931,7 @@ local function codebinaryop(ctx, node, iscondition)
     end
 end
 
-local function codeindexarray(ctx, node, iscondition)
+local function codeindexarray(ctx, node)
     local castats, caexp = codeexp(ctx, node.exp1)
     local cistats, ciexp = codeexp(ctx, node.exp2)
     local typ = node._type
@@ -1831,10 +1942,10 @@ local function codeindexarray(ctx, node, iscondition)
         cset = setslot(typ, tmpslot, tmpname)
     end
     local cfinish
-    if iscondition then
+    if typ._tag == "Type.Option" then
         cfinish = render([[
           if(ttisnil(_s)) {
-            $TMPNAME = 0;
+            setnilvalue(&$TMPNAME);
           } else {
             $CCHECK
             $CSET
@@ -1882,7 +1993,7 @@ local function codeindexarray(ctx, node, iscondition)
     return stats, tmpname
 end
 
-local function codeindexmap(ctx, node, iscondition)
+local function codeindexmap(ctx, node)
     local cmstats, cmexp = codeexp(ctx, node.exp1)
     local ckstats, ckexp = codeexp(ctx, node.exp2)
     local typ = node._type
@@ -1893,10 +2004,10 @@ local function codeindexmap(ctx, node, iscondition)
         cset = setslot(typ, tmpslot, tmpname)
     end
     local cfinish
-    if iscondition then
+    if typ._tag == "Type.Option" then
         cfinish = render([[
           if(ttisnil(_s)) {
-            $TMPNAME = 0;
+            setnilvalue(&$TMPNAME);
           } else {
             $CCHECK
             $CSET
@@ -1959,9 +2070,9 @@ function codeexp(ctx, node, iscondition, target)
         return codevar(ctx, node)
     elseif tag == "Ast.VarBracket" then
         if node.exp1._type._tag == "Type.Array" then
-            return codeindexarray(ctx, node, iscondition)
+            return codeindexarray(ctx, node)
         elseif node.exp1._type._tag == "Type.Map" then
-            return codeindexmap(ctx, node, iscondition)
+            return codeindexmap(ctx, node)
         end
         error("impossible var bracket")
     elseif tag == "Ast.ExpNil" or
@@ -1997,12 +2108,14 @@ function codeexp(ctx, node, iscondition, target)
     elseif tag == "Ast.ExpExtra" then
         return "", node.exp._extras[node.index]
     elseif tag == "Ast.ExpCast" and node.exp._tag == "Ast.ExpVar" and node.exp.var._tag == "Ast.VarBracket" then
+        -- Fold casts of array/map indexing into the code for the operation
         local t = node.exp.var._type
-        node.exp.var._type = node.target
-        local cstats, cexp = codeexp(ctx, node.exp.var, iscondition)
+        node.exp.var._type = node._type
+        local cstats, cexp = codeexp(ctx, node.exp.var)
         node.exp.var._type = t
         return cstats, cexp
     elseif tag == "Ast.ExpCast" and node.exp._type._tag == "Type.Value" then
+        -- cast from value to any type
         local cstats, cexp = codeexp(ctx, node.exp, iscondition)
         local ctmps, tmpnames = newtmp(ctx, node.exp._type)
         local ctmpt, tmpnamet = newtmp(ctx, node.target)
@@ -2021,7 +2134,8 @@ function codeexp(ctx, node, iscondition, target)
             EXP = cexp,
             CHECKANDGET = cget
         }), tmpnamet
-    elseif tag == "Ast.ExpCast" and node.target._tag == "Type.Value" then
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Value" then
+        -- cast to value from any type
         local cstats, cexp = codeexp(ctx, node.exp, iscondition)
         local ctmp, tmpname = newtmp(ctx, node.target)
         return render([[
@@ -2033,13 +2147,16 @@ function codeexp(ctx, node, iscondition, target)
             TMPTARGET = ctmp,
             SETSLOT = setwrapped(node.exp._type, "&" .. tmpname, cexp)
         }), tmpname
-    elseif tag == "Ast.ExpCast" and node.target._tag == "Type.Float" then
+    elseif tag == "Ast.ExpCast" and node.exp._type._tag == "Type.Integer" and node._type._tag == "Type.Float" then
+        -- cast from integer to float
         local cstat, cexp = codeexp(ctx, node.exp)
         return cstat, "((lua_Number)" .. cexp .. ")"
-    elseif tag == "Ast.ExpCast" and node.target._tag == "Type.Boolean" then
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Boolean" then
+        -- cast to boolean from any type
         local cstat, cexp = codeexp(ctx, node.exp, true)
-        return cstat, "((" .. cexp .. ") ? 1 : 0)"
-    elseif tag == "Ast.ExpCast" and node.target._tag == "Type.Integer" then
+        return cstat, toboolean(node.exp._type, cexp)
+    elseif tag == "Ast.ExpCast" and node.exp._type._tag == "Type.Float" and node.target._tag == "Type.Integer" then
+        -- cast from float to integer
         local cstat, cexp = codeexp(ctx, node.exp)
         local ctmp1, tmpname1 = newtmp(ctx, types.Float())
         local ctmp2, tmpname2 = newtmp(ctx, types.Float())
@@ -2068,7 +2185,7 @@ function codeexp(ctx, node, iscondition, target)
             LINE = c_integer_literal(node.loc.line)
         })
         return cfloor, tmpname3
-    elseif tag == "Ast.ExpCast" and node.target._tag == "Type.String" then
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.String" then
         local cvt
         local cstats, cexp = codeexp(ctx, node.exp)
         if node.exp._type._tag == "Type.Integer" then
@@ -2094,6 +2211,52 @@ function codeexp(ctx, node, iscondition, target)
             })
             return code, tmpname
         end
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Option" and node.exp._type._tag == "Type.Nil" then
+        local ctmp, tmpname = newtmp(ctx, node._type)
+        return render([[
+            $CTMP
+            setnilvalue(&$TMPNAME);
+        ]], {
+            CTMP = ctmp,
+            TMPNAME = tmpname
+        }), tmpname
+    elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Option" then
+        -- cast from t to t?
+        assert(types.equals(node._type.base, node.exp._type))
+        local cstats, cexp = codeexp(ctx, node.exp)
+        local ctmp, tmpname = newtmp(ctx, node._type)
+        return render([[
+            $CSTATS
+            $CTMP
+            $SETSLOT
+        ]], {
+            CSTATS = cstats,
+            CTMP = ctmp,
+            SETSLOT = setslot(node._type.base, "&" .. tmpname, cexp)
+        }), tmpname
+    elseif tag == "Ast.ExpCast" and node.exp._type._tag == "Type.Option" then
+        -- cast form t? to t
+        assert(types.equals(node.exp._type.base, node._type))
+        local cstats, cexp = codeexp(ctx, node.exp)
+        local ctmp, tmpname = newtmp(ctx, node._type)
+        return render([[
+            $CSTATS
+            $CTMP
+            if(TITAN_UNLIKELY(ttisnil(&$CEXP))) {
+                luaL_error(L, "%s:%d:%d: type error, expected %s but found nil", $FILE, $LINE, $COL, $TYPENAME);
+            } else {
+                $GETSLOT
+            }
+        ]], {
+            CSTATS = cstats,
+            CEXP = cexp,
+            CTMP = ctmp,
+            FILE = node.loc.file,
+            LINE = node.loc.line,
+            COL = node.loc.col,
+            TYPENAME = c_string_literal(types.tostring(node._type)),
+            GETSLOT = getslot(node._type, tmpname, "&" .. cexp)
+        }), tmpname
     elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Pointer" then
         local cstats, cexp = codeexp(ctx, node.exp)
         local fstats, fexp = nativetoforeignexp(ctx, node.exp, cexp)
