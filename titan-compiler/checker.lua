@@ -56,7 +56,7 @@ local function invalid(errors, loc, ...)
 end
 
 local function optionize(t)
-    if t._tag == "Type.Option" or t.tag == "Type.Value" then
+    if t._tag == "Type.Option" or t._tag == "Type.Value" then
         return t
     else
         return types.Option(t)
@@ -627,6 +627,7 @@ checkexp = util.make_visitor({
     end,
 
     ["Ast.ExpInitList"] = function(node, st, errors, context)
+        context = context and deoptionize(context)
         local expected = context and context._tag
         if not expected then
             -- try to detect from contents
@@ -1061,7 +1062,7 @@ checkexp = util.make_visitor({
                 node._type = tlhs
             elseif types.is_falsy(tlhs) then
                 node._type = trhs
-            elseif tlhs._tag == "Type.Option" and types.equals(deoptionize(tlhs), trhs) then
+            elseif tlhs._tag == "Type.Option" and types.equals(tlhs.base, trhs) then
                 node._type = trhs
             elseif tlhs._tag == "Type.Option" and trhs._tag == "Type.Value" then
                 node.lhs = trycoerce(node.lhs, types.Value(), errors)
