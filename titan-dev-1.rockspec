@@ -28,6 +28,7 @@ build = {
       ["titan-compiler.coder"] = "titan-compiler/coder.lua",
       ["titan-compiler.foreigntypes"] = "titan-compiler/foreigntypes.lua",
       ["titan-compiler.lexer"] = "titan-compiler/lexer.lua",
+      ["titan-compiler.location"] = "titan-compiler/location.lua",
       ["titan-compiler.parser"] = "titan-compiler/parser.lua",
       ["titan-compiler.pretty"] = "titan-compiler/pretty.lua",
       ["titan-compiler.symtab"] = "titan-compiler/symtab.lua",
