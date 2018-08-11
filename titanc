@@ -51,6 +51,8 @@ for _, modname in ipairs(args.module) do
     end
 end
 
+if #errors > 0 then exit(table.concat(errors, "\n")) end
+
 local libnames = {}
 
 for name, mod in pairs(driver.imported) do
