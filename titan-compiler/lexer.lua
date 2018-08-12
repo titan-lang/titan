@@ -180,7 +180,9 @@ for _, keyword in ipairs(keywords) do
 end
 
 lexer.NAME = Cmt(C(possiblename), function(_, pos, s)
+    --print('lexer', _, pos, s, is_keyword[s])
     if not is_keyword[s] then
+        --print("lexer will return ", s)
         return pos, s
     else
         return false

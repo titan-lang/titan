@@ -866,8 +866,8 @@ describe("Titan parser", function()
     end)
 
     it("does not allow parentheses in the LHS of an assignment", function()
-        assert_statements_syntax_error([[ local (x) = 42 ]], "DeclLocal")
-        assert_statements_syntax_error([[ (x) = 42 ]], "ExpAssign")
+        assert_statements_syntax_error([[ local (xyz) = 42 ]], "DeclLocal")
+        assert_statements_syntax_error([[ (xzy) = 42 ]], "ExpAssignPred")
     end)
 
     it("does not allow identifiers that are type names", function()
@@ -931,7 +931,8 @@ describe("Titan parser", function()
         ]], "AssignVar")
 
         assert_program_syntax_error([[
-            x =
+            x = 
+            local y = 3
         ]], "ExpVarDec")
 
         assert_program_syntax_error([[
@@ -962,12 +963,12 @@ describe("Titan parser", function()
         assert_program_syntax_error([[
             function foo (a:int, ) : int
             end
-        ]], "DeclParList")
+        ]], "ParamList")
 
         assert_program_syntax_error([[
             function foo (a: ) : int
             end
-        ]], "TypeDecl")
+        ]], "TypeParam")
 
 
         assert_type_syntax_error([[ {} ]], "TypeType")
@@ -979,6 +980,8 @@ describe("Titan parser", function()
         assert_type_syntax_error([[ (a, b -> b  ]], "RParenTypelist")
 
         assert_type_syntax_error([[ (a, b) -> = nil ]], "TypeReturnTypes")
+
+        assert_type_syntax_error([[ (a, b) b ]], "Err_037")
 
         assert_type_syntax_error([[ foo. ]], "QualName")
 

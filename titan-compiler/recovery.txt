@@ -1,0 +1,46 @@
+*  To do recovery properly, the grammar needs a rule to consume a token. This rule will
+   be used while trying to reach a synchronization token
+
+*  The recovery pattern associated with label NameRecord (Err_007) will not work, because
+   it is the same pattern (NAME) that failed to match in the regular grammar.
+   Update: it worked. I think it did not work before because I have not annotated all the rules.
+   Nevertheless, the recovery expression does not seem good.
+
+*  The original grammar uses the same set of labels (six in total) for 'import' and 'foreign' rules 
+
+*  The label DeclParList is used by rules 'declist' and 'paramlist', but each rule has a different
+   recovery expression associated with this labels. I am using two distinct labels: DeclList and ParamList
+   In 'first.lua', I need to check the computatation of FOLLOW in case of an expression p*.
+   It seems that ',' should be in the recovery expression of DeclParList.
+
+*  The label TypeDecl is also used by two rules, 'param' and 'decl', but has different recovery expressions
+   in each rule. I will use TypeParam for 'param' and TypeDecl for 'decl'.
+
+*  Check why the recovery did not work for label RParenTypelist.
+
+*  In rule 'rettype', the algorithm did not insert the two labels corresponding to TypeReturnTypes. 
+   I did not see a specific test for this label in 'parser_spec'. Label 'TypeReturnTypes' was thrown
+   by a test related to rule 'type'.
+
+*  As rule 'rettype', rule 'type' also uses 'TypeReturnTypes'. The first occurrence of this label in rule 'type'
+   corresponds to label Err_033. I am using the recovery set of Err_033 for all occurrences of TypeReturnTypes,
+   since the recovery set of Err_033 is equal to the FOLLOW set of 'rettype'.
+   The second occurrence of 'TypeReturnTypes' in 'type' was not annotated by the algorithm.
+   The recovery fails in example "local x: (a, b) -> = nil = nil", because 'TypeReturnTypes' syncs
+   with the first '=' and the rest of the input '= nil' is not matched by the statement rule.
+   I removed '=' from the recovery expression and the recovery worked.
+
+*  The recovery rule for DecLocal does not work for input 'local (xyz) = 42'.
+   It captures 'xyz', although '(xyz)' is not a valid name, and the recovery set has only '='.
+   I commented out this test in 'parser_spec'. 
+   FIXED: The use of NAME in the recovery rule eatTk was producing captures
+   See also the use of NUMBER and STRINGLIT
+
+*  In a similar way, the recovery rules for ExpAssign and ExpStat also do not work for
+   '(xzy) = 42' and '(f)', respectively, we get the error message 'too many captures'
+   FIXED: The error was caused because these labels are used in predicates to test whether
+   the input is invalid. Their recovery expression should then consume at least the part
+   of the input that was matched by the predicate
+ 
+*  I used just one label OpExp, although each expression has a differente recovery set, because
+   LPeg 1.0.1 imposes a limit of 255 rules in a grammar. LPeg 1.0.0 does have this limit.
