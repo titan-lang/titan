@@ -922,9 +922,9 @@ checkexp = util.make_visitor({
                 trhs = node.rhs._type
             end
             if tlhs._tag == "Type.Option" or trhs._tag == "Type.Option" then
-                node.tlhs = trycoerce(node.lhs, optionize(tlhs), errors)
+                node.lhs = trycoerce(node.lhs, optionize(tlhs), errors)
                 tlhs = node.lhs._type
-                node.trhs = trycoerce(node.rhs, optionize(trhs), errors)
+                node.rhs = trycoerce(node.rhs, optionize(trhs), errors)
                 trhs = node.rhs._type
             end
             -- tries to coerce to float if either side is float
