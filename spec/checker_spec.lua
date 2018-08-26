@@ -1024,6 +1024,18 @@ describe("Titan type checker", function()
     end
 
     for _, op in ipairs({"==", "~="}) do
+        it("can compare option and non-option variants using " .. op, function()
+            local code = [[
+                function fn(s1: string?, s2: string): boolean
+                    return s1 ]] .. op .. [[ s2
+                end
+            ]]
+            local ok, err = run_checker(code)
+            assert.truthy(ok)
+        end)
+    end
+
+    for _, op in ipairs({"==", "~="}) do
         it("can compare pointers using " .. op, function()
             local code = [[
                 local stdio = foreign import "stdio.h"
