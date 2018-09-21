@@ -17,7 +17,10 @@ this will also install all dependencies automatically.
 
         $ [install luarocks]
         $ luarocks make titan-scm-1.rockspec
+To install without `sudo` permissions.
 
+        $ [cd into titan folder]
+        $ luarocks build --local
 You can also run the Titan compiler directly from the folder where you
 cloned this repository if you install all the dependencies for the compiler.
 
