@@ -325,6 +325,16 @@ describe("Titan type checker", function()
         ]])
     end)
 
+    it("coerces option in index", function ()
+        assert_type_check([[
+            function fn()
+                local a: { {string} } = { { 'foo' } }
+                local s = a[1][1]
+                a[1][1] = s
+            end
+        ]])
+    end)
+
     it("typechecks multiple return values in array initialization", function ()
         local code = [[
             function f(): (integer, integer)
