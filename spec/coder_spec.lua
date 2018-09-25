@@ -2310,7 +2310,7 @@ describe("Titan code generator", function()
             ]])
         end)
 
-        it("compares two options", function ()
+        it("compares two values with option types", function ()
             run_coder([[
                 function fn(a: integer, b: integer): boolean
                   local t1 = { a }
