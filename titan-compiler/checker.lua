@@ -540,6 +540,7 @@ checkvar = util.make_visitor({
 
     ["Ast.VarBracket"] = function(node, st, errors, context)
         checkexp(node.exp1, st, errors)
+        node.exp1 = tryforce(node.exp1)
         local keystype, term
         if node.exp1._type._tag == "Type.Array" then
             node._type = optionize(node.exp1._type.elem)

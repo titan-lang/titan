@@ -1915,8 +1915,8 @@ local function codebinaryop(ctx, node, iscondition)
             error("impossible: " .. ltyp .. " " .. rtyp)
         end
     elseif (op == "==" or op == "!=") and
-            node.lhs._type._tag == "Type.Value" and
-            node.rhs._type._tag == "Type.Value" then
+            ctype(node.lhs._type) == "TValue" and
+            ctype(node.rhs._type) == "TValue" then
         local lstats, lcode = codeexp(ctx, node.lhs)
         local rstats, rcode = codeexp(ctx, node.rhs)
         if op == "!=" then
