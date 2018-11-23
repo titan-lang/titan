@@ -43,6 +43,7 @@ build = {
       ["c-parser.cpp"] = "c-parser/cpp.lua",
       ["c-parser.ctypes"] = "c-parser/ctypes.lua",
       ["c-parser.cdefines"] = "c-parser/cdefines.lua",
+      ["titan"] = "titan-runtime/titanlib.c"
   },
    install = {
       bin = {

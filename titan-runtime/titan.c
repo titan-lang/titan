@@ -209,9 +209,22 @@ const TValue *getgeneric (Table *t, const TValue *key) {
 int errorhandler(lua_State *L) {
   void *buffer[255];
   const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
-  backtrace_symbols_fd(buffer, calls, 2);
+  char **bt = backtrace_symbols(buffer, calls);
+  int top = lua_gettop(L);
+  luaL_Buffer buf;
+  luaL_buffinit(L, &buf);
+  for(int i = 0; i < calls; i++) {
+    if(i > 0) { luaL_addchar(&buf, '\n'); }
+    luaL_addstring(&buf, bt[i]);
+  }
+  lua_pushliteral(L, TITAN_BACKTRACE_KEY);
+  luaL_tolstring(L, top, NULL);
+  lua_pushliteral(L, "\n");
   luaL_traceback(L, L, NULL, 0);
-  fprintf(stderr, "%s\n", lua_tostring(L, -1));
-  lua_pop(L, 1);
+  lua_pushliteral(L, "C traceback:\n");
+  luaL_pushresult(&buf);
+  lua_concat(L, 5);
+  lua_rawset(L, LUA_REGISTRYINDEX);
+  lua_settop(L, top);
   return 1;
 }

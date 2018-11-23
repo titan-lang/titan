@@ -2047,6 +2047,19 @@ describe("Titan code generator", function()
         end)
     end
 
+    it("check that backtrace is being set on error", function ()
+        run_coder([[
+            function wrong(): integer
+                local x: value = {}
+                return x
+            end
+        ]], [[
+            local titan = require 'titan'
+            local ok, err = pcall(test.wrong)
+            assert(not ok)
+            assert(titan.backtrace():find(err, 1, true))
+        ]])
+    end)
 
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()

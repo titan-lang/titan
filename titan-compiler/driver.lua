@@ -139,7 +139,9 @@ end
 local function check_runtime()
     local runtime_c = driver.TITAN_RUNTIME_PATH .. "titan.c"
     local runtime_o = driver.TITAN_RUNTIME_PATH .. "titan.o"
-    if not lfs.attributes(runtime_o, "size") then
+    local titanc_mtime = lfs.attributes(runtime_c, "modification")
+    local titano_mtime = lfs.attributes(runtime_o, "modification")
+    if (not titano_mtime) or (titano_mtime < titanc_mtime) then
         local args = {driver.CC, driver.CFLAGS, "-c", runtime_c,
             "-I", driver.TITAN_RUNTIME_PATH, "-I", driver.LUA_SOURCE_PATH,
             "-o", runtime_o }
