@@ -56,4 +56,6 @@ LUAI_FUNC void *loadlib (lua_State *L, const char *file);
 LUAI_FUNC void *loadsym (lua_State *L, void *lib, const char *sym);
 LUAI_FUNC const TValue *getgeneric (Table *t, const TValue *key);
 
+int errorhandler(lua_State *L);
+
 #endif

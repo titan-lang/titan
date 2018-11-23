@@ -2390,6 +2390,7 @@ local function genluaentry(tlcontext, titan_name, titan_entry, typ, loc, lua_nam
         }))
     end
     table.insert(stats, render([[
+        L->errfunc = __save_errfunc;
         return $NRET;
     ]], {
         NRET = #typ.rettypes
@@ -2400,6 +2401,9 @@ local function genluaentry(tlcontext, titan_name, titan_entry, typ, loc, lua_nam
         if((L->top - func - 1) != $EXPECTED) {
             luaL_error(L, "calling Titan function %s with %d arguments, but expected %d", $NAME, L->top - func - 1, $EXPECTED);
         }
+        int __save_errfunc = L->errfunc;
+        lua_pushcclosure(L, errorhandler, 0);
+        L->errfunc = savestack(L, L->top-1);
         CClosure *_mod = clCvalue(&clCvalue(func)->upvalue[0]);
         $BODY
     }]], {
@@ -2567,6 +2571,7 @@ local preamble = [[
 #include "lstring.h"
 #include "lvm.h"
 #include "lobject.h"
+#include "ldo.h"
 
 #include "titan.h"
 
