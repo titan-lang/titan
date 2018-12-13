@@ -2390,6 +2390,13 @@ local function genluaentry(tlcontext, titan_name, titan_entry, typ, loc, lua_nam
         table.insert(stats, ctype(ptype) .. " " .. pname .. " = " .. initval(ptype) .. ";")
     end
     local rettype = typ.rettypes[1]
+    if #params > 0 then
+        table.insert(stats, [[
+            lua_pushvalue(L, 1); /* make space for error slot */
+            lua_pushnil(L);
+            lua_replace(L, 1); /* replace first stack element with nil, this is our error slot */
+        ]])
+    end
     table.insert(stats, render([[
         lua_checkstack(L, $NRET);
         TValue *_firstret = L->top;
@@ -2424,6 +2431,7 @@ local function genluaentry(tlcontext, titan_name, titan_entry, typ, loc, lua_nam
         if((L->top - func - 1) != $EXPECTED) {
             luaL_error(L, "calling Titan function %s with %d arguments, but expected %d", $NAME, L->top - func - 1, $EXPECTED);
         }
+        $ERRORSLOT
         int __save_errfunc = L->errfunc;
         lua_pushcclosure(L, errorhandler, 0);
         L->errfunc = savestack(L, L->top-1);
@@ -2432,6 +2440,7 @@ local function genluaentry(tlcontext, titan_name, titan_entry, typ, loc, lua_nam
     }]], {
         LUANAME = lua_name,
         EXPECTED = c_integer_literal(#params),
+        ERRORSLOT = #params == 0 and "lua_pushnil(L);" or "",
         NAME = c_string_literal(titan_name),
         BODY = table.concat(stats, "\n"),
     })
