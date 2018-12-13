@@ -28,19 +28,20 @@ end
 -- Barebones string-based template function for generating C/Lua code. Replaces
 -- $VAR and ${VAR} placeholders in the `code` template by the corresponding
 -- strings in the `substs` table.
-function util.render(code, substs)
+function util.render(code, substs, ignore_missing)
     return (string.gsub(code, "%$({?)([A-Za-z_][A-Za-z_0-9]*)(}?)", function(a, k, b)
         if a == "{" and b == "" then
             error("unmatched ${ in template")
         end
         local v = substs[k]
         if not v then
+            if ignore_missing then return nil end
             error("Internal compiler error: missing template variable " .. k .. "\n" .. code)
         end
         if a == "" and b == "}" then
             v = v .. b
         end
-        return v
+        return util.render(v, substs, ignore_missing)
     end))
 end
 

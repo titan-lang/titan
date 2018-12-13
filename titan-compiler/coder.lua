@@ -162,6 +162,15 @@ end
 
 local checkandset
 
+local function codethrow(ctx, template, params)
+    return render([[
+        luaL_error(L, "$TEMPLATE", $PARAMS);
+    ]], {
+        TEMPLATE = template,
+        PARAMS = table.concat(params, ',')
+    }, true)
+end
+
 local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:string]], loc --[[:table]])
     local tag
     if typ._tag == "Type.Integer" then
@@ -172,12 +181,12 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
                 float _v = fltvalue($EXP);
                 float _flt = l_floor(_v);
                 if (TITAN_UNLIKELY(_v != _flt)) {
-                    luaL_error(L, "%s:%d:%d: type error, number '%f' has no integer representation", $FILE, $LINE, $COL, _v);
+                    $THROWFLOAT
                 } else {
                     lua_numbertointeger(_flt, &$VAR);
                 }
             } else {
-                luaL_error(L, "%s:%d:%d: type error, expected integer but found %s", $FILE, $LINE, $COL, lua_typename(L, ttnov($EXP)));
+                $THROWINTEGER
             }
         ]], {
             EXP = exp,
@@ -185,6 +194,8 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
             FILE = c_string_literal(loc.filename),
             LINE = c_integer_literal(loc.line),
             COL = c_integer_literal(loc.col),
+            THROWFLOAT = codethrow(ctx, "%s:%d:%d: type error, number '%f' has no integer representation", { "$FILE", "$LINE", "$COL", "_v" }),
+            THROWINTEGER = codethrow(ctx, "%s:%d:%d: type error, expected integer but found %s", { "$FILE", "$LINE", "$COL", "lua_typename(L, ttnov($EXP))" })
         })
     elseif typ._tag == "Type.Float" then
         return render([[
@@ -193,7 +204,7 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
             } else if (ttisinteger($EXP)) {
                 $VAR = (lua_Number)ivalue($EXP);
             } else {
-                luaL_error(L, "%s:%d:%d: type error, expected float but found %s", $FILE, $LINE, $COL, lua_typename(L, ttnov($EXP)));
+                $THROW
             }
         ]], {
             EXP = exp,
@@ -201,6 +212,7 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
             FILE = c_string_literal(loc.filename),
             LINE = c_integer_literal(loc.line),
             COL = c_integer_literal(loc.col),
+            THROW = codethrow(ctx, "%s:%d:%d: type error, expected float but found %s", { "$FILE", "$LINE", "$COL", "lua_typename(L, ttnov($EXP))" })
         })
     elseif typ._tag == "Type.Boolean" then
         return render([[
@@ -247,13 +259,13 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
                 lua_pushlightuserdata(L, _tag);
                 if(lua_rawget(L, LUA_REGISTRYINDEX) == LUA_TNIL) {
                     setuvalue(L, L->top, _ud);
-                    luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, "$NAME", luaL_tolstring(L, -1, NULL));
+                    $THROWNIL
                 } else {
-                    luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, "$NAME", lua_tostring(L, -1));
+                    $THROWUD
                 }
               }
             } else {
-              luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, "$NAME", lua_typename(L, ttnov($EXP)));
+              $THROWPRIM
             }
         ]], {
             TAG = type2tagname(ctx, typ),
@@ -262,7 +274,10 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
             COL = c_integer_literal(loc.col),
             EXP = exp,
             VAR = cvar,
-            NAME = types.tostring(typ)
+            NAME = types.tostring(typ),
+            THROWNIL = codethrow(ctx, "%s:%d:%d: type error, expected %s but found %s", { "$FILE", "$LINE", "$COL", '"$NAME"', "luaL_tolstring(L, -1, NULL)" }),
+            THROWUD = codethrow(ctx, "%s:%d:%d: type error, expected %s but found %s", { "$FILE", "$LINE", "$COL", '"$NAME"', "lua_tostring(L, -1)" }),
+            THROWPRIM = codethrow(ctx, "%s:%d:%d: type error, expected %s but found %s", { "$FILE", "$LINE", "$COL", '"$NAME"', "lua_typename(L, ttnov($EXP))" })
         })
     else
         error("invalid type " .. types.tostring(typ))
@@ -271,7 +286,7 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
         if (TITAN_LIKELY($PREDICATE($EXP))) {
             $GETSLOT;
         } else {
-            luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, $TAG, lua_typename(L, ttnov($EXP)));
+            $THROW
         }
     ]], {
         EXP = exp,
@@ -281,7 +296,8 @@ local function checkandget(ctx, typ --[[:table]], cvar --[[:string]], exp --[[:s
         FILE = c_string_literal(loc.filename),
         LINE = c_integer_literal(loc.line),
         COL = c_integer_literal(loc.col),
-})
+        THROW = codethrow(ctx, "%s:%d:%d: type error, expected %s but found %s", { "$FILE", "$LINE", "$COL", "$TAG", "lua_typename(L, ttnov($EXP))" })
+    })
 end
 
 function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]], loc --[[:table]])
@@ -294,6 +310,7 @@ function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]]
             } else if (ttisinteger($SRC)) {
                 setfltvalue($DST, ((lua_Number)ivalue($SRC)));
             } else {
+                $THROW
                 luaL_error(L, "%s:%d:%d: type error, expected float but found %s", $FILE, $LINE, $COL, lua_typename(L, ttnov($SRC)));
             }
         ]], {
@@ -302,6 +319,7 @@ function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]]
             FILE = c_string_literal(loc.filename),
             LINE = c_integer_literal(loc.line),
             COL = c_integer_literal(loc.col),
+            THROW = codethrow(ctx, "%s:%d:%d: type error, expected float but found %s", { "$FILE", "$LINE", "$COL", "lua_typename(L, ttnov($SRC))" })
         })
     elseif typ._tag == "Type.Boolean" then tag = "boolean"
     elseif typ._tag == "Type.Nil" then tag = "nil"
@@ -345,7 +363,7 @@ function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]]
         if (TITAN_LIKELY($PREDICATE($SRC))) {
             setobj2t(L, $DST, $SRC);
         } else {
-            luaL_error(L, "%s:%d:%d: type error, expected %s but found %s", $FILE, $LINE, $COL, $TAG, lua_typename(L, ttnov($SRC)));
+            $THROW
         }
     ]], {
         TAG = c_string_literal(tag),
@@ -355,7 +373,8 @@ function checkandset(ctx, typ --[[:table]], dst --[[:string]], src --[[:string]]
         FILE = c_string_literal(loc.filename),
         LINE = c_integer_literal(loc.line),
         COL = c_integer_literal(loc.col),
-})
+        THROW = codethrow(ctx, "%s:%d:%d: type error, expected %s but found %s", { "$FILE", "$LINE", "$COL", "$TAG", "lua_typename(L, ttnov($SRC))" })
+    })
 end
 
 local function setslot(typ --[[:table]], dst --[[:string]], src --[[:string]])
@@ -1704,7 +1723,7 @@ local function generate_binop_idiv_int(exp, ctx)
         ${Q_DECL}
         if (l_castS2U(${N}) + 1u <= 1u) {
             if (${N} == 0){
-                luaL_error(L, "error at line %d, divide by zero", $LINE);
+                $THROW_DIV0
             } else {
                 ${Q} = intop(-, 0, ${M});
             }
@@ -1722,6 +1741,7 @@ local function generate_binop_idiv_int(exp, ctx)
         Q = qname,
         Q_DECL = qdecl,
         LINE = c_integer_literal(exp.loc.line),
+        THROW_DIV0 = codethrow(ctx, "error at line %d, divide by zero", { "$LINE" })
     })
     return cstats, qname
 end
@@ -1759,7 +1779,7 @@ local function generate_binop_mod_int(exp, ctx)
         ${R_DECL};
         if (l_castS2U(${N}) + 1u <= 1u) {
             if (${N} == 0){
-                luaL_error(L, "error at line %d, % by zero", $LINE);
+                $THROW_MOD0
             } else {
                 ${R} = 0;
             }
@@ -1777,6 +1797,7 @@ local function generate_binop_mod_int(exp, ctx)
         R = rname,
         R_DECL = rdecl,
         LINE = c_integer_literal(exp.loc.line),
+        THROW_MOD0 = codethrow(ctx, "error at line %d, % by zero", { "$LINE" })
     })
     return cstats, rname
 end
@@ -2169,7 +2190,7 @@ function codeexp(ctx, node, iscondition, target)
             $TMPNAME1 = $CEXP;
             $TMPNAME2 = l_floor($TMPNAME1);
             if ($TMPNAME1 != $TMPNAME2) {
-                luaL_error(L, "type error at line %d, number '%f' has no integer representation", $LINE, $TMPNAME1);
+                $THROW_WRONG_INT
             } else {
                 lua_numbertointeger($TMPNAME2, &$TMPNAME3);
             }
@@ -2182,7 +2203,8 @@ function codeexp(ctx, node, iscondition, target)
             TMPNAME1 = tmpname1,
             TMPNAME2 = tmpname2,
             TMPNAME3 = tmpname3,
-            LINE = c_integer_literal(node.loc.line)
+            LINE = c_integer_literal(node.loc.line),
+            THROW_WRONG_INT = codethrow(ctx, "type error at line %d, number '%f' has no integer representation", { "$LINE", "$TMPNAME1" })
         })
         return cfloor, tmpname3
     elseif tag == "Ast.ExpCast" and node._type._tag == "Type.String" then
@@ -2243,7 +2265,7 @@ function codeexp(ctx, node, iscondition, target)
             $CSTATS
             $CTMP
             if(TITAN_UNLIKELY(ttisnil(&$CEXP))) {
-                luaL_error(L, "%s:%d:%d: type error, expected %s but found nil", $FILE, $LINE, $COL, $TYPENAME);
+                $THROW_WRONG_CAST
             } else {
                 $GETSLOT
             }
@@ -2255,7 +2277,8 @@ function codeexp(ctx, node, iscondition, target)
             LINE = node.loc.line,
             COL = node.loc.col,
             TYPENAME = c_string_literal(types.tostring(node._type)),
-            GETSLOT = getslot(node._type, tmpname, "&" .. cexp)
+            GETSLOT = getslot(node._type, tmpname, "&" .. cexp),
+            THROW_WRONG_CAST = codethrow(ctx, "%s:%d:%d: type error, expected %s but found nil", { "$FILE", "$LINE", "$COL", "$TYPENAME" })
         }), tmpname
     elseif tag == "Ast.ExpCast" and node._type._tag == "Type.Pointer" then
         local cstats, cexp = codeexp(ctx, node.exp)
