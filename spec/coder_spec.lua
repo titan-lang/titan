@@ -51,7 +51,7 @@ local function generate_modules(modules, main, forapp)
 end
 
 local function call(modname, code)
-    local cmd = string.format("lua-5.3.4/src/lua -l %s -e \"print(pcall(function () %s end))\"",
+    local cmd = string.format("lua-5.3.5/src/lua -l %s -e \"print(pcall(function () %s end))\"",
         modname, code)
     local f = io.popen(cmd)
     local out = f:read()
