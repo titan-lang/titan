@@ -8,9 +8,9 @@ application programming language with a focus on performance.
 
 # Install
 
-First you need to download, extract and build the [sources to Lua 5.3.4](http://www.lua.org/ftp/lua-5.3.4.tar.gz)
+First you need to download, extract and build the [sources to Lua 5.3.5](http://www.lua.org/ftp/lua-5.3.5.tar.gz)
 inside the folder where you cloned this repository. The Lua tarball will extract
-to a `lua-5.3.4` folder. Enter it and build Lua with `make linux MYCFLAGS=-fPIC`.
+to a `lua-5.3.5` folder. Enter it and build Lua with `make linux MYCFLAGS=-fPIC`.
 
 You can install the Titan compiler itself using  [LuaRocks](http://luarocks.org)
 this will also install all dependencies automatically.
@@ -76,7 +76,7 @@ You may need to adapt the invocation of `make` above to your platform.
 # Compiler options
 
         --print-ast                     Print the AST.
-        --lua <path>                    Path to the Lua sources (default 'lua-5.3.4/src')
+        --lua <path>                    Path to the Lua sources (default 'lua-5.3.5/src')
         --tree <path>                   Path to the source tree for your Titan modules (default '.')
         -h, --help                      Show this help message and exit.
         

@@ -21,6 +21,8 @@
 #define TITAN_PATH_KEY     "ec10e486-d8fd-11e7-87f4-e7e9581a929c"
 #define TITAN_LIBS_KEY     "ecfc9174-d8fd-11e7-8be2-abbaa3ded45f"
 
+#define TITAN_BACKTRACE_KEY "57d80578-2534-4856-ad3b-bde8cba4c445"
+
 #define TITAN_LUAINTEGER_NBITS cast_int(sizeof(lua_Integer) * CHAR_BIT)
 
 #define titan_pushmodule(L, c) setclCvalue(L, L->top++, c)
@@ -55,5 +57,7 @@ inline static TString* _float2str (lua_State *L, lua_Number f) {
 LUAI_FUNC void *loadlib (lua_State *L, const char *file);
 LUAI_FUNC void *loadsym (lua_State *L, void *lib, const char *sym);
 LUAI_FUNC const TValue *getgeneric (Table *t, const TValue *key);
+
+int errorhandler(lua_State *L);
 
 #endif

@@ -13,7 +13,7 @@ driver.imported = {}
 
 driver.TITAN_BIN_PATH = os.getenv("TITAN_PATH_0_5") or os.getenv("TITAN_PATH") or ".;/usr/local/lib/titan/0.5"
 driver.TITAN_SOURCE_PATH = "."
-driver.LUA_SOURCE_PATH = "lua-5.3.4/src/"
+driver.LUA_SOURCE_PATH = "lua-5.3.5/src/"
 driver.TITAN_RUNTIME_PATH = "titan-runtime/"
 driver.CFLAGS = "--std=c99 -O2 -Wall -fPIC"
 driver.CC = "cc"
@@ -139,7 +139,9 @@ end
 local function check_runtime()
     local runtime_c = driver.TITAN_RUNTIME_PATH .. "titan.c"
     local runtime_o = driver.TITAN_RUNTIME_PATH .. "titan.o"
-    if not lfs.attributes(runtime_o, "size") then
+    local titanc_mtime = lfs.attributes(runtime_c, "modification")
+    local titano_mtime = lfs.attributes(runtime_o, "modification")
+    if (not titano_mtime) or (titano_mtime < titanc_mtime) then
         local args = {driver.CC, driver.CFLAGS, "-c", runtime_c,
             "-I", driver.TITAN_RUNTIME_PATH, "-I", driver.LUA_SOURCE_PATH,
             "-o", runtime_o }

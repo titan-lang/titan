@@ -178,3 +178,16 @@ end
 function setindent(a: string)
   tab.indent = a
 end
+
+function fa(): integer
+  return fb()[1]
+end
+
+function fb(): {integer}
+  return {fc()}
+end
+
+function fc(): integer
+  local x: value = "foo"
+  return x
+end

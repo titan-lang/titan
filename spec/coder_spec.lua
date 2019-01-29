@@ -51,7 +51,7 @@ local function generate_modules(modules, main, forapp)
 end
 
 local function call(modname, code)
-    local cmd = string.format("lua-5.3.4/src/lua -l %s -e \"print(pcall(function () %s end))\"",
+    local cmd = string.format("lua-5.3.5/src/lua -l %s -e \"print(pcall(function () %s end))\"",
         modname, code)
     local f = io.popen(cmd)
     local out = f:read()
@@ -2047,6 +2047,19 @@ describe("Titan code generator", function()
         end)
     end
 
+    it("check that backtrace is being set on error", function ()
+        run_coder([[
+            function wrong(): integer
+                local x: value = {}
+                return x
+            end
+        ]], [[
+            local titan = require 'titan'
+            local ok, err = pcall(test.wrong)
+            assert(not ok)
+            assert(titan.backtrace():find(err, 1, true))
+        ]])
+    end)
 
     describe("Lua vs C operator semantics", function()
         it("unary (-)", function()

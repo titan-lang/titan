@@ -2,6 +2,7 @@
 #include <string.h>
 #include <math.h>
 #include <dlfcn.h>
+#include <execinfo.h>
 #include "lua.h"
 #include "lauxlib.h"
 #include "ltable.h"
@@ -203,4 +204,27 @@ const TValue *getgeneric (Table *t, const TValue *key) {
       n += nx;
     }
   }
+}
+
+int errorhandler(lua_State *L) {
+  void *buffer[255];
+  const int calls = backtrace(buffer, sizeof(buffer) / sizeof(void *));
+  char **bt = backtrace_symbols(buffer, calls);
+  int top = lua_gettop(L);
+  luaL_Buffer buf;
+  luaL_buffinit(L, &buf);
+  for(int i = 0; i < calls; i++) {
+    if(i > 0) { luaL_addchar(&buf, '\n'); }
+    luaL_addstring(&buf, bt[i]);
+  }
+  lua_pushliteral(L, TITAN_BACKTRACE_KEY);
+  luaL_tolstring(L, top, NULL);
+  lua_pushliteral(L, "\n");
+  luaL_traceback(L, L, NULL, 0);
+  lua_pushliteral(L, "C traceback:\n");
+  luaL_pushresult(&buf);
+  lua_concat(L, 5);
+  lua_rawset(L, LUA_REGISTRYINDEX);
+  lua_settop(L, top);
+  return 1;
 }
